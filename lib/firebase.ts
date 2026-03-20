@@ -1,6 +1,6 @@
-import { initializeApp, getApps } from "firebase/app"
-import { getFirestore } from "firebase/firestore"
-import { getAuth } from "firebase/auth"
+import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app"
+import { getFirestore, Firestore } from "firebase/firestore"
+import { getAuth, Auth } from "firebase/auth"
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -11,9 +11,23 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 }
 
-// Initialize Firebase only once
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
+// Initialize Firebase
+let app: FirebaseApp
+let db: Firestore
+let auth: Auth
 
-export const db = getFirestore(app)
-export const auth = getAuth(app)
+if (typeof window !== "undefined") {
+  // Client side initialization
+  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp()
+  db = getFirestore(app)
+  auth = getAuth(app)
+} else {
+  // Server side: Prevent SSR execution and provide safe placeholders for build time
+  // This avoids "invalid-api-key" errors during Next.js prerendering/build
+  app = {} as FirebaseApp
+  db = {} as Firestore
+  auth = {} as Auth
+}
+
+export { app, db, auth }
 export default app
