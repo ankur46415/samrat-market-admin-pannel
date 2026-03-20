@@ -25,10 +25,7 @@ import {
 } from "@/components/ui/table"
 import { generatePdfReport } from "@/lib/pdf-generator"
 
-type DateRange = {
-  from: Date | undefined
-  to: Date | undefined
-}
+import { DateRange } from "react-day-picker"
 
 export default function ReportsPage() {
   const { sales, loading: salesLoading } = useSales()

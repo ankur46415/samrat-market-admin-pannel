@@ -4,8 +4,8 @@ import { format } from "date-fns"
 
 interface ReportData {
   dateRange: {
-    from: Date | undefined
-    to: Date | undefined
+    from?: Date | undefined
+    to?: Date | undefined
   }
   stats: {
     totalRevenue: number

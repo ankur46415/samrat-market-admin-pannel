@@ -34,10 +34,7 @@ import { SaleDetailDialog } from "@/components/sales/sale-detail-dialog"
 import type { Sale } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
-type DateRange = {
-  from: Date | undefined
-  to: Date | undefined
-}
+import { DateRange } from "react-day-picker"
 
 export default function SalesHistoryPage() {
   const { sales, loading } = useSales()

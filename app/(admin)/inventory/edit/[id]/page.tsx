@@ -48,14 +48,14 @@ export default function EditProductPage({
   useEffect(() => {
     if (product) {
       setFormData({
-        name: product.name,
-        category: product.category,
-        price: product.price.toString(),
-        costPrice: product.costPrice.toString(),
-        stock: product.stock.toString(),
-        unit: product.unit,
+        name: product.name || "",
+        category: product.category || "",
+        price: product.price?.toString() || "0",
+        costPrice: product.costPrice?.toString() || "0",
+        stock: product.stock?.toString() || "0",
+        unit: product.unit || "pcs",
         barcode: product.barcode || "",
-        minStock: product.minStock.toString(),
+        minStock: product.minStock?.toString() || "10",
       })
     }
   }, [product])
@@ -78,16 +78,23 @@ export default function EditProductPage({
     setSaving(true)
 
     try {
-      await updateProduct(id, {
+      const updatePayload: any = {
         name: formData.name,
         category,
         price: parseFloat(formData.price),
         costPrice: parseFloat(formData.costPrice),
         stock: parseInt(formData.stock) || 0,
         unit: formData.unit,
-        barcode: formData.barcode || undefined,
         minStock: parseInt(formData.minStock) || 10,
-      })
+      }
+      
+      // Only set barcode if it's provided, or specifically delete it if needed,
+      // but do not pass undefined because Firestore updateDoc will crash.
+      if (formData.barcode) {
+        updatePayload.barcode = formData.barcode
+      }
+
+      await updateProduct(id, updatePayload)
 
       toast.success("Product updated successfully")
       router.push("/inventory")
@@ -98,6 +105,7 @@ export default function EditProductPage({
       setSaving(false)
     }
   }
+
 
   if (productsLoading) {
     return (
@@ -191,7 +199,7 @@ export default function EditProductPage({
                 ) : (
                   <Select
                     value={formData.category}
-                    onValueChange={(value) => {
+                    onValueChange={(value: string) => {
                       if (value === "new") {
                         setShowNewCategory(true)
                       } else {
@@ -218,7 +226,7 @@ export default function EditProductPage({
                 <Label htmlFor="unit">Unit</Label>
                 <Select
                   value={formData.unit}
-                  onValueChange={(value) => setFormData({ ...formData, unit: value })}
+                  onValueChange={(value: string) => setFormData({ ...formData, unit: value })}
                 >
                   <SelectTrigger>
                     <SelectValue />
