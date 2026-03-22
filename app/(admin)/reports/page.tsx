@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react"
 import { format, subDays, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval, startOfDay, endOfDay } from "date-fns"
 import { FileText, Download, CalendarIcon, TrendingUp, Package, Users } from "lucide-react"
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { useSales, useProducts, useCustomers } from "@/hooks/use-firestore"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/table"
 import { generatePdfReport } from "@/lib/pdf-generator"
 import { isLowStockProduct } from "@/lib/stock"
+import { chartFillAt } from "@/lib/chart-colors"
 
 import { DateRange } from "react-day-picker"
 
@@ -257,12 +258,12 @@ export default function ReportsPage() {
                       dataKey="date"
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+                      tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
                     />
                     <YAxis
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+                      tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
                       tickFormatter={(value) => `₹${value / 1000}k`}
                     />
                     <Tooltip
@@ -283,7 +284,11 @@ export default function ReportsPage() {
                         return null
                       }}
                     />
-                    <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="revenue" radius={[4, 4, 0, 0]}>
+                      {dailyData.map((_, i) => (
+                        <Cell key={i} fill={chartFillAt(i)} />
+                      ))}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -347,13 +352,16 @@ export default function ReportsPage() {
                     <p className="text-muted-foreground">No sales data for this period</p>
                   </div>
                 ) : (
-                  Object.entries(stats.paymentBreakdown).map(([method, amount]) => (
+                  Object.entries(stats.paymentBreakdown).map(([method, amount], idx) => (
                     <div key={method} className="flex items-center justify-between p-4 rounded-lg border">
                       <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                          <span className="text-xs font-semibold text-primary uppercase">
-                            {method.slice(0, 2)}
-                          </span>
+                        <div
+                          className="h-10 w-10 rounded-full flex items-center justify-center text-white font-semibold uppercase text-xs shadow-sm"
+                          style={{
+                            backgroundColor: chartFillAt(idx),
+                          }}
+                        >
+                          {method.slice(0, 2)}
                         </div>
                         <div>
                           <p className="font-medium capitalize">{method}</p>

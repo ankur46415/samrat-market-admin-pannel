@@ -4,20 +4,13 @@ import { useMemo } from "react"
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import type { Product } from "@/lib/types"
+import { CHART_FILLS } from "@/lib/chart-colors"
 import { cn } from "@/lib/utils"
 
 interface CategoryChartProps {
   products: Product[]
   className?: string
 }
-
-const COLORS = [
-  "hsl(var(--chart-1))",
-  "hsl(var(--chart-2))",
-  "hsl(var(--chart-3))",
-  "hsl(var(--chart-4))",
-  "hsl(var(--chart-5))",
-]
 
 export function CategoryChart({ products, className }: CategoryChartProps) {
   const chartData = useMemo(() => {
@@ -67,7 +60,7 @@ export function CategoryChart({ products, className }: CategoryChartProps) {
                 dataKey="value"
               >
                 {chartData.map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  <Cell key={`cell-${index}`} fill={CHART_FILLS[index % CHART_FILLS.length]} stroke="#fff" strokeWidth={2} />
                 ))}
               </Pie>
               <Tooltip
@@ -92,7 +85,7 @@ export function CategoryChart({ products, className }: CategoryChartProps) {
             <div key={item.name} className="flex items-center gap-2 text-sm">
               <div
                 className="h-3 w-3 rounded-full"
-                style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                style={{ backgroundColor: CHART_FILLS[index % CHART_FILLS.length] }}
               />
               <span className="text-muted-foreground">{item.name}</span>
             </div>

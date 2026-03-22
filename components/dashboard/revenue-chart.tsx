@@ -65,8 +65,8 @@ export function RevenueChart({ sales, className }: RevenueChartProps) {
             <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
+                  <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.45} />
+                  <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0.05} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
@@ -74,13 +74,13 @@ export function RevenueChart({ sales, className }: RevenueChartProps) {
                 dataKey="date"
                 axisLine={false}
                 tickLine={false}
-                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+                tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
                 dy={10}
               />
               <YAxis
                 axisLine={false}
                 tickLine={false}
-                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+                tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
                 tickFormatter={formatCurrency}
                 dx={-10}
               />
@@ -102,8 +102,8 @@ export function RevenueChart({ sales, className }: RevenueChartProps) {
               <Area
                 type="monotone"
                 dataKey="revenue"
-                stroke="hsl(var(--chart-1))"
-                strokeWidth={2}
+                stroke="var(--chart-1)"
+                strokeWidth={2.5}
                 fill="url(#revenueGradient)"
               />
             </AreaChart>
