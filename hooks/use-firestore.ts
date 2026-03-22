@@ -11,7 +11,6 @@ import {
   updateDoc,
   deleteDoc,
   where,
-  getDocs,
   Timestamp,
   writeBatch,
   limit,
@@ -20,6 +19,7 @@ import {
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import type { Product, Customer, Sale, LedgerEntry, DashboardStats } from "@/lib/types"
+import { saleFromFirestoreDoc } from "@/lib/sale-from-firestore"
 import {
   coerceProductStockFromFirestore,
   firestoreNumber,
@@ -195,17 +195,16 @@ export function useSales(constraints?: QueryConstraint[]) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const baseConstraints = [orderBy("createdAt", "desc"), limit(500)]
-    const q = query(collection(db, "sales"), ...(constraints || baseConstraints))
-    
+    // No orderBy("createdAt"): mobile/Flutter docs use `soldAt` (string) only and would be excluded.
+    const coll = collection(db, "sales")
+    const q = constraints?.length ? query(coll, ...constraints) : coll
+
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const items = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: convertTimestamp(doc.data().createdAt),
-        })) as Sale[]
+        const items = snapshot.docs
+          .map((doc) => saleFromFirestoreDoc(doc))
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
         setSales(items)
         setLoading(false)
       },
@@ -298,22 +297,22 @@ export function useDashboardStats() {
       }))
     })
 
-    // Listen to today's sales
-    const salesQuery = query(
-      collection(db, "sales"),
-      where("createdAt", ">=", Timestamp.fromDate(today)),
-      orderBy("createdAt", "desc")
-    )
-    const salesUnsubscribe = onSnapshot(salesQuery, (snapshot) => {
-      const todayTotal = snapshot.docs.reduce((sum, doc) => sum + (doc.data().total || 0), 0)
-      setStats((prev) => ({ ...prev, todaySales: todayTotal }))
-      setLoading(false)
-    })
+    const todayEnd = new Date(today)
+    todayEnd.setDate(todayEnd.getDate() + 1)
 
-    // Get total revenue (all time)
-    getDocs(collection(db, "sales")).then((snapshot) => {
-      const total = snapshot.docs.reduce((sum, doc) => sum + (doc.data().total || 0), 0)
-      setStats((prev) => ({ ...prev, totalRevenue: total }))
+    // All sales: map Flutter line docs + web invoices; filter today client-side (soldAt / createdAt).
+    const salesUnsubscribe = onSnapshot(collection(db, "sales"), (snapshot) => {
+      let todayTotal = 0
+      let revenueTotal = 0
+      snapshot.docs.forEach((doc) => {
+        const sale = saleFromFirestoreDoc(doc)
+        revenueTotal += sale.total
+        if (sale.createdAt >= today && sale.createdAt < todayEnd) {
+          todayTotal += sale.total
+        }
+      })
+      setStats((prev) => ({ ...prev, todaySales: todayTotal, totalRevenue: revenueTotal }))
+      setLoading(false)
     })
 
     return () => {

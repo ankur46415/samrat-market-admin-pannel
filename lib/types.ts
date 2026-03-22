@@ -29,7 +29,7 @@ export interface Customer {
   updatedAt: Date
 }
 
-// Sale types
+// Sale types — web uses invoice-shaped docs; Flutter may store one line per doc (soldAt, totalAmount, …).
 export interface SaleItem {
   productId: string
   productName: string

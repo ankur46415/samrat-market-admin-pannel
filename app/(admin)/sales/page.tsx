@@ -50,8 +50,8 @@ export default function SalesHistoryPage() {
   const filteredSales = useMemo(() => {
     return sales.filter((sale) => {
       const matchesSearch =
-        sale.billNo.toLowerCase().includes(search.toLowerCase()) ||
-        sale.customerName?.toLowerCase().includes(search.toLowerCase())
+        (sale.billNo || "").toLowerCase().includes(search.toLowerCase()) ||
+        (sale.customerName || "").toLowerCase().includes(search.toLowerCase())
       
       const matchesPayment =
         paymentFilter === "all" || sale.paymentMethod === paymentFilter
