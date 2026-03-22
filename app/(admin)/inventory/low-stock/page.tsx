@@ -16,12 +16,13 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { isLowStockProduct, minStockDisplayDenominator } from "@/lib/stock"
 
 export default function LowStockPage() {
   const { products, loading } = useProducts()
 
   const lowStockProducts = products
-    .filter((p) => p.stock <= (p.minStock || 10))
+    .filter((p) => isLowStockProduct(p))
     .sort((a, b) => a.stock - b.stock)
 
   const formatCurrency = (amount: number) => {
@@ -99,11 +100,10 @@ export default function LowStockPage() {
                 </TableHeader>
                 <TableBody>
                   {lowStockProducts.map((product) => {
-                    const stockPercentage = Math.round(
-                      (product.stock / (product.minStock || 10)) * 100
-                    )
+                    const denom = minStockDisplayDenominator(product.minStock)
+                    const stockPercentage = Math.round((product.stock / denom) * 100)
                     const isOutOfStock = product.stock === 0
-                    const restockAmount = (product.minStock || 10) - product.stock
+                    const restockAmount = product.minStock - product.stock
                     const restockCost = restockAmount * product.costPrice
 
                     return (
@@ -131,7 +131,7 @@ export default function LowStockPage() {
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
-                          {product.minStock || 10} {product.unit}
+                          {product.minStock} {product.unit}
                         </TableCell>
                         <TableCell>
                           {isOutOfStock ? (

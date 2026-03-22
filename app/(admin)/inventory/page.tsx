@@ -35,6 +35,7 @@ import { DeleteProductDialog } from "@/components/inventory/delete-product-dialo
 import { BarcodeDialog } from "@/components/inventory/barcode-dialog"
 import { CsvUploadDialog } from "@/components/inventory/csv-upload-dialog"
 import type { Product } from "@/lib/types"
+import { isLowStockProduct } from "@/lib/stock"
 
 export default function InventoryPage() {
   const { products, loading, deleteProduct } = useProducts()
@@ -74,7 +75,7 @@ export default function InventoryPage() {
     if (product.stock === 0) {
       return <Badge variant="destructive">Out of Stock</Badge>
     }
-    if (product.stock <= (product.minStock || 10)) {
+    if (isLowStockProduct(product)) {
       return <Badge variant="outline" className="border-warning text-warning">Low Stock</Badge>
     }
     return <Badge variant="secondary">In Stock</Badge>

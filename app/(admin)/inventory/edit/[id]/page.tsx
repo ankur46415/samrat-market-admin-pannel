@@ -18,6 +18,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
+import { parseMinStockInput } from "@/lib/stock"
 
 export default function EditProductPage({
   params,
@@ -55,7 +56,7 @@ export default function EditProductPage({
         stock: product.stock?.toString() || "0",
         unit: product.unit || "pcs",
         barcode: product.barcode || "",
-        minStock: product.minStock?.toString() || "10",
+        minStock: String(product.minStock),
       })
     }
   }, [product])
@@ -85,7 +86,7 @@ export default function EditProductPage({
         costPrice: parseFloat(formData.costPrice),
         stock: parseInt(formData.stock) || 0,
         unit: formData.unit,
-        minStock: parseInt(formData.minStock) || 10,
+        minStock: parseMinStockInput(formData.minStock, 10),
       }
       
       // Only set barcode if it's provided, or specifically delete it if needed,
@@ -274,7 +275,7 @@ export default function EditProductPage({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="stock">Current Stock</Label>
+                <Label htmlFor="stock">Stock</Label>
                 <Input
                   id="stock"
                   type="number"
@@ -291,7 +292,7 @@ export default function EditProductPage({
                   id="minStock"
                   type="number"
                   min="0"
-                  placeholder="10"
+                  placeholder="e.g. 10"
                   value={formData.minStock}
                   onChange={(e) => setFormData({ ...formData, minStock: e.target.value })}
                 />

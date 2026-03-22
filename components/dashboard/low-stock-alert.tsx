@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Progress } from "@/components/ui/progress"
 import type { Product } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { isLowStockProduct, minStockDisplayDenominator } from "@/lib/stock"
 
 interface LowStockAlertProps {
   products: Product[]
@@ -16,7 +17,7 @@ interface LowStockAlertProps {
 
 export function LowStockAlert({ products, className }: LowStockAlertProps) {
   const lowStockProducts = products
-    .filter((p) => p.stock <= (p.minStock || 10))
+    .filter((p) => isLowStockProduct(p))
     .sort((a, b) => a.stock - b.stock)
     .slice(0, 8)
 
@@ -61,9 +62,8 @@ export function LowStockAlert({ products, className }: LowStockAlertProps) {
         <ScrollArea className="h-[280px] pr-4">
           <div className="space-y-4">
             {lowStockProducts.map((product) => {
-              const stockPercentage = Math.round(
-                (product.stock / (product.minStock || 10)) * 100
-              )
+              const denom = minStockDisplayDenominator(product.minStock)
+              const stockPercentage = Math.round((product.stock / denom) * 100)
               const isOutOfStock = product.stock === 0
               
               return (
@@ -85,7 +85,7 @@ export function LowStockAlert({ products, className }: LowStockAlertProps) {
                         {product.stock} {product.unit}
                       </span>
                       <p className="text-xs text-muted-foreground">
-                        Min: {product.minStock || 10}
+                        Min: {product.minStock}
                       </p>
                     </div>
                   </div>

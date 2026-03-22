@@ -24,6 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { generatePdfReport } from "@/lib/pdf-generator"
+import { isLowStockProduct } from "@/lib/stock"
 
 import { DateRange } from "react-day-picker"
 
@@ -214,7 +215,7 @@ export default function ReportsPage() {
           <CardContent>
             <div className="text-2xl font-bold">{products.length}</div>
             <p className="text-xs text-muted-foreground">
-              {products.filter((p) => p.stock <= (p.minStock || 10)).length} low stock
+              {products.filter((p) => isLowStockProduct(p)).length} low stock
             </p>
           </CardContent>
         </Card>

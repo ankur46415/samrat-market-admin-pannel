@@ -1,4 +1,7 @@
-// Product types matching Flutter app structure
+/**
+ * Firestore `products` document fields (camelCase):
+ * barcode?, category, costPrice, createdAt, minStock, name, price, stock, unit, updatedAt
+ */
 export interface Product {
   id: string
   name: string

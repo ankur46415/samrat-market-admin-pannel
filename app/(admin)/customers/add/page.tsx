@@ -22,7 +22,6 @@ export default function AddCustomerPage() {
     phone: "",
     email: "",
     address: "",
-    balance: "0",
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -41,7 +40,7 @@ export default function AddCustomerPage() {
         phone: formData.phone,
         email: formData.email || undefined,
         address: formData.address || undefined,
-        balance: parseFloat(formData.balance) || 0,
+        balance: 0,
         totalPurchases: 0,
       })
 
@@ -105,30 +104,15 @@ export default function AddCustomerPage() {
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email (Optional)</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="e.g., rajesh@email.com"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="balance">Opening Credit Balance (INR)</Label>
-                <Input
-                  id="balance"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0"
-                  value={formData.balance}
-                  onChange={(e) => setFormData({ ...formData, balance: e.target.value })}
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email (Optional)</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="e.g., rajesh@email.com"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              />
             </div>
 
             <div className="space-y-2">

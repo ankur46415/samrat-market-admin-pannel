@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { toast } from "sonner"
+import { parseMinStockInput } from "@/lib/stock"
 
 export default function AddProductPage() {
   const router = useRouter()
@@ -63,7 +64,7 @@ export default function AddProductPage() {
         stock: parseInt(formData.stock) || 0,
         unit: formData.unit,
         barcode: formData.barcode || undefined,
-        minStock: parseInt(formData.minStock) || 10,
+        minStock: parseMinStockInput(formData.minStock, 10),
       })
 
       toast.success("Product added successfully")

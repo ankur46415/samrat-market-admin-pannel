@@ -16,15 +16,57 @@ import {
   writeBatch,
   limit,
   QueryConstraint,
+  type QueryDocumentSnapshot,
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import type { Product, Customer, Sale, LedgerEntry, DashboardStats } from "@/lib/types"
+import {
+  coerceProductStockFromFirestore,
+  firestoreNumber,
+  isLowStockFromFirestoreData,
+  minStockThresholdFromFirestore,
+} from "@/lib/stock"
 
 // Helper to convert Firestore timestamp
 const convertTimestamp = (timestamp: Timestamp | Date | undefined): Date => {
   if (!timestamp) return new Date()
   if (timestamp instanceof Timestamp) return timestamp.toDate()
   return timestamp
+}
+
+/** Map Firestore product doc → Product (matches console: barcode, category, costPrice, minStock, name, price, stock, unit, …) */
+function trimStr(v: unknown): string {
+  return typeof v === "string" ? v.trim() : ""
+}
+
+function optionalBarcode(v: unknown): string | undefined {
+  if (v === undefined || v === null) return undefined
+  const s = typeof v === "string" ? v.trim() : String(v).trim()
+  return s.length > 0 ? s : undefined
+}
+
+function productFromFirestoreDoc(doc: QueryDocumentSnapshot): Product {
+  const data = doc.data() as Record<string, unknown>
+  return {
+    id: doc.id,
+    name: trimStr(data.name),
+    category: trimStr(data.category),
+    barcode: optionalBarcode(data.barcode),
+    price: firestoreNumber(data.price, 0),
+    costPrice: firestoreNumber(data.costPrice, 0),
+    stock: coerceProductStockFromFirestore(data),
+    minStock: (() => {
+      const raw = data.minStock
+      if (raw !== undefined && raw !== null) {
+        const n = firestoreNumber(raw, NaN)
+        if (Number.isFinite(n)) return n
+      }
+      return minStockThresholdFromFirestore(data)
+    })(),
+    unit: trimStr(data.unit),
+    createdAt: convertTimestamp(data.createdAt as Timestamp | Date | undefined),
+    updatedAt: convertTimestamp(data.updatedAt as Timestamp | Date | undefined),
+  }
 }
 
 // Products Hook
@@ -34,17 +76,15 @@ export function useProducts() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const q = query(collection(db, "products"), orderBy("name"))
-    
+    // Full collection (no orderBy): orderBy("name") omits docs missing `name`, so low-stock counts
+    // diverged from dashboard / mobile. Sort client-side instead.
     const unsubscribe = onSnapshot(
-      q,
+      collection(db, "products"),
       (snapshot) => {
-        const items = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: convertTimestamp(doc.data().createdAt),
-          updatedAt: convertTimestamp(doc.data().updatedAt),
-        })) as Product[]
+        const items = snapshot.docs.map((doc) => productFromFirestoreDoc(doc))
+          .sort((a, b) =>
+            (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })
+          )
         setProducts(items)
         setLoading(false)
       },
@@ -240,10 +280,9 @@ export function useDashboardStats() {
 
     // Listen to products for low stock
     const productsUnsubscribe = onSnapshot(collection(db, "products"), (snapshot) => {
-      const lowStock = snapshot.docs.filter((doc) => {
-        const data = doc.data()
-        return data.stock <= (data.minStock || 10)
-      }).length
+      const lowStock = snapshot.docs.filter((doc) =>
+        isLowStockFromFirestoreData(doc.data() as Record<string, unknown>)
+      ).length
       setStats((prev) => ({ ...prev, lowStockCount: lowStock }))
     })
 
