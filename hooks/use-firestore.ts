@@ -233,21 +233,28 @@ export function useLedger(customerId?: string) {
       return
     }
 
-    const q = query(
-      collection(db, "ledger"),
-      where("customerId", "==", customerId),
-      orderBy("createdAt", "desc")
+    // Equality-only query: no composite index. Sort by createdAt in memory (same as products/sales).
+    const q = query(collection(db, "ledger"), where("customerId", "==", customerId))
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const items = (
+          snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+            createdAt: convertTimestamp(doc.data().createdAt),
+          })) as LedgerEntry[]
+        ).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        setEntries(items)
+        setLoading(false)
+      },
+      (err) => {
+        console.error("Ledger error:", err)
+        setEntries([])
+        setLoading(false)
+      }
     )
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const items = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: convertTimestamp(doc.data().createdAt),
-      })) as LedgerEntry[]
-      setEntries(items)
-      setLoading(false)
-    })
 
     return () => unsubscribe()
   }, [customerId])
