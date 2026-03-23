@@ -47,11 +47,14 @@ function optionalBarcode(v: unknown): string | undefined {
 
 function productFromFirestoreDoc(doc: QueryDocumentSnapshot): Product {
   const data = doc.data() as Record<string, unknown>
+  const brand = trimStr((data as any).brand)
+  const expiry = trimStr((data as any).expiry)
   return {
     id: doc.id,
     name: trimStr(data.name),
     category: trimStr(data.category),
     barcode: optionalBarcode(data.barcode),
+    brand: brand.length > 0 ? brand : undefined,
     price: firestoreNumber(data.price, 0),
     costPrice: firestoreNumber(data.costPrice, 0),
     stock: coerceProductStockFromFirestore(data),
@@ -63,6 +66,7 @@ function productFromFirestoreDoc(doc: QueryDocumentSnapshot): Product {
       }
       return minStockThresholdFromFirestore(data)
     })(),
+    expiry: expiry.length > 0 ? expiry : undefined,
     unit: trimStr(data.unit),
     createdAt: convertTimestamp(data.createdAt as Timestamp | Date | undefined),
     updatedAt: convertTimestamp(data.updatedAt as Timestamp | Date | undefined),

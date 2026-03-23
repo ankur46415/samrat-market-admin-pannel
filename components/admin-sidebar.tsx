@@ -41,6 +41,11 @@ const mainNavItems = [
     icon: LayoutDashboard,
   },
   {
+    title: "Generate Bill",
+    url: "/generate-bill",
+    icon: Receipt,
+  },
+  {
     title: "Inventory",
     url: "/inventory",
     icon: Package,

@@ -41,6 +41,8 @@ export default function EditProductPage({
     stock: "",
     unit: "pcs",
     barcode: "",
+    brand: "",
+    expiry: "",
     minStock: "10",
   })
 
@@ -56,6 +58,8 @@ export default function EditProductPage({
         stock: product.stock?.toString() || "0",
         unit: product.unit || "pcs",
         barcode: product.barcode || "",
+        brand: product.brand || "",
+        expiry: product.expiry || "",
         minStock: String(product.minStock),
       })
     }
@@ -93,6 +97,12 @@ export default function EditProductPage({
       // but do not pass undefined because Firestore updateDoc will crash.
       if (formData.barcode) {
         updatePayload.barcode = formData.barcode
+      }
+      if (formData.brand) {
+        updatePayload.brand = formData.brand
+      }
+      if (formData.expiry) {
+        updatePayload.expiry = formData.expiry
       }
 
       await updateProduct(id, updatePayload)
@@ -172,6 +182,26 @@ export default function EditProductPage({
                   placeholder="e.g., 8901234567890"
                   value={formData.barcode}
                   onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="brand">Product Brand (Optional)</Label>
+                <Input
+                  id="brand"
+                  placeholder="e.g., Parle"
+                  value={formData.brand}
+                  onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="expiry">Product Expiry (Optional)</Label>
+                <Input
+                  id="expiry"
+                  type="date"
+                  value={formData.expiry}
+                  onChange={(e) => setFormData({ ...formData, expiry: e.target.value })}
                 />
               </div>
             </div>

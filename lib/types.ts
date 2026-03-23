@@ -1,6 +1,6 @@
 /**
  * Firestore `products` document fields (camelCase):
- * barcode?, category, costPrice, createdAt, minStock, name, price, stock, unit, updatedAt
+ * barcode?, brand?, category, costPrice, createdAt, expiry?, minStock, name, price, stock, unit, updatedAt
  */
 export interface Product {
   id: string
@@ -11,7 +11,9 @@ export interface Product {
   stock: number
   unit: string
   barcode?: string
+  brand?: string
   minStock: number
+  expiry?: string
   createdAt: Date
   updatedAt: Date
 }

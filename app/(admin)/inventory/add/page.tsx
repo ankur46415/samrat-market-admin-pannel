@@ -35,6 +35,8 @@ export default function AddProductPage() {
     stock: "",
     unit: "pcs",
     barcode: "",
+    brand: "",
+    expiry: "",
     minStock: "10",
   })
 
@@ -64,6 +66,8 @@ export default function AddProductPage() {
         stock: parseInt(formData.stock) || 0,
         unit: formData.unit,
         barcode: formData.barcode || undefined,
+        brand: formData.brand || undefined,
+        expiry: formData.expiry || undefined,
         minStock: parseMinStockInput(formData.minStock, 10),
       })
 
@@ -121,6 +125,26 @@ export default function AddProductPage() {
                   placeholder="e.g., 8901234567890"
                   value={formData.barcode}
                   onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="brand">Product Brand (Optional)</Label>
+                <Input
+                  id="brand"
+                  placeholder="e.g., Parle"
+                  value={formData.brand}
+                  onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="expiry">Product Expiry (Optional)</Label>
+                <Input
+                  id="expiry"
+                  type="date"
+                  value={formData.expiry}
+                  onChange={(e) => setFormData({ ...formData, expiry: e.target.value })}
                 />
               </div>
             </div>
