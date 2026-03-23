@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { useCustomers } from "@/hooks/use-firestore"
@@ -14,18 +14,28 @@ import { toast } from "sonner"
 
 export default function AddCustomerPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const { addCustomer } = useCustomers()
   const [loading, setLoading] = useState(false)
-  const prefillPhone = searchParams.get("phone") || ""
-  const returnTo = searchParams.get("returnTo") || ""
+  const [returnTo, setReturnTo] = useState("")
 
   const [formData, setFormData] = useState({
     name: "",
-    phone: prefillPhone,
+    phone: "",
     email: "",
     address: "",
   })
+
+  useEffect(() => {
+    // Avoid useSearchParams prerender issues in static build.
+    const params = new URLSearchParams(window.location.search)
+    const phone = params.get("phone") || ""
+    const returnPath = params.get("returnTo") || ""
+
+    setReturnTo(returnPath)
+    if (phone) {
+      setFormData((prev) => ({ ...prev, phone }))
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
