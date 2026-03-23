@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { collection, doc, onSnapshot } from "firebase/firestore"
 import { ArrowLeft, Search, UserRound } from "lucide-react"
 import { db } from "@/lib/firebase"
@@ -45,9 +45,8 @@ function formatCurrency(amount: number) {
 
 export default function GenerateBillCheckoutPage() {
   const router = useRouter()
-  const params = useSearchParams()
-  const sessionId = params.get("sessionId") || ""
-  const returnedPhone = params.get("customerPhone") || ""
+  const [sessionId, setSessionId] = useState("")
+  const [returnedPhone, setReturnedPhone] = useState("")
 
   const { customers, loading: customersLoading } = useCustomers()
 
@@ -57,6 +56,13 @@ export default function GenerateBillCheckoutPage() {
   const [customerPhone, setCustomerPhone] = useState("")
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
+
+  useEffect(() => {
+    // Avoid useSearchParams prerender issues in static build.
+    const params = new URLSearchParams(window.location.search)
+    setSessionId(params.get("sessionId") || "")
+    setReturnedPhone(params.get("customerPhone") || "")
+  }, [])
 
   useEffect(() => {
     if (!sessionId) return
