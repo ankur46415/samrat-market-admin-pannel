@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { useCustomers } from "@/hooks/use-firestore"
@@ -14,12 +14,15 @@ import { toast } from "sonner"
 
 export default function AddCustomerPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { addCustomer } = useCustomers()
   const [loading, setLoading] = useState(false)
+  const prefillPhone = searchParams.get("phone") || ""
+  const returnTo = searchParams.get("returnTo") || ""
 
   const [formData, setFormData] = useState({
     name: "",
-    phone: "",
+    phone: prefillPhone,
     email: "",
     address: "",
   })
@@ -45,7 +48,12 @@ export default function AddCustomerPage() {
       })
 
       toast.success("Customer added successfully")
-      router.push("/customers")
+      if (returnTo && returnTo.startsWith("/")) {
+        const joiner = returnTo.includes("?") ? "&" : "?"
+        router.push(`${returnTo}${joiner}customerPhone=${encodeURIComponent(formData.phone)}`)
+      } else {
+        router.push("/customers")
+      }
     } catch (error) {
       console.error("Error adding customer:", error)
       toast.error("Failed to add customer")

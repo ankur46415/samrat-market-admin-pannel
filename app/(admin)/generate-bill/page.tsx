@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { collection, onSnapshot, query, where } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { toast } from "sonner"
@@ -11,7 +12,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { AdminActiveSessionsList } from "@/components/live-billing/admin-active-sessions-list"
 import { AdminSessionItems } from "@/components/live-billing/admin-session-items"
 import {
-  completeLiveBillingSession,
   cancelLiveBillingSession,
   type LiveBillingSession,
 } from "@/lib/features/live_billing_admin/services/live_billing_admin_service"
@@ -30,13 +30,13 @@ function toDate(value: unknown): Date | undefined {
 }
 
 export default function GenerateBillPage() {
+  const router = useRouter()
   const [sessions, setSessions] = useState<LiveBillingSession[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [selectedSessionMeta, setSelectedSessionMeta] = useState<LiveBillingSession | null>(null)
-  const [selectedCompleted, setSelectedCompleted] = useState(false)
   const [selectedCancelled, setSelectedCancelled] = useState(false)
-  const [completing, setCompleting] = useState(false)
+  const [acting, setActing] = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -68,15 +68,14 @@ export default function GenerateBillPage() {
     return () => unsubscribe()
   }, [])
 
-  // If selected session gets completed elsewhere, mark it completed in UI.
+  // If selected session is no longer in active list, clear local active indicator.
   useEffect(() => {
     if (!selectedSessionId) return
     const stillActive = sessions.some((s) => s.sessionId === selectedSessionId)
-    if (!stillActive) {
-      if (selectedCancelled) return
-      if (!selectedCompleted) setSelectedCompleted(true)
+    if (!stillActive && !selectedCancelled) {
+      setSelectedSessionMeta((prev) => (prev ? { ...prev, status: "completed" } : prev))
     }
-  }, [sessions, selectedCompleted, selectedCancelled, selectedSessionId])
+  }, [sessions, selectedCancelled, selectedSessionId])
 
   const selectedSessionExists = useMemo(() => {
     if (!selectedSessionId) return false
@@ -86,15 +85,13 @@ export default function GenerateBillPage() {
   const handleSelect = (sessionId: string) => {
     setSelectedSessionId(sessionId)
     setSelectedSessionMeta(sessions.find((s) => s.sessionId === sessionId) ?? null)
-    setSelectedCompleted(false)
     setSelectedCancelled(false)
   }
 
   const handleCancel = async () => {
-    if (!selectedSessionId || selectedCompleted || selectedCancelled) {
+    if (!selectedSessionId || selectedCancelled) {
       setSelectedSessionId(null)
       setSelectedSessionMeta(null)
-      setSelectedCompleted(false)
       setSelectedCancelled(false)
       return
     }
@@ -105,34 +102,22 @@ export default function GenerateBillPage() {
     if (!ok) return
 
     try {
-      setCompleting(true)
+      setActing(true)
       await cancelLiveBillingSession(selectedSessionId)
       toast.success("Bill cancelled")
       setSelectedCancelled(true)
-      setSelectedCompleted(false)
+      setSelectedSessionMeta((prev) => (prev ? { ...prev, status: "cancelled" } : prev))
     } catch (e) {
       console.error(e)
       toast.error("Failed to cancel bill")
     } finally {
-      setCompleting(false)
+      setActing(false)
     }
   }
 
-  const handleComplete = async () => {
+  const handleCheckout = () => {
     if (!selectedSessionId) return
-    if (selectedCompleted) return
-
-    try {
-      setCompleting(true)
-      await completeLiveBillingSession(selectedSessionId)
-      toast.success("Bill generated successfully")
-      setSelectedCompleted(true)
-    } catch (e) {
-      console.error(e)
-      toast.error("Failed to generate bill")
-    } finally {
-      setCompleting(false)
-    }
+    router.push(`/generate-bill/checkout?sessionId=${encodeURIComponent(selectedSessionId)}`)
   }
 
   return (
@@ -143,7 +128,6 @@ export default function GenerateBillPage() {
           <p className="text-muted-foreground">Complete the selected live billing session.</p>
         </div>
 
-        {selectedSessionId && selectedCompleted ? <Badge variant="outline">Completed</Badge> : null}
         {selectedSessionId && selectedCancelled ? <Badge variant="destructive">Cancelled</Badge> : null}
       </div>
 
@@ -192,7 +176,7 @@ export default function GenerateBillPage() {
                     <span className="text-xs text-muted-foreground">
                       Status:{" "}
                       <span className="font-medium text-foreground">
-                        {selectedCancelled ? "cancelled" : selectedCompleted ? "completed" : "active"}
+                        {selectedCancelled ? "cancelled" : selectedSessionExists ? "active" : "completed"}
                       </span>
                     </span>
                     {selectedSessionMeta?.cashierId ? (
@@ -215,13 +199,13 @@ export default function GenerateBillPage() {
                 </div>
 
                 <div className="flex gap-3 items-center">
-                  {!selectedCompleted && !selectedCancelled ? (
+                  {!selectedCancelled ? (
                     <>
-                      <Button variant="outline" onClick={handleCancel} disabled={completing}>
+                      <Button variant="outline" onClick={handleCancel} disabled={acting}>
                         Cancel Bill
                       </Button>
-                      <Button onClick={handleComplete} disabled={completing}>
-                        {completing ? "Generating..." : "Generate Bill"}
+                      <Button onClick={handleCheckout} disabled={acting || !selectedSessionExists}>
+                        Checkout
                       </Button>
                     </>
                   ) : (
@@ -234,7 +218,7 @@ export default function GenerateBillPage() {
 
               <AdminSessionItems
                 sessionId={selectedSessionId}
-                status={selectedCancelled ? "cancelled" : selectedCompleted ? "completed" : "active"}
+                status={selectedCancelled ? "cancelled" : selectedSessionExists ? "active" : "completed"}
               />
             </>
           )}
