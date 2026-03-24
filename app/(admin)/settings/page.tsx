@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
+import Image from "next/image"
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme()
@@ -85,7 +86,17 @@ export default function SettingsPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label className="text-muted-foreground">Store Name</Label>
-                <p className="font-medium">Samrat Market</p>
+                <div className="flex items-center gap-3">
+                  <Image
+                    src="/images/samrat-market-logo.png"
+                    alt="Samrat Market"
+                    width={36}
+                    height={36}
+                    className="h-9 w-9 rounded-lg object-cover"
+                    priority
+                  />
+                  <p className="font-medium">Samrat Market</p>
+                </div>
               </div>
               <div>
                 <Label className="text-muted-foreground">Currency</Label>

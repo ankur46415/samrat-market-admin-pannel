@@ -83,7 +83,12 @@ export function SaleDetailDialog({ open, onOpenChange, sale }: SaleDetailDialogP
         </head>
         <body>
           <div class="header">
-            <h1>Samrat Market</h1>
+            <img
+              src="/images/samrat-market-logo.png"
+              alt="Samrat Market"
+              style="width:72px;height:72px;object-fit:cover;border-radius:12px;display:block;margin:0 auto 8px auto;"
+            />
+            <h1 style="margin:0;font-size:22px;">Samrat Market</h1>
             <p>Tax Invoice</p>
           </div>
           

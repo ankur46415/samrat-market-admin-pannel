@@ -8,6 +8,7 @@ import {
   onSnapshot,
   doc,
   addDoc,
+  getDocs,
   updateDoc,
   deleteDoc,
   where,
@@ -15,16 +16,18 @@ import {
   writeBatch,
   limit,
   QueryConstraint,
-  type QueryDocumentSnapshot,
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
-import type { Product, Customer, Sale, LedgerEntry, DashboardStats } from "@/lib/types"
+import type { Product, ProductBatch, Customer, Sale, LedgerEntry, DashboardStats } from "@/lib/types"
 import { saleFromFirestoreDoc } from "@/lib/sale-from-firestore"
+import { InventoryBatchService } from "@/lib/features/inventory/services/inventory_batch_service"
 import {
   coerceProductStockFromFirestore,
   firestoreNumber,
   isLowStockFromFirestoreData,
   minStockThresholdFromFirestore,
+  productUnitFromFirestore,
+  normalizeProductUnit,
 } from "@/lib/stock"
 
 // Helper to convert Firestore timestamp
@@ -45,19 +48,40 @@ function optionalBarcode(v: unknown): string | undefined {
   return s.length > 0 ? s : undefined
 }
 
-function productFromFirestoreDoc(doc: QueryDocumentSnapshot): Product {
-  const data = doc.data() as Record<string, unknown>
+function expiryFromFirestore(data: Record<string, unknown>): string | undefined {
+  const raw = data.expiry
+  if (raw instanceof Timestamp) {
+    const d = raw.toDate()
+    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10)
+    return undefined
+  }
+  const s = trimStr(raw)
+  return s.length > 0 ? s : undefined
+}
+
+function productFromData(id: string, data: Record<string, unknown>): Product {
   const brand = trimStr((data as any).brand)
-  const expiry = trimStr((data as any).expiry)
+  const expiry = expiryFromFirestore(data)
+  const totalStock = Number((data as any).__totalStock ?? NaN)
+  const rawBatches = (data as Record<string, unknown>).__batches
+  const batches: ProductBatch[] = Array.isArray(rawBatches)
+    ? (rawBatches as ProductBatch[]).map((b) => ({
+        id: b.id,
+        quantity: Number.isFinite(Number(b.quantity)) ? Number(b.quantity) : 0,
+        expiryDate: b.expiryDate instanceof Date ? b.expiryDate : new Date(b.expiryDate),
+        createdAt: b.createdAt instanceof Date ? b.createdAt : new Date(b.createdAt),
+      }))
+    : []
   return {
-    id: doc.id,
+    id,
     name: trimStr(data.name),
     category: trimStr(data.category),
     barcode: optionalBarcode(data.barcode),
     brand: brand.length > 0 ? brand : undefined,
     price: firestoreNumber(data.price, 0),
     costPrice: firestoreNumber(data.costPrice, 0),
-    stock: coerceProductStockFromFirestore(data),
+    stock: Number.isFinite(totalStock) ? totalStock : coerceProductStockFromFirestore(data),
+    batches,
     minStock: (() => {
       const raw = data.minStock
       if (raw !== undefined && raw !== null) {
@@ -66,8 +90,8 @@ function productFromFirestoreDoc(doc: QueryDocumentSnapshot): Product {
       }
       return minStockThresholdFromFirestore(data)
     })(),
-    expiry: expiry.length > 0 ? expiry : undefined,
-    unit: trimStr(data.unit),
+    expiry: expiry && expiry.length > 0 ? expiry : undefined,
+    unit: normalizeProductUnit(productUnitFromFirestore(data)),
     createdAt: convertTimestamp(data.createdAt as Timestamp | Date | undefined),
     updatedAt: convertTimestamp(data.updatedAt as Timestamp | Date | undefined),
   }
@@ -75,6 +99,7 @@ function productFromFirestoreDoc(doc: QueryDocumentSnapshot): Product {
 
 // Products Hook
 export function useProducts() {
+  const batchService = new InventoryBatchService(db)
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -84,11 +109,28 @@ export function useProducts() {
     // diverged from dashboard / mobile. Sort client-side instead.
     const unsubscribe = onSnapshot(
       collection(db, "products"),
-      (snapshot) => {
-        const items = snapshot.docs.map((doc) => productFromFirestoreDoc(doc))
-          .sort((a, b) =>
-            (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })
-          )
+      async (snapshot) => {
+        const items = await Promise.all(
+          snapshot.docs.map(async (doc) => {
+            const data = doc.data() as Record<string, unknown>
+            const batchesSnap = await getDocs(collection(db, "products", doc.id, "batches"))
+            const batchList: ProductBatch[] = batchesSnap.docs.map((b) => {
+              const bd = b.data() as Record<string, unknown>
+              return {
+                id: b.id,
+                quantity: Number.isFinite(Number(bd.quantity)) ? Number(bd.quantity) : 0,
+                expiryDate: convertTimestamp(bd.expiryDate as Timestamp | undefined),
+                createdAt: convertTimestamp(bd.createdAt as Timestamp | undefined),
+              }
+            })
+            batchList.sort((a, b) => a.expiryDate.getTime() - b.expiryDate.getTime())
+            const totalStock = batchList.reduce((sum, b) => sum + b.quantity, 0)
+            return productFromData(doc.id, { ...data, __totalStock: totalStock, __batches: batchList })
+          })
+        )
+        items.sort((a, b) =>
+          (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })
+        )
         setProducts(items)
         setLoading(false)
       },
@@ -102,18 +144,62 @@ export function useProducts() {
     return () => unsubscribe()
   }, [])
 
-  const addProduct = useCallback(async (product: Omit<Product, "id" | "createdAt" | "updatedAt">) => {
-    const docRef = await addDoc(collection(db, "products"), {
-      ...product,
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
+  const addProduct = useCallback(async (product: Omit<Product, "id" | "createdAt" | "updatedAt" | "batches">) => {
+    const barcode = String(product.barcode ?? "").trim()
+    if (!barcode) {
+      throw new Error("Barcode is required for batch inventory")
+    }
+    const expiryRaw = (product.expiry || "").trim()
+    if (!expiryRaw) {
+      throw new Error("Expiry Date is required for batch creation")
+    }
+    const expiryDate = new Date(expiryRaw)
+    if (Number.isNaN(expiryDate.getTime())) {
+      throw new Error("Invalid Expiry Date")
+    }
+    const quantity = Number(product.stock ?? 0)
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      throw new Error("Quantity must be greater than 0")
+    }
+
+    const result = await batchService.addOrUpdateProductWithBatch({
+      name: product.name || "Unnamed Product",
+      barcode,
+      category: (product.category ?? "").trim(),
+      price: Number(product.price ?? 0),
+      costPrice: Number(product.costPrice ?? 0),
+      unit: normalizeProductUnit(product.unit),
+      minStock: Number.isFinite(Number(product.minStock)) ? Number(product.minStock) : 10,
+      brand: product.brand?.trim() ? product.brand.trim() : undefined,
+      expiryDate,
+      quantity: Math.floor(quantity),
     })
-    return docRef.id
-  }, [])
+
+    return result.productId
+  }, [batchService])
+
+  const getProductByBarcode = useCallback(async (barcode: string) => {
+    return batchService.getProductByBarcode(barcode)
+  }, [batchService])
 
   const updateProduct = useCallback(async (id: string, data: Partial<Product>) => {
+    const payload = Object.fromEntries(
+      Object.entries(data as Record<string, unknown>).filter(
+        ([key, v]) =>
+          v !== undefined &&
+          key !== "batches" &&
+          key !== "id" &&
+          key !== "createdAt" &&
+          key !== "updatedAt"
+      )
+    ) as Record<string, unknown>
+    if (typeof payload.unit === "string" || typeof payload.unit === "number") {
+      const u = normalizeProductUnit(payload.unit)
+      payload.unit = u
+      payload.units = u
+    }
     await updateDoc(doc(db, "products", id), {
-      ...data,
+      ...payload,
       updatedAt: Timestamp.now(),
     })
   }, [])
@@ -122,12 +208,15 @@ export function useProducts() {
     await deleteDoc(doc(db, "products", id))
   }, [])
 
-  const bulkAddProducts = useCallback(async (productsData: Omit<Product, "id" | "createdAt" | "updatedAt">[]) => {
+  const bulkAddProducts = useCallback(async (productsData: Omit<Product, "id" | "createdAt" | "updatedAt" | "batches">[]) => {
     const batch = writeBatch(db)
     productsData.forEach((product) => {
       const docRef = doc(collection(db, "products"))
+      const u = normalizeProductUnit(product.unit)
       batch.set(docRef, {
         ...product,
+        unit: u,
+        units: u,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       })
@@ -135,7 +224,7 @@ export function useProducts() {
     await batch.commit()
   }, [])
 
-  return { products, loading, error, addProduct, updateProduct, deleteProduct, bulkAddProducts }
+  return { products, loading, error, addProduct, updateProduct, deleteProduct, bulkAddProducts, getProductByBarcode }
 }
 
 // Customers Hook

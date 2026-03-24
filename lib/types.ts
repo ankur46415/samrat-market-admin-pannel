@@ -1,6 +1,17 @@
 /**
+ * One FEFO batch under `products/{productId}/batches/{batchId}`.
+ */
+export interface ProductBatch {
+  id: string
+  quantity: number
+  expiryDate: Date
+  createdAt: Date
+}
+
+/**
  * Firestore `products` document fields (camelCase):
  * barcode?, brand?, category, costPrice, createdAt, expiry?, minStock, name, price, stock, unit, updatedAt
+ * `batches` is populated client-side from the `batches` subcollection (sorted by expiry, oldest first).
  */
 export interface Product {
   id: string
@@ -14,6 +25,8 @@ export interface Product {
   brand?: string
   minStock: number
   expiry?: string
+  /** Derived from subcollection; may be empty for legacy docs without batches. */
+  batches: ProductBatch[]
   createdAt: Date
   updatedAt: Date
 }

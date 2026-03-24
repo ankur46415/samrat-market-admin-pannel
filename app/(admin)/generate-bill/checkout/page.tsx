@@ -122,6 +122,11 @@ export default function GenerateBillCheckoutPage() {
     return customers.find((c) => c.phone.trim() === normalizedPhone) || null
   }, [customers, normalizedPhone])
 
+  const selectedCustomer = useMemo(() => {
+    if (!selectedCustomerId) return null
+    return customers.find((c) => c.id === selectedCustomerId) || null
+  }, [customers, selectedCustomerId])
+
   useEffect(() => {
     if (matchedCustomer) setSelectedCustomerId(matchedCustomer.id)
   }, [matchedCustomer])
@@ -161,12 +166,22 @@ export default function GenerateBillCheckoutPage() {
     if (!sessionId) return
     try {
       setActionLoading(true)
-      await completeLiveBillingSession(sessionId)
-      toast.success("Bill generated successfully")
+      const result = await completeLiveBillingSession(
+        sessionId,
+        selectedCustomer
+          ? {
+              customerId: selectedCustomer.id,
+              customerName: selectedCustomer.name,
+              customerPhone: selectedCustomer.phone,
+            }
+          : undefined
+      )
+      toast.success(`Bill generated. Sales rows: ${result.salesWritten}`)
       router.push("/generate-bill")
-    } catch (e) {
+    } catch (e: any) {
       console.error(e)
-      toast.error("Failed to generate bill")
+      const msg = e?.message || "Failed to generate bill"
+      toast.error(msg)
     } finally {
       setActionLoading(false)
     }
@@ -317,11 +332,11 @@ export default function GenerateBillCheckoutPage() {
 
               {customersLoading ? (
                 <Skeleton className="h-14 w-full" />
-              ) : matchedCustomer ? (
+              ) : selectedCustomer ? (
                 <div className="rounded-lg border p-3">
                   <p className="text-xs text-muted-foreground">Attached Customer</p>
-                  <p className="font-semibold mt-1">{matchedCustomer.name}</p>
-                  <p className="text-sm text-muted-foreground">{matchedCustomer.phone}</p>
+                  <p className="font-semibold mt-1">{selectedCustomer.name}</p>
+                  <p className="text-sm text-muted-foreground">{selectedCustomer.phone}</p>
                 </div>
               ) : normalizedPhone ? (
                 <div className="rounded-lg border border-dashed p-3">

@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, Package, Layers } from "lucide-react"
 import { useProducts, useCategories } from "@/hooks/use-firestore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,13 +15,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
-import { parseMinStockInput } from "@/lib/stock"
+import { normalizeProductUnit, parseMinStockInput } from "@/lib/stock"
+import { cn } from "@/lib/utils"
+
+const labelClass = "text-sm font-medium text-foreground"
+const inputClass = "h-11 rounded-lg border-border/80 shadow-sm"
+const fieldGroup = "space-y-2"
 
 export default function AddProductPage() {
   const router = useRouter()
-  const { addProduct } = useProducts()
+  const { addProduct, getProductByBarcode } = useProducts()
   const { categories } = useCategories()
   const [loading, setLoading] = useState(false)
   const [newCategory, setNewCategory] = useState("")
@@ -42,9 +49,21 @@ export default function AddProductPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    if (!formData.name || !formData.price || !formData.costPrice) {
-      toast.error("Please fill in all required fields")
+
+    if (!formData.barcode.trim()) {
+      toast.error("Barcode is required")
+      return
+    }
+    if (!formData.expiry) {
+      toast.error("Expiry date is required")
+      return
+    }
+    if (!formData.stock || parseInt(formData.stock) <= 0) {
+      toast.error("Batch quantity must be greater than 0")
+      return
+    }
+    if (!formData.price || !formData.costPrice) {
+      toast.error("Please fill in selling and cost price")
       return
     }
 
@@ -58,226 +77,295 @@ export default function AddProductPage() {
     setLoading(true)
 
     try {
+      const existing = await getProductByBarcode(formData.barcode)
       await addProduct({
-        name: formData.name,
+        name: formData.name || "Unnamed Product",
         category,
         price: parseFloat(formData.price),
         costPrice: parseFloat(formData.costPrice),
         stock: parseInt(formData.stock) || 0,
-        unit: formData.unit,
+        unit: normalizeProductUnit(formData.unit),
         barcode: formData.barcode || undefined,
         brand: formData.brand || undefined,
         expiry: formData.expiry || undefined,
         minStock: parseMinStockInput(formData.minStock, 10),
       })
-
-      toast.success("Product added successfully")
+      if (existing) {
+        toast.success("Stock added.")
+      } else {
+        toast.success("Saved.")
+      }
       router.push("/inventory")
     } catch (error) {
       console.error("Error adding product:", error)
-      toast.error("Failed to add product")
+      toast.error("Failed to save")
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" asChild>
+    <div className="max-w-3xl space-y-8 pb-12">
+      <div className="flex items-start gap-4">
+        <Button variant="ghost" size="icon" className="mt-0.5 shrink-0 rounded-lg" asChild>
           <Link href="/inventory">
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Add Product</h1>
-          <p className="text-muted-foreground">
-            Add a new product to your inventory
-          </p>
+        <div className="min-w-0 space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary">Inventory</p>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Add product & batch</h1>
         </div>
       </div>
 
       <form onSubmit={handleSubmit}>
-        <Card>
-          <CardHeader>
-            <CardTitle>Product Details</CardTitle>
-            <CardDescription>
-              Enter the product information below
-            </CardDescription>
+        <Card className="overflow-hidden border-border/80 shadow-lg shadow-black/[0.04]">
+          <CardHeader className="space-y-2 border-b border-border/60 bg-muted/25 pb-5">
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Package className="h-5 w-5" />
+              </span>
+              New entry
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="name">Product Name *</Label>
-                <Input
-                  id="name"
-                  placeholder="e.g., Tata Salt 1kg"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="barcode">Barcode (Optional)</Label>
-                <Input
-                  id="barcode"
-                  placeholder="e.g., 8901234567890"
-                  value={formData.barcode}
-                  onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="brand">Product Brand (Optional)</Label>
-                <Input
-                  id="brand"
-                  placeholder="e.g., Parle"
-                  value={formData.brand}
-                  onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="expiry">Product Expiry (Optional)</Label>
-                <Input
-                  id="expiry"
-                  type="date"
-                  value={formData.expiry}
-                  onChange={(e) => setFormData({ ...formData, expiry: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="category">Category *</Label>
-                {showNewCategory ? (
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Enter new category"
-                      value={newCategory}
-                      onChange={(e) => setNewCategory(e.target.value)}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setShowNewCategory(false)
-                        setNewCategory("")
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                ) : (
-                  <Select
-                    value={formData.category}
-                    onValueChange={(value) => {
-                      if (value === "new") {
-                        setShowNewCategory(true)
-                      } else {
-                        setFormData({ ...formData, category: value })
-                      }
-                    }}
+          <CardContent className="p-0 sm:p-0">
+            <Tabs defaultValue="product" className="w-full">
+              <div className="border-b border-border/60 bg-muted/20 px-4 pt-4 sm:px-6">
+                <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl bg-muted/70 p-1.5 sm:max-w-md">
+                  <TabsTrigger
+                    value="product"
+                    className="gap-2 rounded-lg py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm"
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((cat) => (
-                        <SelectItem key={cat.name} value={cat.name}>
-                          {cat.name}
-                        </SelectItem>
-                      ))}
-                      <SelectItem value="new">+ Add New Category</SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
+                    <Package className="h-4 w-4 shrink-0 opacity-80" />
+                    Product & pricing
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="batch"
+                    className="gap-2 rounded-lg py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                  >
+                    <Layers className="h-4 w-4 shrink-0 opacity-80" />
+                    New batch
+                  </TabsTrigger>
+                </TabsList>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="unit">Unit</Label>
-                <Select
-                  value={formData.unit}
-                  onValueChange={(value) => setFormData({ ...formData, unit: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pcs">Pieces (pcs)</SelectItem>
-                    <SelectItem value="kg">Kilograms (kg)</SelectItem>
-                    <SelectItem value="g">Grams (g)</SelectItem>
-                    <SelectItem value="l">Liters (l)</SelectItem>
-                    <SelectItem value="ml">Milliliters (ml)</SelectItem>
-                    <SelectItem value="pack">Pack</SelectItem>
-                    <SelectItem value="box">Box</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+              <TabsContent value="product" className="mt-0 space-y-8 px-4 py-6 sm:px-6 focus-visible:outline-none">
+                <div className="grid gap-6 sm:grid-cols-2">
+                  <div className={cn(fieldGroup, "sm:col-span-2")}>
+                    <Label htmlFor="barcode" className={labelClass}>
+                      Barcode <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="barcode"
+                      placeholder="e.g. 8901234567890"
+                      value={formData.barcode}
+                      onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                      className={cn(inputClass, "font-mono text-base")}
+                    />
+                  </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="space-y-2">
-                <Label htmlFor="price">Selling Price (INR) *</Label>
-                <Input
-                  id="price"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={formData.price}
-                  onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                  required
-                />
-              </div>
+                  <div className={fieldGroup}>
+                    <Label htmlFor="name" className={labelClass}>
+                      Product name
+                    </Label>
+                    <Input
+                      id="name"
+                      placeholder="e.g. Tata Salt 1kg"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className={inputClass}
+                    />
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="costPrice">Cost Price (INR) *</Label>
-                <Input
-                  id="costPrice"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={formData.costPrice}
-                  onChange={(e) => setFormData({ ...formData, costPrice: e.target.value })}
-                  required
-                />
-              </div>
+                  <div className={fieldGroup}>
+                    <Label htmlFor="brand" className={labelClass}>
+                      Brand <span className="font-normal text-muted-foreground">(optional)</span>
+                    </Label>
+                    <Input
+                      id="brand"
+                      placeholder="e.g. Parle"
+                      value={formData.brand}
+                      onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+                      className={inputClass}
+                    />
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="stock">Current Stock</Label>
-                <Input
-                  id="stock"
-                  type="number"
-                  min="0"
-                  placeholder="0"
-                  value={formData.stock}
-                  onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                />
-              </div>
+                  <div className={fieldGroup}>
+                    <Label htmlFor="category" className={labelClass}>
+                      Category <span className="text-destructive">*</span>
+                    </Label>
+                    {showNewCategory ? (
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="New category name"
+                          value={newCategory}
+                          onChange={(e) => setNewCategory(e.target.value)}
+                          className={inputClass}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="shrink-0 rounded-lg"
+                          onClick={() => {
+                            setShowNewCategory(false)
+                            setNewCategory("")
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    ) : (
+                      <Select
+                        value={formData.category}
+                        onValueChange={(value) => {
+                          if (value === "new") {
+                            setShowNewCategory(true)
+                          } else {
+                            setFormData({ ...formData, category: value })
+                          }
+                        }}
+                      >
+                        <SelectTrigger className={cn(inputClass, "w-full")}>
+                          <SelectValue placeholder="Choose category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categories
+                            .map((cat) => (cat.name ?? "").trim())
+                            .filter((name) => name.length > 0)
+                            .map((name) => (
+                              <SelectItem key={name} value={name}>
+                                {name}
+                              </SelectItem>
+                            ))}
+                          <SelectItem value="new">+ Add new category</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="minStock">Minimum Stock Alert</Label>
-                <Input
-                  id="minStock"
-                  type="number"
-                  min="0"
-                  placeholder="10"
-                  value={formData.minStock}
-                  onChange={(e) => setFormData({ ...formData, minStock: e.target.value })}
-                />
-              </div>
-            </div>
+                  <div className={fieldGroup}>
+                    <Label htmlFor="unit" className={labelClass}>
+                      Unit of measure
+                    </Label>
+                    <Select
+                      value={formData.unit || "pcs"}
+                      onValueChange={(value) => setFormData({ ...formData, unit: value })}
+                    >
+                      <SelectTrigger className={cn(inputClass, "w-full")}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pcs">Pieces (pcs)</SelectItem>
+                        <SelectItem value="kg">Kilograms (kg)</SelectItem>
+                        <SelectItem value="g">Grams (g)</SelectItem>
+                        <SelectItem value="l">Liters (l)</SelectItem>
+                        <SelectItem value="ml">Milliliters (ml)</SelectItem>
+                        <SelectItem value="pack">Pack</SelectItem>
+                        <SelectItem value="box">Box</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-            <div className="flex gap-4 pt-4">
-              <Button type="submit" disabled={loading}>
-                {loading ? "Adding..." : "Add Product"}
-              </Button>
-              <Button type="button" variant="outline" asChild>
+                  <div className={fieldGroup}>
+                    <Label htmlFor="minStock" className={labelClass}>
+                      Low-stock alert
+                    </Label>
+                    <Input
+                      id="minStock"
+                      type="number"
+                      min="0"
+                      placeholder="10"
+                      value={formData.minStock}
+                      onChange={(e) => setFormData({ ...formData, minStock: e.target.value })}
+                      className={inputClass}
+                    />
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div>
+                  <h3 className="mb-4 text-sm font-semibold text-foreground">Pricing</h3>
+                  <div className="grid gap-6 sm:grid-cols-2">
+                    <div className={fieldGroup}>
+                      <Label htmlFor="price" className={labelClass}>
+                        Selling price (INR) <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        id="price"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={formData.price}
+                        onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                        className={cn(inputClass, "tabular-nums")}
+                        required
+                      />
+                    </div>
+                    <div className={fieldGroup}>
+                      <Label htmlFor="costPrice" className={labelClass}>
+                        Cost price (INR) <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        id="costPrice"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={formData.costPrice}
+                        onChange={(e) => setFormData({ ...formData, costPrice: e.target.value })}
+                        className={cn(inputClass, "tabular-nums")}
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="batch" className="mt-0 space-y-6 px-4 py-6 sm:px-6 focus-visible:outline-none">
+                <div className="grid max-w-xl gap-6 sm:grid-cols-2">
+                  <div className={fieldGroup}>
+                    <Label htmlFor="expiry" className={labelClass}>
+                      Batch expiry <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="expiry"
+                      type="date"
+                      value={formData.expiry}
+                      onChange={(e) => setFormData({ ...formData, expiry: e.target.value })}
+                      className={inputClass}
+                      required
+                    />
+                  </div>
+
+                  <div className={fieldGroup}>
+                    <Label htmlFor="stock" className={labelClass}>
+                      Quantity in this batch <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="stock"
+                      type="number"
+                      min="1"
+                      placeholder="0"
+                      value={formData.stock}
+                      onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                      className={cn(inputClass, "tabular-nums")}
+                      required
+                    />
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+
+            <Separator />
+
+            <div className="flex flex-col-reverse gap-3 px-4 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+              <Button type="button" variant="ghost" className="rounded-lg text-muted-foreground" asChild>
                 <Link href="/inventory">Cancel</Link>
+              </Button>
+              <Button type="submit" disabled={loading} size="lg" className="rounded-lg px-8 shadow-sm">
+                {loading ? "Saving…" : "Save product & batch"}
               </Button>
             </div>
           </CardContent>

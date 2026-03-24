@@ -12,6 +12,7 @@ import {
   Store,
   ChevronDown,
 } from "lucide-react"
+import Image from "next/image"
 import {
   Sidebar,
   SidebarContent,
@@ -51,7 +52,7 @@ const mainNavItems = [
     icon: Package,
     subItems: [
       { title: "All Products", url: "/inventory" },
-      { title: "Add Product", url: "/inventory/add" },
+      { title: "Add product & batch", url: "/inventory/add" },
       { title: "Categories", url: "/inventory/categories" },
       { title: "Low Stock", url: "/inventory/low-stock" },
     ],
@@ -100,8 +101,15 @@ export function AdminSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
               <Link href="/" className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                  <Store className="h-5 w-5" />
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground overflow-hidden">
+                  <Image
+                    src="/images/samrat-market-logo.png"
+                    alt="Samrat Market"
+                    width={36}
+                    height={36}
+                    className="h-9 w-9 object-cover"
+                    priority
+                  />
                 </div>
                 <div className="flex flex-col gap-0.5 leading-none">
                   <span className="font-semibold">Samrat Market</span>

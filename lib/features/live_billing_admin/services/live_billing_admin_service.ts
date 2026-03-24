@@ -1,13 +1,13 @@
 import { db } from "@/lib/firebase"
 import { firestoreNumber } from "@/lib/stock"
 import {
+  addDoc,
   collection,
   doc,
   getDoc,
   getDocs,
   setDoc,
   updateDoc,
-  writeBatch,
 } from "firebase/firestore"
 
 export interface LiveBillingSession {
@@ -24,13 +24,26 @@ export interface LiveBillingLineItem {
   quantity: number
 }
 
+export interface CheckoutCustomerInfo {
+  customerId?: string
+  customerName?: string
+  customerPhone?: string
+}
+
+export interface CompleteSessionResult {
+  completedItems: number
+  salesWritten: number
+}
+
 /**
- * Copy/move a live session + its scanned items into completed bills.
- * - live_sessions/{sessionId} -> completed_bills/{sessionId}
- * - live_sessions/{sessionId}/items/{barcode} -> completed_bills/{sessionId}/items/{barcode}
- * - Update live session `status` to "completed"
+ * Complete a live session by writing line-item rows into `sales`
+ * and updating live session `status` to "completed".
+ * No writes are made to `completed_bills`.
  */
-export async function completeLiveBillingSession(sessionId: string): Promise<void> {
+export async function completeLiveBillingSession(
+  sessionId: string,
+  customer?: CheckoutCustomerInfo
+): Promise<CompleteSessionResult> {
   const liveSessionRef = doc(db, "live_sessions", sessionId)
   const liveSnap = await getDoc(liveSessionRef)
   if (!liveSnap.exists()) {
@@ -38,21 +51,11 @@ export async function completeLiveBillingSession(sessionId: string): Promise<voi
   }
 
   const liveData = liveSnap.data() as Record<string, unknown>
-  const completedSessionRef = doc(db, "completed_bills", sessionId)
-
-  // Keep `createdAt` as-is (usually Firestore Timestamp) to avoid issues with undefined values.
-  const completedSessionPayload: Record<string, unknown> = {
-    ...liveData,
-    sessionId: (liveData.sessionId as string) || sessionId,
-    status: "completed",
-  }
-
-  await setDoc(completedSessionRef, completedSessionPayload, { merge: true })
-
   const itemsCol = collection(db, "live_sessions", sessionId, "items")
   const itemsSnap = await getDocs(itemsCol)
 
-  const batch = writeBatch(db)
+  const soldAt = new Date().toISOString()
+  const salesRows: Record<string, unknown>[] = []
   itemsSnap.forEach((itemDoc) => {
     const itemData = itemDoc.data() as Record<string, unknown>
     const barcode = String(itemData.barcode ?? itemDoc.id)
@@ -64,12 +67,46 @@ export async function completeLiveBillingSession(sessionId: string): Promise<voi
       quantity: firestoreNumber(itemData.quantity, 0),
     }
 
-    const completedItemRef = doc(db, "completed_bills", sessionId, "items", barcode)
-    batch.set(completedItemRef, itemPayload, { merge: true })
+    // Build line-item sales row for Sales History (same field format as phone app).
+    const salePayload: Record<string, unknown> = {
+      barcode,
+      productId: barcode,
+      productName: itemPayload.name,
+      pricePerUnit: itemPayload.price,
+      quantity: itemPayload.quantity,
+      totalAmount: itemPayload.price * itemPayload.quantity,
+      soldAt,
+      ...(customer?.customerId ? { customerId: customer.customerId } : {}),
+      ...(customer?.customerName ? { customerName: customer.customerName } : {}),
+      ...(customer?.customerPhone ? { customerPhone: customer.customerPhone } : {}),
+    }
+    salesRows.push(salePayload)
   })
-  await batch.commit()
 
-  await updateDoc(liveSessionRef, { status: "completed" })
+  await updateDoc(liveSessionRef, {
+    status: "completed",
+    sessionId: (liveData.sessionId as string) || sessionId,
+    ...(customer?.customerId ? { customerId: customer.customerId } : {}),
+    ...(customer?.customerName ? { customerName: customer.customerName } : {}),
+    ...(customer?.customerPhone ? { customerPhone: customer.customerPhone } : {}),
+  })
+
+  // Write sales rows in separate operations so one path failure doesn't block completion flow.
+  let salesWritten = 0
+  for (const row of salesRows) {
+    try {
+      const saleRef = await addDoc(collection(db, "sales"), row)
+      await setDoc(saleRef, { id: saleRef.id }, { merge: true })
+      salesWritten += 1
+    } catch (err) {
+      console.error("Failed writing sales row:", err)
+    }
+  }
+
+  return {
+    completedItems: salesRows.length,
+    salesWritten,
+  }
 }
 
 /**

@@ -98,3 +98,25 @@ export function parseMinStockInput(raw: string, emptyFallback = 10): number {
   const n = parseInt(t, 10)
   return Number.isFinite(n) && n >= 0 ? n : emptyFallback
 }
+
+/** Firestore / mobile may use `unit`, `units`, or synonyms — first non-empty wins. */
+const UNIT_FIELD_KEYS = ["unit", "units", "unitName", "measurementUnit"] as const
+
+export function productUnitFromFirestore(data: Record<string, unknown>): string {
+  for (const key of UNIT_FIELD_KEYS) {
+    const raw = data[key]
+    if (typeof raw === "string") {
+      const t = raw.trim()
+      if (t.length > 0) return t
+    }
+    if (typeof raw === "number" && Number.isFinite(raw)) return String(raw)
+  }
+  return ""
+}
+
+/** Normalize unit for writes (never empty; safe if value is number or odd types). */
+export function normalizeProductUnit(raw: unknown, fallback = "pcs"): string {
+  if (raw == null || raw === "") return fallback
+  const s = String(raw).trim()
+  return s.length > 0 ? s : fallback
+}

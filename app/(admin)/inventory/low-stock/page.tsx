@@ -52,9 +52,7 @@ export default function LowStockPage() {
           <AlertTriangle className="h-6 w-6 text-destructive" />
           Low Stock Alert
         </h1>
-        <p className="text-muted-foreground">
-          Products that need restocking
-        </p>
+        <p className="text-muted-foreground">Items at or below your minimum stock level</p>
       </div>
 
       <Card>
@@ -91,7 +89,7 @@ export default function LowStockPage() {
                   <TableRow>
                     <TableHead>Product</TableHead>
                     <TableHead>Category</TableHead>
-                    <TableHead className="text-right">Current Stock</TableHead>
+                    <TableHead className="text-right">Stock</TableHead>
                     <TableHead className="text-right">Min Stock</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Restock Cost</TableHead>
