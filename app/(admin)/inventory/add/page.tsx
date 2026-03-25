@@ -32,6 +32,7 @@ export default function AddProductPage() {
   const { addProduct, getProductByBarcode } = useProducts()
   const { categories } = useCategories()
   const [loading, setLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState<"product" | "batch">("product")
   const [newCategory, setNewCategory] = useState("")
   const [showNewCategory, setShowNewCategory] = useState(false)
 
@@ -51,6 +52,11 @@ export default function AddProductPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (activeTab !== "batch") {
+      setActiveTab("batch")
+      toast.info("Fill batch details and then save")
+      return
+    }
 
     if (!formData.barcode.trim()) {
       toast.error("Barcode is required")
@@ -136,7 +142,11 @@ export default function AddProductPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0 sm:p-0">
-            <Tabs defaultValue="product" className="w-full">
+            <Tabs
+              value={activeTab}
+              onValueChange={(v) => setActiveTab(v as "product" | "batch")}
+              className="w-full"
+            >
               <div className="border-b border-border/60 bg-muted/20 px-4 pt-4 sm:px-6">
                 <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl bg-muted/70 p-1.5 sm:max-w-md">
                   <TabsTrigger
@@ -349,6 +359,20 @@ export default function AddProductPage() {
                     </div>
                   </div>
                 </div>
+
+                <Separator />
+                <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <Button type="button" variant="ghost" className="rounded-lg text-muted-foreground" asChild>
+                    <Link href="/inventory">Cancel</Link>
+                  </Button>
+                  <Button
+                    type="button"
+                    className="rounded-lg px-8 shadow-sm"
+                    onClick={() => setActiveTab("batch")}
+                  >
+                    Next
+                  </Button>
+                </div>
               </TabsContent>
 
               <TabsContent value="batch" className="mt-0 space-y-6 px-4 py-6 sm:px-6 focus-visible:outline-none">
@@ -383,19 +407,23 @@ export default function AddProductPage() {
                     />
                   </div>
                 </div>
+
+                <Separator />
+                <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="rounded-lg text-muted-foreground"
+                    onClick={() => setActiveTab("product")}
+                  >
+                    Back
+                  </Button>
+                  <Button type="submit" disabled={loading} size="lg" className="rounded-lg px-8 shadow-sm">
+                    {loading ? "Saving…" : "Save product & batch"}
+                  </Button>
+                </div>
               </TabsContent>
             </Tabs>
-
-            <Separator />
-
-            <div className="flex flex-col-reverse gap-3 px-4 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-              <Button type="button" variant="ghost" className="rounded-lg text-muted-foreground" asChild>
-                <Link href="/inventory">Cancel</Link>
-              </Button>
-              <Button type="submit" disabled={loading} size="lg" className="rounded-lg px-8 shadow-sm">
-                {loading ? "Saving…" : "Save product & batch"}
-              </Button>
-            </div>
           </CardContent>
         </Card>
       </form>
