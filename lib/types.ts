@@ -17,6 +17,8 @@ export interface Product {
   id: string
   name: string
   category: string
+  /** Rack slot for FEFO/bin allocation (R-1..R-20). Empty string means missing/unknown. */
+  rack: string
   price: number
   costPrice: number
   stock: number

@@ -279,6 +279,7 @@ export default function InventoryPage() {
                     <TableRow className="border-b-0 hover:bg-transparent">
                       <TableHead className={invTableHeadClass}>Product</TableHead>
                       <TableHead className={cn(invTableHeadClass, "hidden md:table-cell")}>Category</TableHead>
+                      <TableHead className={cn(invTableHeadClass, "hidden md:table-cell")}>Rack</TableHead>
                       <TableHead className={cn(invTableHeadClass, "text-right")}>MRP / sell</TableHead>
                       <TableHead className={cn(invTableHeadClass, "hidden lg:table-cell text-right")}>Cost</TableHead>
                       <TableHead className={cn(invTableHeadClass, "text-right")}>Total qty</TableHead>
@@ -291,7 +292,7 @@ export default function InventoryPage() {
                   <TableBody>
                     {filteredProducts.length === 0 ? (
                       <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={9} className="h-40 text-center">
+                        <TableCell colSpan={10} className="h-40 text-center">
                           <div className="flex flex-col items-center justify-center gap-2 py-6">
                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
                               <Inbox className="h-6 w-6 text-muted-foreground" />
@@ -327,6 +328,9 @@ export default function InventoryPage() {
                             </TableCell>
                             <TableCell className={cn(invTableCellClass, "hidden md:table-cell text-muted-foreground")}>
                               {product.category || "—"}
+                            </TableCell>
+                            <TableCell className={cn(invTableCellClass, "hidden md:table-cell text-muted-foreground")}>
+                              {product.rack || "—"}
                             </TableCell>
                             <TableCell className={invTableCellNumeric}>{formatCurrency(product.price)}</TableCell>
                             <TableCell className={cn(invTableCellNumeric, "hidden lg:table-cell text-muted-foreground")}>

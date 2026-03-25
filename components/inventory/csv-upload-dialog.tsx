@@ -15,6 +15,7 @@ import { Progress } from "@/components/ui/progress"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useProducts } from "@/hooks/use-firestore"
 import { toast } from "sonner"
+import { RACK_OPTIONS_SET } from "@/lib/rack-options"
 
 interface CsvUploadDialogProps {
   open: boolean
@@ -30,6 +31,7 @@ interface CsvRow {
   unit: string
   barcode?: string
   minStock?: string
+  rack?: string
 }
 
 export function CsvUploadDialog({ open, onOpenChange }: CsvUploadDialogProps) {
@@ -107,9 +109,15 @@ export function CsvUploadDialog({ open, onOpenChange }: CsvUploadDialogProps) {
         )
 
         try {
+          const defaultRack = "R-1"
           const products = validRows.map((row) => ({
             name: row.name.trim(),
             category: row.category.trim(),
+            rack:
+              row.rack?.trim() &&
+              RACK_OPTIONS_SET.has(row.rack.trim() as any)
+                ? row.rack.trim()
+                : defaultRack,
             price: parseFloat(row.price) || 0,
             costPrice: parseFloat(row.costPrice) || 0,
             stock: parseInt(row.stock) || 0,

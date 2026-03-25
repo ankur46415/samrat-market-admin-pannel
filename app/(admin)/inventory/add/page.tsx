@@ -21,6 +21,7 @@ import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
 import { normalizeProductUnit, parseMinStockInput } from "@/lib/stock"
 import { cn } from "@/lib/utils"
+import { RACK_OPTIONS, RACK_OPTIONS_SET } from "@/lib/rack-options"
 
 const labelClass = "text-sm font-medium text-foreground"
 const inputClass = "h-11 rounded-lg border-border/80 shadow-sm"
@@ -37,6 +38,7 @@ export default function AddProductPage() {
   const [formData, setFormData] = useState({
     name: "",
     category: "",
+    rack: "",
     price: "",
     costPrice: "",
     stock: "",
@@ -52,6 +54,10 @@ export default function AddProductPage() {
 
     if (!formData.barcode.trim()) {
       toast.error("Barcode is required")
+      return
+    }
+    if (!formData.rack || !RACK_OPTIONS_SET.has(formData.rack as (typeof RACK_OPTIONS)[number])) {
+      toast.error("Select rack")
       return
     }
     if (!formData.expiry) {
@@ -81,6 +87,7 @@ export default function AddProductPage() {
       await addProduct({
         name: formData.name || "Unnamed Product",
         category,
+        rack: formData.rack,
         price: parseFloat(formData.price),
         costPrice: parseFloat(formData.costPrice),
         stock: parseInt(formData.stock) || 0,
@@ -241,6 +248,27 @@ export default function AddProductPage() {
                         </SelectContent>
                       </Select>
                     )}
+                  </div>
+
+                  <div className={fieldGroup}>
+                    <Label htmlFor="rack" className={labelClass}>
+                      Rack <span className="text-destructive">*</span>
+                    </Label>
+                    <Select
+                      value={formData.rack}
+                      onValueChange={(value) => setFormData({ ...formData, rack: value })}
+                    >
+                      <SelectTrigger className={cn(inputClass, "w-full")}>
+                        <SelectValue placeholder="Select rack" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {RACK_OPTIONS.map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {opt}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className={fieldGroup}>

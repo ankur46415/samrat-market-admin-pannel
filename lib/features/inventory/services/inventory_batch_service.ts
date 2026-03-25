@@ -20,6 +20,7 @@ import { normalizeProductUnit } from "@/lib/stock"
 export type ProductWithBatchInput = {
   name: string
   barcode: string
+  rack: string
   price: number
   category: string
   costPrice: number
@@ -44,6 +45,7 @@ export class InventoryBatchService {
   private productDocPayload(fields: {
     name: string
     barcode: string
+    rack: string
     price: number
     category: string
     costPrice: number
@@ -54,6 +56,7 @@ export class InventoryBatchService {
     productExpiry: Date
   }): Record<string, unknown> {
     const unitStr = normalizeProductUnit(fields.unit)
+    const rack = fields.rack.trim()
     const d: Record<string, unknown> = {
       name: fields.name.trim(),
       barcode: fields.barcode.trim(),
@@ -62,6 +65,7 @@ export class InventoryBatchService {
       costPrice: fields.costPrice,
       unit: unitStr,
       units: unitStr,
+      rack,
       minStock: Math.max(0, Math.floor(Number(fields.minStock) || 0)),
       stock: fields.stock,
       expiry: Timestamp.fromDate(fields.productExpiry),
@@ -75,6 +79,7 @@ export class InventoryBatchService {
   private async insertFullProduct(fields: {
     name: string
     barcode: string
+    rack: string
     price: number
     category: string
     costPrice: number
@@ -132,6 +137,7 @@ export class InventoryBatchService {
     const {
       name,
       barcode,
+      rack,
       price,
       category,
       costPrice,
@@ -161,6 +167,7 @@ export class InventoryBatchService {
           ...this.productDocPayload({
             name,
             barcode: normalizedBarcode,
+            rack,
             price,
             category,
             costPrice,
@@ -178,6 +185,7 @@ export class InventoryBatchService {
     const productId = await this.insertFullProduct({
       name,
       barcode: normalizedBarcode,
+      rack,
       price,
       category,
       costPrice,

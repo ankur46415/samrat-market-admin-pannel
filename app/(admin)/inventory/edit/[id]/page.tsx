@@ -32,6 +32,7 @@ import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
 import { normalizeProductUnit, parseMinStockInput } from "@/lib/stock"
 import type { Product } from "@/lib/types"
+import { RACK_OPTIONS, RACK_OPTIONS_SET } from "@/lib/rack-options"
 import {
   inventoryTableFrameClassName,
   invTableHeadClass,
@@ -66,6 +67,7 @@ export default function EditProductPage({
   const [formData, setFormData] = useState({
     name: "",
     category: "",
+    rack: "",
     price: "",
     costPrice: "",
     unit: "pcs",
@@ -82,6 +84,7 @@ export default function EditProductPage({
       setFormData({
         name: product.name || "",
         category: product.category || "",
+        rack: product.rack || "",
         price: product.price?.toString() || "0",
         costPrice: product.costPrice?.toString() || "0",
         unit: product.unit || "pcs",
@@ -108,12 +111,18 @@ export default function EditProductPage({
       return
     }
 
+    if (!formData.rack || !RACK_OPTIONS_SET.has(formData.rack as (typeof RACK_OPTIONS)[number])) {
+      toast.error("Select rack")
+      return
+    }
+
     setSaving(true)
 
     try {
       const updatePayload: Record<string, unknown> = {
         name: formData.name,
         category,
+        rack: formData.rack,
         price: parseFloat(formData.price),
         costPrice: parseFloat(formData.costPrice),
         unit: normalizeProductUnit(formData.unit),
@@ -331,6 +340,26 @@ export default function EditProductPage({
                         </SelectContent>
                       </Select>
                     )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="rack" className={labelClass}>
+                      Rack *
+                    </Label>
+                    <Select
+                      value={formData.rack || ""}
+                      onValueChange={(value: string) => setFormData({ ...formData, rack: value })}
+                    >
+                      <SelectTrigger className={cn(inputClass, "w-full")}>
+                        <SelectValue placeholder="Select rack" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {RACK_OPTIONS.map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {opt}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="unit" className={labelClass}>

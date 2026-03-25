@@ -29,6 +29,7 @@ import {
   productUnitFromFirestore,
   normalizeProductUnit,
 } from "@/lib/stock"
+import { RACK_OPTIONS, RACK_OPTIONS_SET } from "@/lib/rack-options"
 
 // Helper to convert Firestore timestamp
 const convertTimestamp = (timestamp: Timestamp | Date | undefined): Date => {
@@ -64,6 +65,7 @@ function productFromData(id: string, data: Record<string, unknown>): Product {
   const expiry = expiryFromFirestore(data)
   const totalStock = Number((data as any).__totalStock ?? NaN)
   const rawBatches = (data as Record<string, unknown>).__batches
+  const rack = trimStr((data as any).rack)
   const batches: ProductBatch[] = Array.isArray(rawBatches)
     ? (rawBatches as ProductBatch[]).map((b) => ({
         id: b.id,
@@ -76,6 +78,7 @@ function productFromData(id: string, data: Record<string, unknown>): Product {
     id,
     name: trimStr(data.name),
     category: trimStr(data.category),
+    rack,
     barcode: optionalBarcode(data.barcode),
     brand: brand.length > 0 ? brand : undefined,
     price: firestoreNumber(data.price, 0),
@@ -149,6 +152,10 @@ export function useProducts() {
     if (!barcode) {
       throw new Error("Barcode is required for batch inventory")
     }
+    const rack = String(product.rack ?? "").trim()
+    if (!rack || !RACK_OPTIONS_SET.has(rack as (typeof RACK_OPTIONS)[number])) {
+      throw new Error("Rack must be one of predefined options")
+    }
     const expiryRaw = (product.expiry || "").trim()
     if (!expiryRaw) {
       throw new Error("Expiry Date is required for batch creation")
@@ -166,6 +173,7 @@ export function useProducts() {
       name: product.name || "Unnamed Product",
       barcode,
       category: (product.category ?? "").trim(),
+      rack,
       price: Number(product.price ?? 0),
       costPrice: Number(product.costPrice ?? 0),
       unit: normalizeProductUnit(product.unit),
