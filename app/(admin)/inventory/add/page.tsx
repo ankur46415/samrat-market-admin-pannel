@@ -118,7 +118,7 @@ export default function AddProductPage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-8 pb-12">
+    <div className="w-full space-y-8 pb-12">
       <div className="flex items-start gap-4">
         <Button variant="ghost" size="icon" className="mt-0.5 shrink-0 rounded-lg" asChild>
           <Link href="/inventory">
