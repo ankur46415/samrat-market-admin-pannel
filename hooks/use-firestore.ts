@@ -113,29 +113,43 @@ export function useProducts() {
     const unsubscribe = onSnapshot(
       collection(db, "products"),
       async (snapshot) => {
-        const items = await Promise.all(
-          snapshot.docs.map(async (doc) => {
-            const data = doc.data() as Record<string, unknown>
-            const batchesSnap = await getDocs(collection(db, "products", doc.id, "batches"))
-            const batchList: ProductBatch[] = batchesSnap.docs.map((b) => {
-              const bd = b.data() as Record<string, unknown>
-              return {
-                id: b.id,
-                quantity: Number.isFinite(Number(bd.quantity)) ? Number(bd.quantity) : 0,
-                expiryDate: convertTimestamp(bd.expiryDate as Timestamp | undefined),
-                createdAt: convertTimestamp(bd.createdAt as Timestamp | undefined),
+        try {
+          const items = await Promise.all(
+            snapshot.docs.map(async (doc) => {
+              const data = doc.data() as Record<string, unknown>
+              try {
+                const batchesSnap = await getDocs(collection(db, "products", doc.id, "batches"))
+                const batchList: ProductBatch[] = batchesSnap.docs.map((b) => {
+                  const bd = b.data() as Record<string, unknown>
+                  return {
+                    id: b.id,
+                    quantity: Number.isFinite(Number(bd.quantity)) ? Number(bd.quantity) : 0,
+                    expiryDate: convertTimestamp(bd.expiryDate as Timestamp | undefined),
+                    createdAt: convertTimestamp(bd.createdAt as Timestamp | undefined),
+                  }
+                })
+                batchList.sort((a, b) => a.expiryDate.getTime() - b.expiryDate.getTime())
+                const totalStock = batchList.reduce((sum, b) => sum + b.quantity, 0)
+                return productFromData(doc.id, { ...data, __totalStock: totalStock, __batches: batchList })
+              } catch (batchErr) {
+                // Fallback so one bad batch subquery doesn't keep whole UI in loading state.
+                console.error("Batches read error:", batchErr)
+                return productFromData(doc.id, data)
               }
             })
-            batchList.sort((a, b) => a.expiryDate.getTime() - b.expiryDate.getTime())
-            const totalStock = batchList.reduce((sum, b) => sum + b.quantity, 0)
-            return productFromData(doc.id, { ...data, __totalStock: totalStock, __batches: batchList })
-          })
-        )
-        items.sort((a, b) =>
-          (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })
-        )
-        setProducts(items)
-        setLoading(false)
+          )
+          items.sort((a, b) =>
+            (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })
+          )
+          setProducts(items)
+          setError(null)
+        } catch (err) {
+          console.error("Products snapshot processing error:", err)
+          setError(err instanceof Error ? err.message : "Failed to process products")
+          setProducts([])
+        } finally {
+          setLoading(false)
+        }
       },
       (err) => {
         console.error("Products error:", err)
