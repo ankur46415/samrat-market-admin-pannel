@@ -246,28 +246,239 @@ export default function GenerateBillCheckoutPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* ── Header + Action Buttons ── */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild className="hover:bg-muted">
-            <Link href="/generate-bill">
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Bill Checkout</h1>
-            <p className="text-sm text-muted-foreground mt-1">Review and complete the payment</p>
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-5xl mx-auto">
+        {/* ── Back Navigation ── */}
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          asChild 
+          className="mb-8 text-muted-foreground hover:text-foreground"
+        >
+          <Link href="/generate-bill" className="flex items-center gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Back to Billing
+          </Link>
+        </Button>
+
+        {/* ── Main Checkout Container ── */}
+        <div className="grid gap-8 lg:grid-cols-3">
+          {/* ── Bill Section (Left/Main) ── */}
+          <div className="lg:col-span-2 space-y-0">
+            {/* ── Invoice Card ── */}
+            <Card className="shadow-xl border-border/60 rounded-b-none overflow-hidden">
+              {/* ── Invoice Header ── */}
+              <CardContent className="p-8 border-b-2 border-border/40">
+                <div className="flex items-start justify-between gap-4 mb-8">
+                  <div>
+                    <h1 className="text-3xl font-bold text-foreground">Samrat Market</h1>
+                    <p className="text-sm text-muted-foreground mt-1">Premium Supermarket</p>
+                  </div>
+                  <div className="text-right bg-muted/50 rounded-lg p-4">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Bill Number</p>
+                    <p className="text-2xl font-mono font-bold text-primary mt-2">{sessionId.slice(0, 12)}</p>
+                  </div>
+                </div>
+
+                {/* ── Customer Information ── */}
+                {selectedCustomer ? (
+                  <div className="bg-gradient-to-r from-primary/10 to-accent/10 rounded-lg p-4 border border-primary/30">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-full bg-primary/20 p-3">
+                        <UserRound className="h-5 w-5 text-primary" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Customer</p>
+                        <p className="font-bold text-lg text-foreground">{selectedCustomer.name}</p>
+                        <p className="text-sm text-muted-foreground font-mono">{selectedCustomer.phone}</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-muted/40 rounded-lg p-4 text-center border border-dashed border-border/40">
+                    <p className="text-sm text-muted-foreground">No customer attached to this bill</p>
+                  </div>
+                )}
+              </CardContent>
+
+              {/* ── Items Table ── */}
+              <CardContent className="p-0">
+                {loadingItems ? (
+                  <div className="space-y-2 p-8">
+                    <Skeleton className="h-12 w-full" />
+                    <Skeleton className="h-12 w-full" />
+                    <Skeleton className="h-12 w-full" />
+                  </div>
+                ) : items.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center gap-3 py-16 px-8">
+                    <div className="rounded-full bg-muted p-4">
+                      <svg className="h-8 w-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m0 0l8-4m0 0l8 4m-8-4v10m-8 4l8 4 8-4m-8 4l-8-4m8 4v-10m-8-4l8-4" />
+                      </svg>
+                    </div>
+                    <p className="text-muted-foreground font-medium">No items added to this bill</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader className="bg-muted/50 border-b border-border/40">
+                          <TableRow className="hover:bg-transparent border-none">
+                            <TableHead className="font-bold text-foreground text-sm">Product</TableHead>
+                            <TableHead className="text-center font-bold text-foreground text-sm">Qty</TableHead>
+                            <TableHead className="text-right font-bold text-foreground text-sm">Unit Price</TableHead>
+                            <TableHead className="text-right font-bold text-foreground text-sm">Amount</TableHead>
+                            <TableHead className="text-center font-bold text-foreground text-sm w-20">Adjust</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {items.map((it) => (
+                            <TableRow 
+                              key={it.barcode}
+                              className="border-border/40 hover:bg-muted/50 transition-colors"
+                            >
+                              <TableCell className="font-medium text-foreground py-4">{it.name || it.barcode}</TableCell>
+                              <TableCell className="text-center font-semibold text-foreground py-4">{it.quantity}</TableCell>
+                              <TableCell className="text-right text-chart-1 font-semibold py-4">{formatCurrency(it.price)}</TableCell>
+                              <TableCell className="text-right font-bold text-chart-1 py-4">
+                                {formatCurrency(it.quantity * it.price)}
+                              </TableCell>
+                              <TableCell className="text-center py-4">
+                                <div className="flex items-center justify-center gap-1">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleDecrementQuantity(it.barcode, it.quantity)}
+                                    disabled={it.quantity <= 1}
+                                    className="h-8 w-8 p-0 hover:bg-destructive/10 hover:text-destructive"
+                                  >
+                                    <Minus className="h-3 w-3" />
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleIncrementQuantity(it.barcode, it.quantity)}
+                                    className="h-8 w-8 p-0 hover:bg-chart-1/10 hover:text-chart-1"
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    {/* ── Invoice Footer ── */}
+                    <div className="border-t border-border/40 p-8 bg-muted/20">
+                      <div className="flex flex-col gap-4 max-w-xs ml-auto">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Subtotal ({totals.lines} items)</span>
+                          <span className="font-semibold text-foreground">{formatCurrency(totals.total)}</span>
+                        </div>
+                        <div className="border-t border-border/40 pt-4 flex justify-between">
+                          <span className="font-bold text-foreground">Total Amount</span>
+                          <span className="text-3xl font-bold text-chart-1">{formatCurrency(totals.total)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* ── Right Sidebar: Customer & Payment ── */}
+          <div className="space-y-6">
+            {/* ── Customer Card ── */}
+            <Card className="border-border/60 shadow-lg">
+              <CardHeader className="pb-4 bg-gradient-to-br from-primary/5 to-accent/5 border-b border-border/40">
+                <CardTitle className="text-lg">Customer Details</CardTitle>
+                <CardDescription className="text-xs">Optional - Attach customer to bill</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-6">
+                <div className="space-y-2">
+                  <Label htmlFor="customerPhone" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Phone Number
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="customerPhone"
+                      type="tel"
+                      placeholder="9876543210"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      className="font-mono h-10"
+                    />
+                    <Button 
+                      variant="outline" 
+                      size="icon"
+                      onClick={handleSearchCustomer}
+                      className="hover:bg-primary hover:text-primary-foreground"
+                    >
+                      <Search className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                {customersLoading ? (
+                  <Skeleton className="h-16 w-full rounded-lg" />
+                ) : selectedCustomer ? (
+                  <div className="rounded-lg border border-success/40 bg-gradient-to-br from-success/10 to-success/5 p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-success text-lg">✓</span>
+                      <p className="text-xs font-bold text-success uppercase tracking-wide">Customer Attached</p>
+                    </div>
+                    <p className="font-bold text-foreground">{selectedCustomer.name}</p>
+                    <p className="text-xs text-muted-foreground font-mono mt-1">{selectedCustomer.phone}</p>
+                  </div>
+                ) : normalizedPhone ? (
+                  <Button 
+                    className="w-full h-10" 
+                    onClick={handleAddCustomer}
+                  >
+                    <UserRound className="mr-2 h-4 w-4" />
+                    Add New Customer
+                  </Button>
+                ) : (
+                  <p className="text-xs text-muted-foreground text-center py-4">Enter phone to search</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* ── Bill Summary Card ── */}
+            <Card className="border-chart-1/40 bg-gradient-to-br from-chart-1/5 to-transparent shadow-lg">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg">Bill Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Items</span>
+                    <span className="font-semibold text-foreground">{totals.lines}</span>
+                  </div>
+                  <div className="flex justify-between text-sm border-b border-border/40 pb-3">
+                    <span className="text-muted-foreground">Total Qty</span>
+                    <span className="font-semibold text-foreground">{totals.qty}</span>
+                  </div>
+                  <div className="flex justify-between pt-2">
+                    <span className="font-bold text-foreground">Total Due</span>
+                    <span className="text-2xl font-bold text-chart-1">{formatCurrency(totals.total)}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
 
-        {/* ── Action Buttons Row ── */}
-        <div className="flex gap-3 flex-wrap">
+        {/* ── Action Buttons at Bottom ── */}
+        <div className="mt-8 flex gap-3 pt-8 border-t border-border/40">
           <Button
-            className="h-11 font-semibold flex-1 sm:flex-initial min-w-[180px]"
             onClick={handleCompleteBill}
             disabled={actionLoading || sessionStatus !== "active"}
             size="lg"
+            className="flex-1 h-12 text-base font-semibold"
           >
             {actionLoading ? (
               <>
@@ -279,204 +490,14 @@ export default function GenerateBillCheckoutPage() {
             )}
           </Button>
           <Button
-            className="h-11 flex-1 sm:flex-initial min-w-[140px]"
             variant="outline"
             onClick={handleCancelBill}
             disabled={actionLoading || sessionStatus !== "active"}
             size="lg"
+            className="h-12 text-base font-semibold min-w-[160px]"
           >
             Cancel Bill
           </Button>
-        </div>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* ── Main Content: Bill Format ── */}
-        <div className="lg:col-span-2 space-y-0">
-          {/* ── Bill Header with Shop & Customer Info ── */}
-          <Card className="border-b-2 border-border/40 rounded-b-none">
-            <CardContent className="pt-6">
-              <div className="flex items-start justify-between mb-6 pb-6 border-b border-border/40">
-                <div>
-                  <h2 className="text-2xl font-bold text-foreground">Samrat Market</h2>
-                  <p className="text-xs text-muted-foreground mt-1">Premium Supermarket</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs font-mono text-muted-foreground">Bill ID</p>
-                  <p className="text-sm font-bold font-mono">{sessionId.slice(0, 12)}</p>
-                </div>
-              </div>
-
-              {/* ── Customer Info (if selected) ── */}
-              {selectedCustomer && (
-                <div className="bg-muted/30 rounded-lg p-3 mb-4">
-                  <div className="flex items-center gap-2 text-sm">
-                    <UserRound className="h-4 w-4 text-primary" />
-                    <div>
-                      <p className="font-semibold text-foreground">{selectedCustomer.name}</p>
-                      <p className="text-xs text-muted-foreground">{selectedCustomer.phone}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* ── Items Review Table ── */}
-          <Card className="border-t-0 rounded-t-none overflow-hidden">
-            <CardContent className="p-0">
-              {loadingItems ? (
-                <div className="space-y-3 p-6">
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                </div>
-              ) : items.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-3 py-12 px-6 text-center">
-                  <div className="rounded-full bg-muted p-3">
-                    <svg className="h-6 w-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m0 0l8-4m0 0l8 4m-8-4v10m-8 4l8 4 8-4m-8 4l-8-4m8 4v-10m-8-4l8-4m0 0L3.172 5.172a2 2 0 00-.757 2.828l.6 1.8A2 2 0 005 11v5m0 0l8 4m-8-4l-8-4" />
-                    </svg>
-                  </div>
-                  <p className="text-sm text-muted-foreground">No items in this bill</p>
-                </div>
-              ) : (
-                <div>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader className="bg-muted/50 border-b border-border/40">
-                        <TableRow className="hover:bg-transparent border-none">
-                          <TableHead className="font-bold text-foreground">Product</TableHead>
-                          <TableHead className="text-center font-bold text-foreground">Qty</TableHead>
-                          <TableHead className="text-right font-bold text-foreground">Price</TableHead>
-                          <TableHead className="text-right font-bold text-foreground">Total</TableHead>
-                          <TableHead className="text-center font-bold text-foreground">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {items.map((it) => (
-                          <TableRow 
-                            key={it.barcode}
-                            className="border-border/40 hover:bg-muted/40 transition-colors"
-                          >
-                            <TableCell className="font-medium text-foreground">{it.name || it.barcode}</TableCell>
-                            <TableCell className="text-center">
-                              <span className="font-semibold text-foreground">{it.quantity}</span>
-                            </TableCell>
-                            <TableCell className="text-right text-chart-1 font-semibold">{formatCurrency(it.price)}</TableCell>
-                            <TableCell className="text-right font-bold text-chart-1">
-                              {formatCurrency(it.quantity * it.price)}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <div className="flex items-center justify-center gap-1">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleDecrementQuantity(it.barcode, it.quantity)}
-                                  disabled={it.quantity <= 1}
-                                  className="h-8 w-8 p-0 hover:bg-destructive/10 hover:text-destructive"
-                                >
-                                  <Minus className="h-3 w-3" />
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleIncrementQuantity(it.barcode, it.quantity)}
-                                  className="h-8 w-8 p-0 hover:bg-chart-1/10 hover:text-chart-1"
-                                >
-                                  <Plus className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                  <div className="bg-gradient-to-r from-muted/20 via-transparent to-muted/20 p-4 border-t border-border/40 flex justify-end">
-                    <div className="text-right">
-                      <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1">
-                        Total Amount
-                      </p>
-                      <p className="text-2xl font-bold text-chart-1">{formatCurrency(totals.total)}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* ── Right Sidebar ── */}
-        <div className="space-y-4">
-          {/* ── Customer Section (Compact) ── */}
-          <Card className="border-border/50 overflow-hidden">
-            <CardHeader className="pb-4 bg-gradient-to-r from-primary/5 via-transparent to-transparent border-b border-border/40">
-              <CardTitle className="text-base">Add Customer (Optional)</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 pt-4">
-              <div className="space-y-2">
-                <Label htmlFor="customerPhone" className="text-xs font-semibold text-muted-foreground uppercase">
-                  Phone
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="customerPhone"
-                    type="tel"
-                    placeholder="Phone"
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="font-mono text-sm h-9"
-                  />
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={handleSearchCustomer}
-                    className="hover:bg-primary hover:text-primary-foreground"
-                  >
-                    <Search className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              {customersLoading ? (
-                <Skeleton className="h-12 w-full rounded-lg" />
-              ) : selectedCustomer ? (
-                <div className="rounded-lg border border-success/30 bg-success/5 p-3 space-y-1">
-                  <p className="text-xs text-success font-semibold">✓ Customer Attached</p>
-                  <p className="font-semibold text-sm text-foreground">{selectedCustomer.name}</p>
-                  <p className="text-xs text-muted-foreground font-mono">{selectedCustomer.phone}</p>
-                </div>
-              ) : normalizedPhone ? (
-                <Button 
-                  className="w-full h-9 text-sm" 
-                  variant="outline" 
-                  onClick={handleAddCustomer}
-                >
-                  <UserRound className="mr-2 h-4 w-4" />
-                  Add New
-                </Button>
-              ) : null}
-            </CardContent>
-          </Card>
-
-          {/* ── Quick Summary Card ── */}
-          <Card className="border-chart-1/30 bg-gradient-to-br from-chart-1/5 to-primary/5 overflow-hidden">
-            <CardContent className="p-4 space-y-2">
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-muted-foreground">Product Lines</span>
-                <span className="font-semibold text-foreground">{totals.lines}</span>
-              </div>
-              <div className="flex justify-between items-center text-sm border-b border-border/40 pb-2">
-                <span className="text-muted-foreground">Total Units</span>
-                <span className="font-semibold text-foreground">{totals.qty}</span>
-              </div>
-              <div className="flex justify-between items-center pt-2">
-                <span className="font-semibold text-foreground">Amount Due</span>
-                <span className="text-xl font-bold text-chart-1">{formatCurrency(totals.total)}</span>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </div>
     </div>
