@@ -121,22 +121,34 @@ export default function GenerateBillPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Generate Bill</h1>
-          <p className="text-muted-foreground">Complete the selected live billing session.</p>
-        </div>
+    <div className="space-y-8">
+      {/* ── Header Section ── */}
+      <div className="space-y-3 border-b border-border/40 pb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-primary via-primary to-accent bg-clip-text text-transparent">
+              Generate Bill
+            </h1>
+            <p className="text-base text-muted-foreground mt-2">
+              Complete the selected live billing session and checkout.
+            </p>
+          </div>
 
-        {selectedSessionId && selectedCancelled ? <Badge variant="destructive">Cancelled</Badge> : null}
+          {selectedSessionId && selectedCancelled ? (
+            <Badge variant="destructive" className="w-fit h-fit">
+              Cancelled
+            </Badge>
+          ) : null}
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
+        {/* ── Left Sidebar: Sessions ── */}
         <div className="lg:col-span-1">
           {loading ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>Active Sessions</CardTitle>
+            <Card className="border-border/50">
+              <CardHeader className="pb-6">
+                <CardTitle className="text-xl">Active Sessions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {Array.from({ length: 4 }).map((_, i) => (
@@ -153,73 +165,105 @@ export default function GenerateBillPage() {
           )}
         </div>
 
-        <div className="lg:col-span-2 space-y-4">
+        {/* ── Main Content ── */}
+        <div className="lg:col-span-2 space-y-6">
           {!selectedSessionId ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>Pick a session</CardTitle>
+            <Card className="border-dashed border-2 border-border/50 hover:border-primary/30 transition-colors">
+              <CardHeader className="pb-8">
+                <CardTitle className="text-2xl">Select a Billing Session</CardTitle>
               </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  Select an active session from the left. Items will appear live as phone scanning
-                  continues.
-                </p>
+              <CardContent className="pb-8">
+                <div className="flex flex-col items-center gap-4 py-12">
+                  <div className="rounded-full bg-primary/10 p-6">
+                    <svg className="h-12 w-12 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                  </div>
+                  <p className="text-center text-muted-foreground max-w-sm">
+                    Select an active session from the left panel. Items will appear live as your phone app scans them.
+                  </p>
+                </div>
               </CardContent>
             </Card>
           ) : (
             <>
-              <div className="rounded-lg border p-4 flex items-start justify-between gap-4 flex-wrap">
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Selected Session</p>
-                  <p className="text-sm font-semibold">{selectedSessionId}</p>
-                  <div className="flex flex-wrap gap-x-3 gap-y-1">
-                    <span className="text-xs text-muted-foreground">
-                      Status:{" "}
-                      <span className="font-medium text-foreground">
-                        {selectedCancelled ? "cancelled" : selectedSessionExists ? "active" : "completed"}
-                      </span>
-                    </span>
+              {/* ── Session Info Card ── */}
+              <Card className="border-primary/30 bg-gradient-to-br from-card via-card to-primary/5 hover:border-primary/50 transition-colors">
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center justify-between gap-3 flex-wrap text-xl">
+                    <span>Session Details</span>
+                    <Badge variant={selectedCancelled ? "destructive" : selectedSessionExists ? "default" : "secondary"}>
+                      {selectedCancelled ? "Cancelled" : selectedSessionExists ? "Active" : "Completed"}
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="rounded-lg bg-muted/40 p-4 border border-border/40">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                      Session ID
+                    </p>
+                    <p className="text-lg font-mono font-bold text-foreground">{selectedSessionId}</p>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-lg border border-border/60 bg-card p-3 hover:bg-muted/30 transition-colors">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Status
+                      </p>
+                      <p className="text-sm font-bold text-foreground mt-2">
+                        {selectedCancelled ? "Cancelled" : selectedSessionExists ? "Active" : "Completed"}
+                      </p>
+                    </div>
                     {selectedSessionMeta?.cashierId ? (
-                      <span className="text-xs text-muted-foreground">
-                        Cashier:{" "}
-                        <span className="font-medium text-foreground">
-                          {selectedSessionMeta.cashierId}
-                        </span>
-                      </span>
+                      <div className="rounded-lg border border-border/60 bg-card p-3 hover:bg-muted/30 transition-colors">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          Cashier
+                        </p>
+                        <p className="text-sm font-bold text-foreground mt-2">{selectedSessionMeta.cashierId}</p>
+                      </div>
                     ) : null}
                     {selectedSessionMeta?.createdAt ? (
-                      <span className="text-xs text-muted-foreground">
-                        Started:{" "}
-                        <span className="font-medium text-foreground">
-                          {selectedSessionMeta.createdAt.toLocaleString("en-IN")}
-                        </span>
-                      </span>
+                      <div className="rounded-lg border border-border/60 bg-card p-3 hover:bg-muted/30 transition-colors">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          Started
+                        </p>
+                        <p className="text-sm font-bold text-foreground mt-2">
+                          {selectedSessionMeta.createdAt.toLocaleString("en-IN", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                      </div>
                     ) : null}
                   </div>
-                </div>
+                </CardContent>
+              </Card>
 
-                <div className="flex gap-3 items-center">
-                  {!selectedCancelled ? (
-                    <>
-                      <Button variant="outline" onClick={handleCancel} disabled={acting}>
-                        Cancel Bill
-                      </Button>
-                      <Button onClick={handleCheckout} disabled={acting || !selectedSessionExists}>
-                        Checkout
-                      </Button>
-                    </>
-                  ) : (
-                    <Button variant="outline" onClick={handleCancel}>
-                      Close
-                    </Button>
-                  )}
-                </div>
-              </div>
-
+              {/* ── Items Section ── */}
               <AdminSessionItems
                 sessionId={selectedSessionId}
                 status={selectedCancelled ? "cancelled" : selectedSessionExists ? "active" : "completed"}
               />
+
+              {/* ── Action Buttons ── */}
+              {!selectedCancelled && (
+                <div className="flex gap-3 flex-wrap">
+                  <Button
+                    onClick={handleCheckout}
+                    disabled={acting || !selectedSessionExists}
+                    size="lg"
+                    className="flex-1 min-w-[160px] h-11"
+                  >
+                    Proceed to Checkout
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleCancel}
+                    disabled={acting}
+                    size="lg"
+                    className="h-11"
+                  >
+                    Cancel Bill
+                  </Button>
+                </div>
+              )}
             </>
           )}
         </div>
