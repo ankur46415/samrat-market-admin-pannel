@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import Lottie from "lottie-react"
-import { Eye, EyeOff, Loader2 } from "lucide-react"
+import { Eye, EyeOff, Loader2, ShoppingCart, Apple, Egg, Milk, Utensils, Leaf } from "lucide-react"
 import { loginWithFirebase, useSessionUser } from "@/lib/auth-session"
 
 // ✅ Correct way to import JSON in Next.js client components
@@ -268,13 +268,76 @@ export default function LoginPage() {
         }
         .login-right { animation: fadeUp 0.45s ease both; }
         .login-left  { animation: fadeUp 0.45s 0.1s ease both; }
+
+        @keyframes float1 {
+          0%, 100% { transform: translateY(0px) translateX(0px); }
+          25% { transform: translateY(-20px) translateX(15px); }
+          50% { transform: translateY(-40px) translateX(0px); }
+          75% { transform: translateY(-20px) translateX(-15px); }
+        }
+
+        @keyframes float2 {
+          0%, 100% { transform: translateY(0px) translateX(0px); }
+          25% { transform: translateY(-25px) translateX(-20px); }
+          50% { transform: translateY(-45px) translateX(10px); }
+          75% { transform: translateY(-20px) translateX(20px); }
+        }
+
+        @keyframes float3 {
+          0%, 100% { transform: translateY(0px) translateX(0px); }
+          25% { transform: translateY(-30px) translateX(25px); }
+          50% { transform: translateY(-50px) translateX(-5px); }
+          75% { transform: translateY(-15px) translateX(-25px); }
+        }
+
+        @keyframes float4 {
+          0%, 100% { transform: translateY(0px) translateX(0px); }
+          25% { transform: translateY(-20px) translateX(-15px); }
+          50% { transform: translateY(-35px) translateX(20px); }
+          75% { transform: translateY(-25px) translateX(0px); }
+        }
+
+        @keyframes float5 {
+          0%, 100% { transform: translateY(0px) translateX(0px); }
+          25% { transform: translateY(-35px) translateX(10px); }
+          50% { transform: translateY(-55px) translateX(-15px); }
+          75% { transform: translateY(-10px) translateX(15px); }
+        }
+
+        @keyframes float6 {
+          0%, 100% { transform: translateY(0px) translateX(0px); }
+          25% { transform: translateY(-25px) translateX(20px); }
+          50% { transform: translateY(-40px) translateX(5px); }
+          75% { transform: translateY(-20px) translateX(-20px); }
+        }
+
+        .floating-icon {
+          position: absolute;
+          opacity: 0.15;
+          pointer-events: none;
+        }
+
+        .floating-icon.icon1 { animation: float1 8s ease-in-out infinite; top: 20%; left: 10%; }
+        .floating-icon.icon2 { animation: float2 10s ease-in-out infinite; top: 30%; right: 15%; animation-delay: 1s; }
+        .floating-icon.icon3 { animation: float3 12s ease-in-out infinite; bottom: 20%; left: 20%; animation-delay: 2s; }
+        .floating-icon.icon4 { animation: float4 9s ease-in-out infinite; top: 40%; left: 25%; animation-delay: 3s; }
+        .floating-icon.icon5 { animation: float5 11s ease-in-out infinite; bottom: 30%; right: 25%; animation-delay: 1.5s; }
+        .floating-icon.icon6 { animation: float6 10s ease-in-out infinite; top: 50%; right: 10%; animation-delay: 2.5s; }
       `}</style>
 
       <div className="login-root">
         <div className="login-card">
 
-          {/* ── LEFT: Lottie Animation ── */}
+          {/* ── LEFT: Lottie Animation with Floating Icons ── */}
           <div className="login-left">
+            {/* Floating Supermarket Icons */}
+            <ShoppingCart size={64} className="floating-icon icon1" />
+            <Apple size={64} className="floating-icon icon2" />
+            <Egg size={64} className="floating-icon icon3" />
+            <Milk size={64} className="floating-icon icon4" />
+            <Utensils size={64} className="floating-icon icon5" />
+            <Leaf size={64} className="floating-icon icon6" />
+
             <div className="lottie-wrap">
               <Lottie
                 animationData={manAnimation}
