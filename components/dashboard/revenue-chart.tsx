@@ -54,22 +54,22 @@ export function RevenueChart({ sales, className }: RevenueChartProps) {
   }
 
   return (
-    <Card className={cn(className)}>
-      <CardHeader>
-        <CardTitle>Revenue Trend</CardTitle>
-        <CardDescription>Daily revenue for the last 7 days</CardDescription>
+    <Card className={cn(className, "border-chart-1/30 hover:border-chart-1/50 transition-colors")}>
+      <CardHeader className="pb-6">
+        <CardTitle className="text-xl">Revenue Trend</CardTitle>
+        <CardDescription className="text-sm">Daily revenue for the last 7 days</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="h-[280px]">
+        <div className="h-[320px]">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.45} />
-                  <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0.05} />
+                  <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.35} />
+                  <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" className="stroke-muted/20" vertical={false} />
               <XAxis
                 dataKey="date"
                 axisLine={false}
@@ -88,9 +88,9 @@ export function RevenueChart({ sales, className }: RevenueChartProps) {
                 content={({ active, payload, label }) => {
                   if (active && payload && payload.length) {
                     return (
-                      <div className="rounded-lg border bg-background p-3 shadow-lg">
-                        <p className="text-sm font-medium">{label}</p>
-                        <p className="text-lg font-bold text-chart-1">
+                      <div className="rounded-lg border border-chart-1/50 bg-card/95 backdrop-blur-sm p-3 shadow-xl">
+                        <p className="text-sm font-medium text-muted-foreground">{label}</p>
+                        <p className="text-lg font-bold text-chart-1 mt-1">
                           ₹{payload[0].value?.toLocaleString("en-IN")}
                         </p>
                       </div>
@@ -103,8 +103,9 @@ export function RevenueChart({ sales, className }: RevenueChartProps) {
                 type="monotone"
                 dataKey="revenue"
                 stroke="var(--chart-1)"
-                strokeWidth={2.5}
+                strokeWidth={3}
                 fill="url(#revenueGradient)"
+                isAnimationActive={true}
               />
             </AreaChart>
           </ResponsiveContainer>

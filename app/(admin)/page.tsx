@@ -20,24 +20,45 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      {/* ── Header Section ── */}
+      <div className="space-y-2">
+        <div>
+          <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-primary via-primary to-accent bg-clip-text text-transparent">
+            Dashboard
+          </h1>
+          <p className="text-base text-muted-foreground mt-2">
+            Welcome back! Here&apos;s your supermarket business overview.
+          </p>
+        </div>
+      </div>
+
+      {/* ── Key Metrics ── */}
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">
-          Welcome back. Here&apos;s your business overview.
-        </p>
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold tracking-tight">Key Metrics</h2>
+        </div>
+        <StatsCards stats={stats} />
       </div>
 
-      <StatsCards stats={stats} />
-
+      {/* ── Charts Section ── */}
       <div className="grid gap-6 lg:grid-cols-7">
-        <RevenueChart sales={sales} className="lg:col-span-4" />
-        <CategoryChart products={products} className="lg:col-span-3" />
+        <div className="lg:col-span-4">
+          <RevenueChart sales={sales} />
+        </div>
+        <div className="lg:col-span-3">
+          <CategoryChart products={products} />
+        </div>
       </div>
 
+      {/* ── Bottom Section ── */}
       <div className="grid gap-6 lg:grid-cols-7">
-        <RecentSales sales={sales} className="lg:col-span-4" />
-        <LowStockAlert products={products} className="lg:col-span-3" />
+        <div className="lg:col-span-4">
+          <RecentSales sales={sales} />
+        </div>
+        <div className="lg:col-span-3">
+          <LowStockAlert products={products} />
+        </div>
       </div>
     </div>
   )

@@ -41,26 +41,31 @@ export function CategoryChart({ products, className }: CategoryChartProps) {
   }
 
   return (
-    <Card className={cn(className)}>
-      <CardHeader>
-        <CardTitle>Product Categories</CardTitle>
-        <CardDescription>Top 5 categories by product count</CardDescription>
+    <Card className={cn(className, "border-chart-2/30 hover:border-chart-2/50 transition-colors")}>
+      <CardHeader className="pb-6">
+        <CardTitle className="text-xl">Product Categories</CardTitle>
+        <CardDescription className="text-sm">Top 5 categories by product count</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="h-[200px]">
+        <div className="h-[240px] flex items-center justify-center">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
                 data={chartData}
                 cx="50%"
                 cy="50%"
-                innerRadius={50}
-                outerRadius={80}
-                paddingAngle={2}
+                innerRadius={55}
+                outerRadius={85}
+                paddingAngle={3}
                 dataKey="value"
+                isAnimationActive={true}
               >
                 {chartData.map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={CHART_FILLS[index % CHART_FILLS.length]} stroke="#fff" strokeWidth={2} />
+                  <Cell 
+                    key={`cell-${index}`} 
+                    fill={CHART_FILLS[index % CHART_FILLS.length]} 
+                    opacity={0.85}
+                  />
                 ))}
               </Pie>
               <Tooltip
@@ -68,9 +73,9 @@ export function CategoryChart({ products, className }: CategoryChartProps) {
                   if (active && payload && payload.length) {
                     const data = payload[0].payload
                     return (
-                      <div className="rounded-lg border bg-background p-3 shadow-lg">
-                        <p className="text-sm font-medium">{data.name}</p>
-                        <p className="text-lg font-bold">{data.value} products</p>
+                      <div className="rounded-lg border border-chart-2/50 bg-card/95 backdrop-blur-sm p-3 shadow-xl">
+                        <p className="text-sm font-medium text-muted-foreground">{data.name}</p>
+                        <p className="text-lg font-bold text-chart-2 mt-1">{data.value} products</p>
                       </div>
                     )
                   }
@@ -80,14 +85,20 @@ export function CategoryChart({ products, className }: CategoryChartProps) {
             </PieChart>
           </ResponsiveContainer>
         </div>
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-6 space-y-2">
           {chartData.map((item, index) => (
-            <div key={item.name} className="flex items-center gap-2 text-sm">
+            <div key={item.name} className="flex items-center gap-3 text-sm">
               <div
-                className="h-3 w-3 rounded-full"
-                style={{ backgroundColor: CHART_FILLS[index % CHART_FILLS.length] }}
+                className="h-3 w-3 rounded-full flex-shrink-0 ring-2 ring-offset-2"
+                style={{ 
+                  backgroundColor: CHART_FILLS[index % CHART_FILLS.length],
+                  ringColor: `${CHART_FILLS[index % CHART_FILLS.length]}20`
+                }}
               />
-              <span className="text-muted-foreground">{item.name}</span>
+              <div className="flex-1 min-w-0">
+                <span className="text-muted-foreground font-medium truncate block">{item.name}</span>
+              </div>
+              <span className="text-foreground font-semibold flex-shrink-0">{item.value}</span>
             </div>
           ))}
         </div>
