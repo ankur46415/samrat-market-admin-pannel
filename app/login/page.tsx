@@ -313,16 +313,19 @@ export default function LoginPage() {
 
         .floating-icon {
           position: absolute;
-          opacity: 0.15;
+          opacity: 0.25;
           pointer-events: none;
+          z-index: 0;
+          stroke: #7c3aed !important;
+          fill: none !important;
         }
 
-        .floating-icon.icon1 { animation: float1 8s ease-in-out infinite; top: 20%; left: 10%; }
-        .floating-icon.icon2 { animation: float2 10s ease-in-out infinite; top: 30%; right: 15%; animation-delay: 1s; }
-        .floating-icon.icon3 { animation: float3 12s ease-in-out infinite; bottom: 20%; left: 20%; animation-delay: 2s; }
-        .floating-icon.icon4 { animation: float4 9s ease-in-out infinite; top: 40%; left: 25%; animation-delay: 3s; }
-        .floating-icon.icon5 { animation: float5 11s ease-in-out infinite; bottom: 30%; right: 25%; animation-delay: 1.5s; }
-        .floating-icon.icon6 { animation: float6 10s ease-in-out infinite; top: 50%; right: 10%; animation-delay: 2.5s; }
+        .floating-icon.icon1 { animation: float1 8s ease-in-out infinite; top: 10%; left: 15%; }
+        .floating-icon.icon2 { animation: float2 10s ease-in-out infinite; top: 25%; right: 20%; animation-delay: 1s; }
+        .floating-icon.icon3 { animation: float3 12s ease-in-out infinite; bottom: 15%; left: 15%; animation-delay: 2s; }
+        .floating-icon.icon4 { animation: float4 9s ease-in-out infinite; top: 50%; left: 10%; animation-delay: 3s; }
+        .floating-icon.icon5 { animation: float5 11s ease-in-out infinite; bottom: 25%; right: 15%; animation-delay: 1.5s; }
+        .floating-icon.icon6 { animation: float6 10s ease-in-out infinite; top: 60%; right: 20%; animation-delay: 2.5s; }
       `}</style>
 
       <div className="login-root">
@@ -331,12 +334,12 @@ export default function LoginPage() {
           {/* ── LEFT: Lottie Animation with Floating Icons ── */}
           <div className="login-left">
             {/* Floating Supermarket Icons */}
-            <ShoppingCart size={64} className="floating-icon icon1" />
-            <Apple size={64} className="floating-icon icon2" />
-            <Egg size={64} className="floating-icon icon3" />
-            <Milk size={64} className="floating-icon icon4" />
-            <Utensils size={64} className="floating-icon icon5" />
-            <Leaf size={64} className="floating-icon icon6" />
+            <ShoppingCart size={64} className="floating-icon icon1" style={{ stroke: '#7c3aed', strokeWidth: 1.5 }} />
+            <Apple size={64} className="floating-icon icon2" style={{ stroke: '#7c3aed', strokeWidth: 1.5 }} />
+            <Egg size={64} className="floating-icon icon3" style={{ stroke: '#7c3aed', strokeWidth: 1.5 }} />
+            <Milk size={64} className="floating-icon icon4" style={{ stroke: '#7c3aed', strokeWidth: 1.5 }} />
+            <Utensils size={64} className="floating-icon icon5" style={{ stroke: '#7c3aed', strokeWidth: 1.5 }} />
+            <Leaf size={64} className="floating-icon icon6" style={{ stroke: '#7c3aed', strokeWidth: 1.5 }} />
 
             <div className="lottie-wrap">
               <Lottie
