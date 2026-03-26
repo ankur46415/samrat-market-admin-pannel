@@ -246,71 +246,84 @@ export default function GenerateBillCheckoutPage() {
   }
 
   return (
-    <div className="space-y-8">
-      {/* ── Header Section ── */}
-      <div className="space-y-3 border-b border-border/40 pb-8">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" asChild className="hover:bg-muted">
-              <Link href="/generate-bill">
-                <ArrowLeft className="h-5 w-5" />
-              </Link>
-            </Button>
-            <div>
-              <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-primary via-primary to-accent bg-clip-text text-transparent">
-                Checkout
-              </h1>
-              <p className="text-base text-muted-foreground mt-2">Review and finalize the bill</p>
-            </div>
+    <div className="space-y-6">
+      {/* ── Header + Action Buttons ── */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" asChild className="hover:bg-muted">
+            <Link href="/generate-bill">
+              <ArrowLeft className="h-5 w-5" />
+            </Link>
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Bill Checkout</h1>
+            <p className="text-sm text-muted-foreground mt-1">Review and complete the payment</p>
           </div>
-          <Badge 
-            variant={sessionStatus === "active" ? "default" : "secondary"}
-            className="h-fit px-3 py-1.5 text-sm"
+        </div>
+
+        {/* ── Action Buttons Row ── */}
+        <div className="flex gap-3 flex-wrap">
+          <Button
+            className="h-11 font-semibold flex-1 sm:flex-initial min-w-[180px]"
+            onClick={handleCompleteBill}
+            disabled={actionLoading || sessionStatus !== "active"}
+            size="lg"
           >
-            {sessionStatus}
-          </Badge>
+            {actionLoading ? (
+              <>
+                <span className="animate-spin mr-2">⏳</span>
+                Processing...
+              </>
+            ) : (
+              "Complete Checkout"
+            )}
+          </Button>
+          <Button
+            className="h-11 flex-1 sm:flex-initial min-w-[140px]"
+            variant="outline"
+            onClick={handleCancelBill}
+            disabled={actionLoading || sessionStatus !== "active"}
+            size="lg"
+          >
+            Cancel Bill
+          </Button>
         </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* ── Main Content ── */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* ── Session Overview ── */}
-          <Card className="border-primary/30 bg-gradient-to-br from-card via-card to-primary/5 hover:border-primary/50 transition-colors">
-            <CardHeader className="pb-6">
-              <CardTitle className="text-xl">Session Overview</CardTitle>
-              <CardDescription className="text-sm font-mono text-chart-1">
-                {sessionId}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-lg border border-border/60 bg-card/50 backdrop-blur-sm p-4 hover:bg-muted/30 transition-colors">
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">
-                  Product Lines
-                </p>
-                <p className="text-2xl font-bold text-foreground">{totals.lines}</p>
+        {/* ── Main Content: Bill Format ── */}
+        <div className="lg:col-span-2 space-y-0">
+          {/* ── Bill Header with Shop & Customer Info ── */}
+          <Card className="border-b-2 border-border/40 rounded-b-none">
+            <CardContent className="pt-6">
+              <div className="flex items-start justify-between mb-6 pb-6 border-b border-border/40">
+                <div>
+                  <h2 className="text-2xl font-bold text-foreground">Samrat Market</h2>
+                  <p className="text-xs text-muted-foreground mt-1">Premium Supermarket</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-mono text-muted-foreground">Bill ID</p>
+                  <p className="text-sm font-bold font-mono">{sessionId.slice(0, 12)}</p>
+                </div>
               </div>
-              <div className="rounded-lg border border-border/60 bg-card/50 backdrop-blur-sm p-4 hover:bg-muted/30 transition-colors">
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">
-                  Total Units
-                </p>
-                <p className="text-2xl font-bold text-foreground">{totals.qty}</p>
-              </div>
-              <div className="rounded-lg border border-chart-1/30 bg-gradient-to-br from-chart-1/10 to-primary/5 p-4 hover:border-chart-1/50 transition-colors">
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">
-                  Amount Due
-                </p>
-                <p className="text-2xl font-bold text-chart-1">{formatCurrency(totals.total)}</p>
-              </div>
+
+              {/* ── Customer Info (if selected) ── */}
+              {selectedCustomer && (
+                <div className="bg-muted/30 rounded-lg p-3 mb-4">
+                  <div className="flex items-center gap-2 text-sm">
+                    <UserRound className="h-4 w-4 text-primary" />
+                    <div>
+                      <p className="font-semibold text-foreground">{selectedCustomer.name}</p>
+                      <p className="text-xs text-muted-foreground">{selectedCustomer.phone}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
-          {/* ── Items Review ── */}
-          <Card className="border-border/50 overflow-hidden">
-            <CardHeader className="pb-6 bg-gradient-to-r from-chart-1/5 via-transparent to-transparent border-b border-border/40">
-              <CardTitle className="text-xl">Items in Bill</CardTitle>
-              <CardDescription className="text-sm">Review all scanned items before checkout</CardDescription>
-            </CardHeader>
+          {/* ── Items Review Table ── */}
+          <Card className="border-t-0 rounded-t-none overflow-hidden">
             <CardContent className="p-0">
               {loadingItems ? (
                 <div className="space-y-3 p-6">
@@ -395,30 +408,29 @@ export default function GenerateBillCheckoutPage() {
         </div>
 
         {/* ── Right Sidebar ── */}
-        <div className="space-y-6">
-          {/* ── Customer Section ── */}
+        <div className="space-y-4">
+          {/* ── Customer Section (Compact) ── */}
           <Card className="border-border/50 overflow-hidden">
-            <CardHeader className="pb-6 bg-gradient-to-r from-primary/5 via-transparent to-transparent border-b border-border/40">
-              <CardTitle className="text-lg">Customer Details</CardTitle>
-              <CardDescription className="text-sm">Optional: Attach customer to bill</CardDescription>
+            <CardHeader className="pb-4 bg-gradient-to-r from-primary/5 via-transparent to-transparent border-b border-border/40">
+              <CardTitle className="text-base">Add Customer (Optional)</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4 pt-6">
+            <CardContent className="space-y-3 pt-4">
               <div className="space-y-2">
-                <Label htmlFor="customerPhone" className="font-semibold text-foreground">
-                  Phone Number
+                <Label htmlFor="customerPhone" className="text-xs font-semibold text-muted-foreground uppercase">
+                  Phone
                 </Label>
                 <div className="flex gap-2">
                   <Input
                     id="customerPhone"
                     type="tel"
-                    placeholder="e.g., 9876543210"
+                    placeholder="Phone"
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="font-mono"
+                    className="font-mono text-sm h-9"
                   />
                   <Button 
                     variant="outline" 
-                    size="icon" 
+                    size="sm"
                     onClick={handleSearchCustomer}
                     className="hover:bg-primary hover:text-primary-foreground"
                   >
@@ -428,94 +440,40 @@ export default function GenerateBillCheckoutPage() {
               </div>
 
               {customersLoading ? (
-                <Skeleton className="h-14 w-full rounded-lg" />
+                <Skeleton className="h-12 w-full rounded-lg" />
               ) : selectedCustomer ? (
-                <div className="rounded-lg border border-success/30 bg-success/5 p-4 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="rounded-full bg-success/20 p-2">
-                      <UserRound className="h-4 w-4 text-success" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">
-                        Attached Customer
-                      </p>
-                      <p className="font-bold text-foreground text-sm">{selectedCustomer.name}</p>
-                    </div>
-                  </div>
-                  <p className="text-sm text-muted-foreground/80 font-mono">{selectedCustomer.phone}</p>
+                <div className="rounded-lg border border-success/30 bg-success/5 p-3 space-y-1">
+                  <p className="text-xs text-success font-semibold">✓ Customer Attached</p>
+                  <p className="font-semibold text-sm text-foreground">{selectedCustomer.name}</p>
+                  <p className="text-xs text-muted-foreground font-mono">{selectedCustomer.phone}</p>
                 </div>
               ) : normalizedPhone ? (
-                <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 space-y-3">
-                  <p className="text-sm text-muted-foreground">
-                    Customer not found. Create a new one?
-                  </p>
-                  <Button 
-                    className="w-full" 
-                    variant="outline" 
-                    onClick={handleAddCustomer}
-                  >
-                    <UserRound className="mr-2 h-4 w-4" />
-                    Add New Customer
-                  </Button>
-                </div>
-              ) : (
-                <div className="rounded-lg border border-dashed border-border/40 bg-muted/20 p-4 text-center">
-                  <p className="text-xs text-muted-foreground">Enter phone to search</p>
-                </div>
-              )}
+                <Button 
+                  className="w-full h-9 text-sm" 
+                  variant="outline" 
+                  onClick={handleAddCustomer}
+                >
+                  <UserRound className="mr-2 h-4 w-4" />
+                  Add New
+                </Button>
+              ) : null}
             </CardContent>
           </Card>
 
-          {/* ── Action Buttons ── */}
-          <Card className="border-border/50 overflow-hidden">
-            <CardHeader className="pb-4 bg-gradient-to-r from-primary/5 via-transparent to-transparent border-b border-border/40">
-              <CardTitle className="text-lg">Complete Checkout</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 pt-6">
-              <Button
-                className="w-full h-11 text-base font-semibold"
-                onClick={handleCompleteBill}
-                disabled={actionLoading || sessionStatus !== "active"}
-                size="lg"
-              >
-                {actionLoading ? (
-                  <>
-                    <span className="animate-spin mr-2">⏳</span>
-                    Processing...
-                  </>
-                ) : (
-                  "Complete Bill"
-                )}
-              </Button>
-              <Button
-                className="w-full h-11"
-                variant="outline"
-                onClick={handleCancelBill}
-                disabled={actionLoading || sessionStatus !== "active"}
-                size="lg"
-              >
-                Cancel Bill
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* ── Bill Summary ── */}
+          {/* ── Quick Summary Card ── */}
           <Card className="border-chart-1/30 bg-gradient-to-br from-chart-1/5 to-primary/5 overflow-hidden">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg">Bill Summary</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex justify-between items-center py-2 border-b border-border/40">
-                <span className="text-sm text-muted-foreground">Items</span>
+            <CardContent className="p-4 space-y-2">
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-muted-foreground">Product Lines</span>
                 <span className="font-semibold text-foreground">{totals.lines}</span>
               </div>
-              <div className="flex justify-between items-center py-2 border-b border-border/40">
-                <span className="text-sm text-muted-foreground">Total Units</span>
+              <div className="flex justify-between items-center text-sm border-b border-border/40 pb-2">
+                <span className="text-muted-foreground">Total Units</span>
                 <span className="font-semibold text-foreground">{totals.qty}</span>
               </div>
-              <div className="flex justify-between items-center py-3 pt-4 border-t-2 border-border/40">
-                <span className="font-bold text-foreground">Amount Due</span>
-                <span className="text-2xl font-bold text-chart-1">{formatCurrency(totals.total)}</span>
+              <div className="flex justify-between items-center pt-2">
+                <span className="font-semibold text-foreground">Amount Due</span>
+                <span className="text-xl font-bold text-chart-1">{formatCurrency(totals.total)}</span>
               </div>
             </CardContent>
           </Card>
