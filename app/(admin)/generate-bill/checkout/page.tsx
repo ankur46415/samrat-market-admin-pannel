@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { collection, doc, onSnapshot } from "firebase/firestore"
-import { ArrowLeft, Search, UserRound } from "lucide-react"
+import { collection, doc, onSnapshot, updateDoc } from "firebase/firestore"
+import { ArrowLeft, Search, UserRound, Plus, Minus } from "lucide-react"
 import { db } from "@/lib/firebase"
 import { useCustomers } from "@/hooks/use-firestore"
 import { firestoreNumber } from "@/lib/stock"
@@ -63,6 +63,36 @@ export default function GenerateBillCheckoutPage() {
     setSessionId(params.get("sessionId") || "")
     setReturnedPhone(params.get("customerPhone") || "")
   }, [])
+
+  // Handle quantity increment/decrement
+  const handleUpdateQuantity = async (barcode: string, newQuantity: number) => {
+    if (newQuantity < 1) return // Don't allow zero or negative quantities
+    
+    try {
+      const itemRef = doc(db, "live_sessions", sessionId, "items", barcode)
+      await updateDoc(itemRef, { quantity: newQuantity })
+      
+      // Update local state
+      setItems(items.map(item => 
+        item.barcode === barcode 
+          ? { ...item, quantity: newQuantity }
+          : item
+      ))
+    } catch (error) {
+      console.error("[v0] Error updating quantity:", error)
+      toast.error("Failed to update quantity")
+    }
+  }
+
+  const handleIncrementQuantity = (barcode: string, currentQuantity: number) => {
+    handleUpdateQuantity(barcode, currentQuantity + 1)
+  }
+
+  const handleDecrementQuantity = (barcode: string, currentQuantity: number) => {
+    if (currentQuantity > 1) {
+      handleUpdateQuantity(barcode, currentQuantity - 1)
+    }
+  }
 
   useEffect(() => {
     if (!sessionId) return
@@ -304,9 +334,10 @@ export default function GenerateBillCheckoutPage() {
                       <TableHeader className="bg-muted/50 border-b border-border/40">
                         <TableRow className="hover:bg-transparent border-none">
                           <TableHead className="font-bold text-foreground">Product</TableHead>
-                          <TableHead className="text-right font-bold text-foreground">Qty</TableHead>
+                          <TableHead className="text-center font-bold text-foreground">Qty</TableHead>
                           <TableHead className="text-right font-bold text-foreground">Price</TableHead>
                           <TableHead className="text-right font-bold text-foreground">Total</TableHead>
+                          <TableHead className="text-center font-bold text-foreground">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -316,10 +347,33 @@ export default function GenerateBillCheckoutPage() {
                             className="border-border/40 hover:bg-muted/40 transition-colors"
                           >
                             <TableCell className="font-medium text-foreground">{it.name || it.barcode}</TableCell>
-                            <TableCell className="text-right font-semibold text-foreground">{it.quantity}</TableCell>
+                            <TableCell className="text-center">
+                              <span className="font-semibold text-foreground">{it.quantity}</span>
+                            </TableCell>
                             <TableCell className="text-right text-chart-1 font-semibold">{formatCurrency(it.price)}</TableCell>
                             <TableCell className="text-right font-bold text-chart-1">
                               {formatCurrency(it.quantity * it.price)}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleDecrementQuantity(it.barcode, it.quantity)}
+                                  disabled={it.quantity <= 1}
+                                  className="h-8 w-8 p-0 hover:bg-destructive/10 hover:text-destructive"
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleIncrementQuantity(it.barcode, it.quantity)}
+                                  className="h-8 w-8 p-0 hover:bg-chart-1/10 hover:text-chart-1"
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
