@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   Package,
@@ -9,8 +9,8 @@ import {
   Receipt,
   FileText,
   Settings,
-  Store,
   ChevronDown,
+  LogOut,
 } from "lucide-react"
 import Image from "next/image"
 import {
@@ -34,6 +34,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
+import { canAccessPath, logoutFirebase, useSessionUser } from "@/lib/auth-session"
 
 const mainNavItems = [
   {
@@ -93,6 +94,18 @@ const settingsNavItems = [
 
 export function AdminSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+  const { user } = useSessionUser()
+  const role = user?.role ?? "employee"
+  const visibleMainItems = mainNavItems
+    .filter((item) => canAccessPath(role, item.url))
+    .map((item) => {
+      if (!item.subItems) return item
+      return {
+        ...item,
+        subItems: item.subItems.filter((subItem) => canAccessPath(role, subItem.url)),
+      }
+    })
 
   return (
     <Sidebar collapsible="icon" variant="sidebar">
@@ -126,7 +139,7 @@ export function AdminSidebar() {
           <SidebarGroupLabel>Main Menu</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {mainNavItems.map((item) => {
+              {visibleMainItems.map((item) => {
                 const isActive = pathname === item.url || pathname.startsWith(item.url + "/")
                 const Icon = item.icon
 
@@ -210,6 +223,19 @@ export function AdminSidebar() {
 
       <SidebarFooter className="border-t border-sidebar-border">
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="sm"
+              className="text-xs"
+              onClick={async () => {
+                await logoutFirebase()
+                router.replace("/login")
+              }}
+            >
+              <LogOut className="h-4 w-4" />
+              <span>Logout</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton size="sm" className="text-xs text-muted-foreground">
               <span>v1.0.0</span>

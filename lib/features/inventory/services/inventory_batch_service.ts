@@ -21,6 +21,8 @@ export type ProductWithBatchInput = {
   name: string
   barcode: string
   rack: string
+  tag: string
+  status: string
   price: number
   category: string
   costPrice: number
@@ -46,6 +48,8 @@ export class InventoryBatchService {
     name: string
     barcode: string
     rack: string
+    tag: string
+    status: string
     price: number
     category: string
     costPrice: number
@@ -57,6 +61,8 @@ export class InventoryBatchService {
   }): Record<string, unknown> {
     const unitStr = normalizeProductUnit(fields.unit)
     const rack = fields.rack.trim()
+    const tag = fields.tag.trim()
+    const status = fields.status.trim()
     const d: Record<string, unknown> = {
       name: fields.name.trim(),
       barcode: fields.barcode.trim(),
@@ -66,6 +72,8 @@ export class InventoryBatchService {
       unit: unitStr,
       units: unitStr,
       rack,
+      tag,
+      status,
       minStock: Math.max(0, Math.floor(Number(fields.minStock) || 0)),
       stock: fields.stock,
       expiry: Timestamp.fromDate(fields.productExpiry),
@@ -80,6 +88,8 @@ export class InventoryBatchService {
     name: string
     barcode: string
     rack: string
+    tag: string
+    status: string
     price: number
     category: string
     costPrice: number
@@ -138,6 +148,8 @@ export class InventoryBatchService {
       name,
       barcode,
       rack,
+      tag,
+      status,
       price,
       category,
       costPrice,
@@ -168,6 +180,8 @@ export class InventoryBatchService {
             name,
             barcode: normalizedBarcode,
             rack,
+            tag,
+            status,
             price,
             category,
             costPrice,
@@ -186,6 +200,8 @@ export class InventoryBatchService {
       name,
       barcode: normalizedBarcode,
       rack,
+      tag,
+      status,
       price,
       category,
       costPrice,

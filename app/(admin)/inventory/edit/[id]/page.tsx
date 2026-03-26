@@ -68,6 +68,8 @@ export default function EditProductPage({
     name: "",
     category: "",
     rack: "",
+    tag: "",
+    status: "",
     price: "",
     costPrice: "",
     unit: "pcs",
@@ -85,6 +87,8 @@ export default function EditProductPage({
         name: product.name || "",
         category: product.category || "",
         rack: product.rack || "",
+        tag: product.tag || "",
+        status: product.status || "",
         price: product.price?.toString() || "0",
         costPrice: product.costPrice?.toString() || "0",
         unit: product.unit || "pcs",
@@ -123,6 +127,8 @@ export default function EditProductPage({
         name: formData.name,
         category,
         rack: formData.rack,
+        tag: formData.tag,
+        status: formData.status,
         price: parseFloat(formData.price),
         costPrice: parseFloat(formData.costPrice),
         unit: normalizeProductUnit(formData.unit),
@@ -273,6 +279,17 @@ export default function EditProductPage({
                     />
                   </div>
                   <div className="space-y-2">
+                    <Label htmlFor="tag" className={labelClass}>
+                      Tag
+                    </Label>
+                    <Input
+                      id="tag"
+                      value={formData.tag}
+                      onChange={(e) => setFormData({ ...formData, tag: e.target.value })}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div className="space-y-2">
                     <Label htmlFor="expiry" className={labelClass}>
                       Expiry <span className="font-normal text-muted-foreground">(optional)</span>
                     </Label>
@@ -360,6 +377,17 @@ export default function EditProductPage({
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="status" className={labelClass}>
+                      Status
+                    </Label>
+                    <Input
+                      id="status"
+                      value={formData.status}
+                      onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                      className={inputClass}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="unit" className={labelClass}>

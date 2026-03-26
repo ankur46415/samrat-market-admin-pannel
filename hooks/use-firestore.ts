@@ -66,6 +66,8 @@ function productFromData(id: string, data: Record<string, unknown>): Product {
   const totalStock = Number((data as any).__totalStock ?? NaN)
   const rawBatches = (data as Record<string, unknown>).__batches
   const rack = trimStr((data as any).rack)
+  const tag = trimStr((data as any).tag)
+  const status = trimStr((data as any).status)
   const batches: ProductBatch[] = Array.isArray(rawBatches)
     ? (rawBatches as ProductBatch[]).map((b) => ({
         id: b.id,
@@ -79,6 +81,8 @@ function productFromData(id: string, data: Record<string, unknown>): Product {
     name: trimStr(data.name),
     category: trimStr(data.category),
     rack,
+    tag,
+    status,
     barcode: optionalBarcode(data.barcode),
     brand: brand.length > 0 ? brand : undefined,
     price: firestoreNumber(data.price, 0),
@@ -188,6 +192,8 @@ export function useProducts() {
       barcode,
       category: (product.category ?? "").trim(),
       rack,
+      tag: String(product.tag ?? "").trim(),
+      status: String(product.status ?? "").trim(),
       price: Number(product.price ?? 0),
       costPrice: Number(product.costPrice ?? 0),
       unit: normalizeProductUnit(product.unit),

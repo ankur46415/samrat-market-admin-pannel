@@ -19,6 +19,10 @@ export interface Product {
   category: string
   /** Rack slot for FEFO/bin allocation (R-1..R-20). Empty string means missing/unknown. */
   rack: string
+  /** Optional display tag for merchandising/filtering */
+  tag: string
+  /** Product status label (e.g. active/inactive) */
+  status: string
   price: number
   costPrice: number
   stock: number

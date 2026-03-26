@@ -40,6 +40,8 @@ export default function AddProductPage() {
     name: "",
     category: "",
     rack: "",
+    tag: "",
+    status: "",
     price: "",
     costPrice: "",
     stock: "",
@@ -94,6 +96,8 @@ export default function AddProductPage() {
         name: formData.name || "Unnamed Product",
         category,
         rack: formData.rack,
+        tag: formData.tag,
+        status: formData.status,
         price: parseFloat(formData.price),
         costPrice: parseFloat(formData.costPrice),
         stock: parseInt(formData.stock) || 0,
@@ -208,6 +212,19 @@ export default function AddProductPage() {
                   </div>
 
                   <div className={fieldGroup}>
+                    <Label htmlFor="tag" className={labelClass}>
+                      Tag
+                    </Label>
+                    <Input
+                      id="tag"
+                      placeholder="e.g. Fast Moving"
+                      value={formData.tag}
+                      onChange={(e) => setFormData({ ...formData, tag: e.target.value })}
+                      className={inputClass}
+                    />
+                  </div>
+
+                  <div className={fieldGroup}>
                     <Label htmlFor="category" className={labelClass}>
                       Category <span className="text-destructive">*</span>
                     </Label>
@@ -279,6 +296,19 @@ export default function AddProductPage() {
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  <div className={fieldGroup}>
+                    <Label htmlFor="status" className={labelClass}>
+                      Status
+                    </Label>
+                    <Input
+                      id="status"
+                      placeholder="e.g. active"
+                      value={formData.status}
+                      onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                      className={inputClass}
+                    />
                   </div>
 
                   <div className={fieldGroup}>

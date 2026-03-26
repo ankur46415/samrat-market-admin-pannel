@@ -25,6 +25,8 @@ interface CsvUploadDialogProps {
 interface CsvRow {
   name: string
   category: string
+  tag?: string
+  status?: string
   price: string
   costPrice: string
   stock: string
@@ -113,6 +115,8 @@ export function CsvUploadDialog({ open, onOpenChange }: CsvUploadDialogProps) {
           const products = validRows.map((row) => ({
             name: row.name.trim(),
             category: row.category.trim(),
+            tag: row.tag?.trim() || "",
+            status: row.status?.trim() || "",
             rack:
               row.rack?.trim() &&
               RACK_OPTIONS_SET.has(row.rack.trim() as any)
