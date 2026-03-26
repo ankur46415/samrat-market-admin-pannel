@@ -32,11 +32,33 @@ import {
 import { RACK_OPTIONS, RACK_OPTIONS_SET } from "@/lib/rack-options"
 import { STATUS_OPTIONS, STATUS_OPTIONS_SET } from "@/lib/status-options"
 
-// Helper to convert Firestore timestamp
-const convertTimestamp = (timestamp: Timestamp | Date | undefined): Date => {
+function isTimestampLike(value: unknown): value is { toDate: () => Date } {
+  return typeof value === "object" && value !== null && "toDate" in value && typeof (value as any).toDate === "function"
+}
+
+// Helper to convert Firestore timestamp-like values into a safe Date
+const convertTimestamp = (timestamp: unknown): Date => {
   if (!timestamp) return new Date()
+  if (timestamp instanceof Date) return timestamp
   if (timestamp instanceof Timestamp) return timestamp.toDate()
-  return timestamp
+  if (isTimestampLike(timestamp)) {
+    const d = timestamp.toDate()
+    return Number.isNaN(d.getTime()) ? new Date() : d
+  }
+  if (typeof timestamp === "string" || typeof timestamp === "number") {
+    const d = new Date(timestamp)
+    return Number.isNaN(d.getTime()) ? new Date() : d
+  }
+  if (typeof timestamp === "object" && timestamp !== null) {
+    const seconds = (timestamp as any).seconds
+    const nanoseconds = (timestamp as any).nanoseconds
+    if (typeof seconds === "number") {
+      const millis = (seconds * 1000) + (typeof nanoseconds === "number" ? Math.floor(nanoseconds / 1_000_000) : 0)
+      const d = new Date(millis)
+      return Number.isNaN(d.getTime()) ? new Date() : d
+    }
+  }
+  return new Date()
 }
 
 /** Map Firestore product doc → Product (matches console: barcode, category, costPrice, minStock, name, price, stock, unit, …) */
@@ -73,8 +95,8 @@ function productFromData(id: string, data: Record<string, unknown>): Product {
     ? (rawBatches as ProductBatch[]).map((b) => ({
         id: b.id,
         quantity: Number.isFinite(Number(b.quantity)) ? Number(b.quantity) : 0,
-        expiryDate: b.expiryDate instanceof Date ? b.expiryDate : new Date(b.expiryDate),
-        createdAt: b.createdAt instanceof Date ? b.createdAt : new Date(b.createdAt),
+        expiryDate: convertTimestamp(b.expiryDate),
+        createdAt: convertTimestamp(b.createdAt),
       }))
     : []
   return {
@@ -129,8 +151,8 @@ export function useProducts() {
                   return {
                     id: b.id,
                     quantity: Number.isFinite(Number(bd.quantity)) ? Number(bd.quantity) : 0,
-                    expiryDate: convertTimestamp(bd.expiryDate as Timestamp | undefined),
-                    createdAt: convertTimestamp(bd.createdAt as Timestamp | undefined),
+                    expiryDate: convertTimestamp(bd.expiryDate),
+                    createdAt: convertTimestamp(bd.createdAt),
                   }
                 })
                 batchList.sort((a, b) => a.expiryDate.getTime() - b.expiryDate.getTime())
