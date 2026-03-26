@@ -33,6 +33,7 @@ import { toast } from "sonner"
 import { normalizeProductUnit, parseMinStockInput } from "@/lib/stock"
 import type { Product } from "@/lib/types"
 import { RACK_OPTIONS, RACK_OPTIONS_SET } from "@/lib/rack-options"
+import { STATUS_OPTIONS, STATUS_OPTIONS_SET } from "@/lib/status-options"
 import {
   inventoryTableFrameClassName,
   invTableHeadClass,
@@ -69,7 +70,7 @@ export default function EditProductPage({
     category: "",
     rack: "",
     tag: "",
-    status: "",
+    status: "active",
     price: "",
     costPrice: "",
     unit: "pcs",
@@ -117,6 +118,10 @@ export default function EditProductPage({
 
     if (!formData.rack || !RACK_OPTIONS_SET.has(formData.rack as (typeof RACK_OPTIONS)[number])) {
       toast.error("Select rack")
+      return
+    }
+    if (!formData.status || !STATUS_OPTIONS_SET.has(formData.status as (typeof STATUS_OPTIONS)[number])) {
+      toast.error("Select status")
       return
     }
 
@@ -382,12 +387,21 @@ export default function EditProductPage({
                     <Label htmlFor="status" className={labelClass}>
                       Status
                     </Label>
-                    <Input
-                      id="status"
-                      value={formData.status}
-                      onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                      className={inputClass}
-                    />
+                    <Select
+                      value={formData.status || ""}
+                      onValueChange={(value: string) => setFormData({ ...formData, status: value })}
+                    >
+                      <SelectTrigger className={cn(inputClass, "w-full")}>
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {STATUS_OPTIONS.map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {opt}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="unit" className={labelClass}>

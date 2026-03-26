@@ -30,6 +30,7 @@ import {
   normalizeProductUnit,
 } from "@/lib/stock"
 import { RACK_OPTIONS, RACK_OPTIONS_SET } from "@/lib/rack-options"
+import { STATUS_OPTIONS, STATUS_OPTIONS_SET } from "@/lib/status-options"
 
 // Helper to convert Firestore timestamp
 const convertTimestamp = (timestamp: Timestamp | Date | undefined): Date => {
@@ -174,6 +175,10 @@ export function useProducts() {
     if (!rack || !RACK_OPTIONS_SET.has(rack as (typeof RACK_OPTIONS)[number])) {
       throw new Error("Rack must be one of predefined options")
     }
+    const status = String(product.status ?? "").trim()
+    if (!status || !STATUS_OPTIONS_SET.has(status as (typeof STATUS_OPTIONS)[number])) {
+      throw new Error("Status must be active or deactive")
+    }
     const expiryRaw = (product.expiry || "").trim()
     if (!expiryRaw) {
       throw new Error("Expiry Date is required for batch creation")
@@ -193,7 +198,7 @@ export function useProducts() {
       category: (product.category ?? "").trim(),
       rack,
       tag: String(product.tag ?? "").trim(),
-      status: String(product.status ?? "").trim(),
+      status,
       price: Number(product.price ?? 0),
       costPrice: Number(product.costPrice ?? 0),
       unit: normalizeProductUnit(product.unit),
