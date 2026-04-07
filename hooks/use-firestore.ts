@@ -18,7 +18,7 @@ import {
   QueryConstraint,
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
-import type { Product, ProductBatch, Customer, Sale, LedgerEntry, DashboardStats } from "@/lib/types"
+import type { Product, ProductBatch, Customer, Sale, LedgerEntry, DashboardStats, Order } from "@/lib/types"
 import { saleFromFirestoreDoc } from "@/lib/sale-from-firestore"
 import { InventoryBatchService } from "@/lib/features/inventory/services/inventory_batch_service"
 import {
@@ -495,4 +495,50 @@ export function useCategories() {
   }, [] as { id: string; name: string; productCount: number }[])
 
   return { categories, loading }
+}
+
+// Orders Hook
+export function useOrders() {
+  const [orders, setOrders] = useState<Order[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const q = query(collection(db, "orders"), orderBy("orderDate", "desc"))
+    
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const items = snapshot.docs.map((doc) => {
+          const data = doc.data()
+          return {
+            id: doc.id,
+            ...data,
+            orderDate: convertTimestamp(data.orderDate),
+          }
+        }) as Order[]
+        setOrders(items)
+        setLoading(false)
+      },
+      (err) => {
+        console.error("Orders error:", err)
+        setError(err.message)
+        setLoading(false)
+      }
+    )
+
+    return () => unsubscribe()
+  }, [])
+
+  const updateOrderStatus = useCallback(async (id: string, status: string) => {
+    await updateDoc(doc(db, "orders", id), {
+      status,
+    })
+  }, [])
+
+  const deleteOrder = useCallback(async (id: string) => {
+    await deleteDoc(doc(db, "orders", id))
+  }, [])
+
+  return { orders, loading, error, updateOrderStatus, deleteOrder }
 }
