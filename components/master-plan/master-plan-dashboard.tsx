@@ -28,7 +28,7 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
-  Layers,
+  Tags,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useMasterPlan } from "@/hooks/use-master-plan"
@@ -52,7 +52,7 @@ import {
 import {
   MasterPlanDeleteDialog,
   MasterPlanItemDialog,
-  MasterPlanOthersDialog,
+  MasterPlanCategoryDialog,
   formatInr,
   itemMargin,
   masterPlanCategoryName,
@@ -85,12 +85,13 @@ export function MasterPlanDashboard() {
   const {
     items,
     allCategories,
-    customCategories,
     loading,
     syncStatus,
     stats,
     categories,
     addCustomCategory,
+    updateCustomCategory,
+    deleteCustomCategory,
     addItem,
     updateItem,
     deleteItem,
@@ -100,7 +101,7 @@ export function MasterPlanDashboard() {
   const [categoryFilter, setCategoryFilter] = useState<string>("All")
   const [searchQuery, setSearchQuery] = useState("")
   const [itemDialogOpen, setItemDialogOpen] = useState(false)
-  const [othersDialogOpen, setOthersDialogOpen] = useState(false)
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<MasterPlanItem | null>(null)
   const [deletingItem, setDeletingItem] = useState<MasterPlanItem | null>(null)
 
@@ -127,11 +128,16 @@ export function MasterPlanDashboard() {
   }, [filteredItems])
 
   const budgetChartData = categories.filter((c) => c.cost > 0)
-  const profitChartData = categories.map((c) => ({
-    name: c.name.split(" ")[0],
-    cost: Math.round(c.cost),
-    profit: Math.round(c.profit),
-  }))
+  const profitChartData = categories
+    .filter((c) => c.cost > 0 || c.profit > 0)
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      shortName: c.name.length > 14 ? `${c.name.slice(0, 12)}…` : c.name,
+      cost: Math.round(c.cost),
+      profit: Math.round(c.profit),
+      color: c.color,
+    }))
 
   if (loading) {
     return <MasterPlanSkeleton />
@@ -160,10 +166,10 @@ export function MasterPlanDashboard() {
           <Button
             variant="outline"
             className="shadow-sm"
-            onClick={() => setOthersDialogOpen(true)}
+            onClick={() => setCategoryDialogOpen(true)}
           >
-            <Layers className="mr-2 h-4 w-4" />
-            Others
+            <Tags className="mr-2 h-4 w-4" />
+            Add Category
           </Button>
           <Button
             className="shadow-sm"
@@ -228,7 +234,7 @@ export function MasterPlanDashboard() {
             <CardDescription>Opening stock investment by category</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-[280px]">
+            <div className="h-[220px]">
               {budgetChartData.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-muted-foreground">
                   No data yet
@@ -242,8 +248,8 @@ export function MasterPlanDashboard() {
                       nameKey="name"
                       cx="50%"
                       cy="50%"
-                      innerRadius={60}
-                      outerRadius={95}
+                      innerRadius={55}
+                      outerRadius={85}
                       paddingAngle={2}
                     >
                       {budgetChartData.map((entry, index) => (
@@ -258,11 +264,23 @@ export function MasterPlanDashboard() {
                     <Tooltip
                       content={({ active, payload }) => {
                         if (!active || !payload?.length) return null
-                        const data = payload[0].payload
+                        const d = payload[0].payload as {
+                          name: string
+                          cost: number
+                          color?: string
+                        }
                         return (
                           <div className="rounded-lg border bg-background p-3 shadow-lg">
-                            <p className="text-sm font-medium">{data.name}</p>
-                            <p className="text-lg font-bold tabular-nums">{formatInr(data.cost)}</p>
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="h-2.5 w-2.5 rounded-full"
+                                style={{ backgroundColor: d.color }}
+                              />
+                              <p className="text-sm font-medium">{d.name}</p>
+                            </div>
+                            <p className="mt-1 text-lg font-bold tabular-nums">
+                              {formatInr(d.cost)}
+                            </p>
                           </div>
                         )
                       }}
@@ -271,6 +289,27 @@ export function MasterPlanDashboard() {
                 </ResponsiveContainer>
               )}
             </div>
+            {budgetChartData.length > 0 ? (
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                {budgetChartData.map((entry, index) => (
+                  <div key={entry.id} className="flex items-center gap-2 text-sm">
+                    <div
+                      className="h-3 w-3 shrink-0 rounded-full"
+                      style={{
+                        backgroundColor:
+                          entry.color || CHART_FILLS[index % CHART_FILLS.length],
+                      }}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                      {entry.name}
+                    </span>
+                    <span className="shrink-0 font-medium tabular-nums">
+                      {formatInr(entry.cost)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -284,19 +323,29 @@ export function MasterPlanDashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={profitChartData}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border/60" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} className="text-muted-foreground" />
+                  <XAxis
+                    dataKey="shortName"
+                    tick={{ fontSize: 10 }}
+                    className="text-muted-foreground"
+                  />
                   <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" />
                   <Tooltip
-                    content={({ active, payload, label }) => {
+                    content={({ active, payload }) => {
                       if (!active || !payload?.length) return null
+                      const d = payload[0].payload as {
+                        name: string
+                        cost: number
+                        profit: number
+                      }
                       return (
                         <div className="rounded-lg border bg-background p-3 shadow-lg">
-                          <p className="mb-1 text-sm font-medium">{label}</p>
-                          {payload.map((p) => (
-                            <p key={p.name} className="text-sm tabular-nums">
-                              {p.name}: {formatInr(Number(p.value))}
-                            </p>
-                          ))}
+                          <p className="mb-1 text-sm font-medium">{d.name}</p>
+                          <p className="text-sm tabular-nums">
+                            Purchase: {formatInr(d.cost)}
+                          </p>
+                          <p className="text-sm tabular-nums">
+                            Profit: {formatInr(d.profit)}
+                          </p>
                         </div>
                       )
                     }}
@@ -503,13 +552,15 @@ export function MasterPlanDashboard() {
         }}
       />
 
-      <MasterPlanOthersDialog
-        open={othersDialogOpen}
-        onOpenChange={setOthersDialogOpen}
-        customCategories={customCategories}
-        onSave={async (name) => {
+      <MasterPlanCategoryDialog
+        open={categoryDialogOpen}
+        onOpenChange={setCategoryDialogOpen}
+        categories={allCategories}
+        onAdd={async (name) => {
           await addCustomCategory(name)
         }}
+        onUpdate={updateCustomCategory}
+        onDelete={deleteCustomCategory}
       />
 
       <MasterPlanDeleteDialog

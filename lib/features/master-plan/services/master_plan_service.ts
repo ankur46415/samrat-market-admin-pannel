@@ -104,6 +104,17 @@ export class MasterPlanService {
     return input.id
   }
 
+  async deleteCustomCategory(id: string): Promise<void> {
+    await deleteDoc(doc(db, CUSTOM_CATEGORIES, id))
+  }
+
+  async updateCustomCategory(id: string, name: string): Promise<void> {
+    await updateDoc(doc(db, CUSTOM_CATEGORIES, id), {
+      name,
+      updatedAt: serverTimestamp(),
+    })
+  }
+
   subscribeBranches(onData: (branches: MasterPlanBranch[]) => void, onError?: (err: Error) => void): Unsubscribe {
     const q = query(collection(db, BRANCHES), orderBy("createdAt", "asc"))
     return onSnapshot(

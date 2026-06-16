@@ -1,8 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { Pencil, Trash2, Check, X } from "lucide-react"
 import {
   masterPlanCategoryName,
+  isBuiltinCategoryId,
   type MasterPlanCategoryOption,
 } from "@/lib/features/master-plan/constants"
 import type { MasterPlanItem, MasterPlanItemInput } from "@/lib/features/master-plan/models"
@@ -221,35 +223,46 @@ export function MasterPlanItemDialog({ open, onOpenChange, item, categories, onS
   )
 }
 
-type OthersDialogProps = {
+type CategoryDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  customCategories: Array<{ id: string; name: string }>
-  onSave: (name: string) => Promise<void>
+  categories: MasterPlanCategoryOption[]
+  onAdd: (name: string) => Promise<void>
+  onUpdate: (id: string, name: string) => Promise<void>
+  onDelete: (id: string) => Promise<void>
 }
 
-export function MasterPlanOthersDialog({
+export function MasterPlanCategoryDialog({
   open,
   onOpenChange,
-  customCategories,
-  onSave,
-}: OthersDialogProps) {
-  const [name, setName] = useState("")
+  categories,
+  onAdd,
+  onUpdate,
+  onDelete,
+}: CategoryDialogProps) {
+  const [newName, setNewName] = useState("")
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState("")
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (!open) return
-    setName("")
+    setNewName("")
     setError("")
+    setEditingId(null)
+    setEditName("")
+    setDeletingId(null)
   }, [open])
 
-  const handleSave = async () => {
+  const handleAdd = async () => {
     setSaving(true)
     setError("")
     try {
-      await onSave(name)
-      onOpenChange(false)
+      await onAdd(newName)
+      setNewName("")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add category")
     } finally {
@@ -257,57 +270,196 @@ export function MasterPlanOthersDialog({
     }
   }
 
+  const startEdit = (cat: MasterPlanCategoryOption) => {
+    setEditingId(cat.id)
+    setEditName(cat.name)
+    setError("")
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditName("")
+  }
+
+  const handleUpdate = async (id: string) => {
+    setSaving(true)
+    setError("")
+    try {
+      await onUpdate(id, editName)
+      setEditingId(null)
+      setEditName("")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update category")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deletingId) return
+    setDeleting(true)
+    setError("")
+    try {
+      await onDelete(deletingId)
+      setDeletingId(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete category")
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Add category</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          {error ? (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              {error}
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Manage categories</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {error ? (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                {error}
+              </div>
+            ) : null}
+
+            <div className="flex gap-2">
+              <Input
+                placeholder="New category name"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newName.trim()) handleAdd()
+                }}
+              />
+              <Button onClick={handleAdd} disabled={saving || !newName.trim()} className="shrink-0">
+                Add
+              </Button>
             </div>
-          ) : null}
-          <div>
-            <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Category name
-            </Label>
-            <Input
-              className="mt-1.5"
-              placeholder="e.g. Electronics, Stationery"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          {customCategories.length > 0 ? (
-            <div>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Your categories
+
+            <div className="space-y-2">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                All categories ({categories.length})
               </p>
-              <div className="flex flex-wrap gap-2">
-                {customCategories.map((cat) => (
-                  <span
-                    key={cat.id}
-                    className="rounded-full border border-border bg-muted/50 px-3 py-1 text-xs font-medium"
-                  >
-                    {cat.name}
-                  </span>
-                ))}
+              <div className="max-h-[320px] space-y-2 overflow-y-auto rounded-lg border border-border/80 p-2">
+                {categories.map((cat) => {
+                  const isEditing = editingId === cat.id
+                  const isCustom = cat.isCustom && !isBuiltinCategoryId(cat.id)
+
+                  return (
+                    <div
+                      key={cat.id}
+                      className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2"
+                    >
+                      <div
+                        className="h-3 w-3 shrink-0 rounded-full"
+                        style={{ backgroundColor: cat.color }}
+                      />
+                      {isEditing ? (
+                        <Input
+                          className="h-8 flex-1"
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          autoFocus
+                        />
+                      ) : (
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium">{cat.name}</span>
+                      )}
+                      {!isCustom ? (
+                        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                          Default
+                        </span>
+                      ) : null}
+                      <div className="flex shrink-0 items-center gap-1">
+                        {isCustom ? (
+                          isEditing ? (
+                            <>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-emerald-600"
+                                disabled={saving || !editName.trim()}
+                                onClick={() => handleUpdate(cat.id)}
+                              >
+                                <Check className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={cancelEdit}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => startEdit(cat)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                                <span className="sr-only">Edit</span>
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive hover:text-destructive"
+                                onClick={() => setDeletingId(cat.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                <span className="sr-only">Delete</span>
+                              </Button>
+                            </>
+                          )
+                        ) : null}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
-          ) : null}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button onClick={handleSave} disabled={saving || !name.trim()}>
-            Save category
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deletingId} onOpenChange={(open) => !open && setDeletingId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">Delete category?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Delete &quot;
+              {masterPlanCategoryName(deletingId ?? "", categories)}
+              &quot;? Items using this category must be moved first.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              disabled={deleting}
+              onClick={async (e) => {
+                e.preventDefault()
+                await handleDelete()
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }
 

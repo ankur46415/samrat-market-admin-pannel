@@ -64,6 +64,21 @@ export function isDuplicateCategoryName(name: string, categories: MasterPlanCate
   return categories.some((c) => c.name.trim().toLowerCase() === normalized)
 }
 
+export function isDuplicateCategoryNameExcept(
+  name: string,
+  categories: MasterPlanCategoryOption[],
+  exceptId: string
+): boolean {
+  const normalized = name.trim().toLowerCase()
+  return categories.some(
+    (c) => c.id !== exceptId && c.name.trim().toLowerCase() === normalized
+  )
+}
+
+export function isBuiltinCategoryId(id: string): boolean {
+  return BUILTIN_CATEGORY_IDS.has(id)
+}
+
 export const MASTER_PLAN_STORE_NAME = "Samrat Supermarket Jaunpur"
 
 export const DEFAULT_MASTER_PLAN_BRANCH = {

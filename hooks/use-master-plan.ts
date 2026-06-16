@@ -4,6 +4,7 @@ import {
   mergeMasterPlanCategories,
   slugifyCategoryId,
   isDuplicateCategoryName,
+  isDuplicateCategoryNameExcept,
   type MasterPlanCategoryOption,
 } from "@/lib/features/master-plan/constants"
 import { CHART_FILLS } from "@/lib/chart-colors"
@@ -188,6 +189,33 @@ export function useMasterPlan() {
     [allCategories, customCategories.length]
   )
 
+  const updateCustomCategory = useCallback(
+    async (id: string, name: string) => {
+      const trimmed = name.trim()
+      if (!trimmed) throw new Error("Please enter a category name.")
+      if (isDuplicateCategoryNameExcept(trimmed, allCategories, id)) {
+        throw new Error("This category name already exists.")
+      }
+      setSyncStatus("syncing")
+      await masterPlanService.updateCustomCategory(id, trimmed)
+      setSyncStatus("synced")
+    },
+    [allCategories]
+  )
+
+  const deleteCustomCategory = useCallback(
+    async (id: string) => {
+      const inUse = items.some((item) => item.category === id)
+      if (inUse) {
+        throw new Error("Cannot delete — items are using this category.")
+      }
+      setSyncStatus("syncing")
+      await masterPlanService.deleteCustomCategory(id)
+      setSyncStatus("synced")
+    },
+    [items]
+  )
+
   const addItem = useCallback(
     async (input: MasterPlanItemInput) => {
       if (!activeBranchId) return
@@ -238,6 +266,8 @@ export function useMasterPlan() {
     stats,
     categories,
     addCustomCategory,
+    updateCustomCategory,
+    deleteCustomCategory,
     addItem,
     updateItem,
     deleteItem,
