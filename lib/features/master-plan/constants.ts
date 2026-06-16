@@ -14,10 +14,12 @@ export function masterPlanCategoryName(id: string): string {
   return MASTER_PLAN_CATEGORIES.find((c) => c.id === id)?.name ?? id
 }
 
+export const MASTER_PLAN_STORE_NAME = "Samrat Supermarket Jaunpur"
+
 export const DEFAULT_MASTER_PLAN_BRANCH = {
-  name: "UP Rural Supermarket",
-  description: "Master Opening Stock Planner — ₹8 Lakh General Store Blueprint",
-  strategyLabel: "Strategy: ₹8 Lakh Cap (87 High-Variety Items)",
-  investmentCap: 800000,
+  name: MASTER_PLAN_STORE_NAME,
+  description: "",
+  strategyLabel: "",
+  investmentCap: 0,
   isDefault: true,
 } as const

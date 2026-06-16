@@ -93,7 +93,6 @@ export class MasterPlanService {
 
     const branchRef = await addDoc(collection(db, BRANCHES), {
       ...DEFAULT_MASTER_PLAN_BRANCH,
-      strategyLabel: `Strategy: ₹8 Lakh Cap (${MASTER_PLAN_SEED_ITEMS.length} High-Variety Items)`,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     })

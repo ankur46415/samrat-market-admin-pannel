@@ -32,7 +32,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useMasterPlan } from "@/hooks/use-master-plan"
 import type { MasterPlanItem } from "@/lib/features/master-plan/models"
-import { MASTER_PLAN_CATEGORIES, DEFAULT_MASTER_PLAN_BRANCH } from "@/lib/features/master-plan/constants"
+import { MASTER_PLAN_CATEGORIES, MASTER_PLAN_STORE_NAME } from "@/lib/features/master-plan/constants"
 import { CHART_FILLS } from "@/lib/chart-colors"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
@@ -140,16 +140,12 @@ export function MasterPlanDashboard() {
             <span className="text-sm font-medium uppercase tracking-wide">Master Plan</span>
           </div>
           <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-            {DEFAULT_MASTER_PLAN_BRANCH.name}
+            {MASTER_PLAN_STORE_NAME}
           </h1>
-          <p className="max-w-3xl text-sm text-muted-foreground md:text-base">
-            {DEFAULT_MASTER_PLAN_BRANCH.description}. Manage opening stock, wholesale prices, and
-            quantities for your ₹8 Lakh startup blueprint.
-          </p>
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <SyncBadge status={syncStatus} />
             <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">
-              {stats.itemCount} items · ₹8 Lakh cap
+              {stats.itemCount} items
             </Badge>
           </div>
         </div>
