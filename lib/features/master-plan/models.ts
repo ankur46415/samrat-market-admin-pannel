@@ -9,11 +9,21 @@ export interface MasterPlanBranch {
   updatedAt: Date
 }
 
-export interface MasterPlanCustomCategory {
+export interface MasterPlanBranchCategory {
   id: string
   name: string
   color: string
+  sortOrder: number
   createdAt: Date
+}
+
+export interface MasterPlanBranchSummary {
+  branchId: string
+  branchName: string
+  totalInvestment: number
+  grossProfit: number
+  itemCount: number
+  sharePercent: number
 }
 
 export interface MasterPlanItem {

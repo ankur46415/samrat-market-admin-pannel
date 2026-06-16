@@ -28,28 +28,15 @@ export function slugifyCategoryId(name: string): string {
   return slug ? `custom-${slug}` : `custom-${Date.now()}`
 }
 
-export function mergeMasterPlanCategories(
-  custom: Array<{ id: string; name: string; color?: string }>
+export function branchCategoriesToOptions(
+  categories: Array<{ id: string; name: string; color: string }>
 ): MasterPlanCategoryOption[] {
-  const builtIn: MasterPlanCategoryOption[] = MASTER_PLAN_CATEGORIES.map((c) => ({
+  return categories.map((c) => ({
     id: c.id,
     name: c.name,
     color: c.color,
+    isCustom: true,
   }))
-  const seen = new Set(BUILTIN_CATEGORY_IDS)
-  const extras = custom
-    .filter((c) => {
-      if (seen.has(c.id)) return false
-      seen.add(c.id)
-      return true
-    })
-    .map((c) => ({
-      id: c.id,
-      name: c.name,
-      color: c.color ?? "#64748B",
-      isCustom: true,
-    }))
-  return [...builtIn, ...extras]
 }
 
 export function masterPlanCategoryName(

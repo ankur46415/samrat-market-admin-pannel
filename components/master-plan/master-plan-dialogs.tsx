@@ -5,7 +5,6 @@ import { Pencil, Trash2, Check, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
   masterPlanCategoryName,
-  isBuiltinCategoryId,
   type MasterPlanCategoryOption,
 } from "@/lib/features/master-plan/constants"
 import type { MasterPlanBranch, MasterPlanItem, MasterPlanItemInput } from "@/lib/features/master-plan/models"
@@ -45,15 +44,15 @@ type ItemDialogProps = {
   onSave: (input: MasterPlanItemInput) => Promise<void>
 }
 
-const emptyForm: MasterPlanItemInput = {
-  category: "Groceries",
+const emptyForm = (): MasterPlanItemInput => ({
+  category: "",
   name: "",
   brand: "",
   size: "",
   whls: 0,
   mrp: 0,
   qty: 0,
-}
+})
 
 function itemToForm(item: MasterPlanItem): MasterPlanItemInput {
   return {
@@ -74,9 +73,16 @@ export function MasterPlanItemDialog({ open, onOpenChange, item, categories, onS
 
   useEffect(() => {
     if (!open) return
-    setForm(item ? itemToForm(item) : emptyForm)
+    if (item) {
+      setForm(itemToForm(item))
+    } else {
+      setForm({
+        ...emptyForm(),
+        category: categories[0]?.id ?? "",
+      })
+    }
     setError("")
-  }, [open, item])
+  }, [open, item, categories])
 
   const handleOpenChange = (next: boolean) => {
     onOpenChange(next)
@@ -85,6 +91,10 @@ export function MasterPlanItemDialog({ open, onOpenChange, item, categories, onS
   const handleSave = async () => {
     if (!form.name.trim()) {
       setError("Please enter a valid Product Name.")
+      return
+    }
+    if (!form.category) {
+      setError("Please add a category for this branch first.")
       return
     }
     setSaving(true)
@@ -573,7 +583,7 @@ export function MasterPlanCategoryDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Manage categories</DialogTitle>
+            <DialogTitle>Manage categories — this branch only</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {error ? (
@@ -603,7 +613,6 @@ export function MasterPlanCategoryDialog({
               <div className="max-h-[320px] space-y-2 overflow-y-auto rounded-lg border border-border/80 p-2">
                 {categories.map((cat) => {
                   const isEditing = editingId === cat.id
-                  const isCustom = cat.isCustom && !isBuiltinCategoryId(cat.id)
 
                   return (
                     <div
@@ -624,60 +633,53 @@ export function MasterPlanCategoryDialog({
                       ) : (
                         <span className="min-w-0 flex-1 truncate text-sm font-medium">{cat.name}</span>
                       )}
-                      {!isCustom ? (
-                        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                          Default
-                        </span>
-                      ) : null}
                       <div className="flex shrink-0 items-center gap-1">
-                        {isCustom ? (
-                          isEditing ? (
-                            <>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-emerald-600"
-                                disabled={saving || !editName.trim()}
-                                onClick={() => handleUpdate(cat.id)}
-                              >
-                                <Check className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={cancelEdit}
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </>
-                          ) : (
-                            <>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => startEdit(cat)}
-                              >
-                                <Pencil className="h-4 w-4" />
-                                <span className="sr-only">Edit</span>
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-destructive hover:text-destructive"
-                                onClick={() => setDeletingId(cat.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                <span className="sr-only">Delete</span>
-                              </Button>
-                            </>
-                          )
-                        ) : null}
+                        {isEditing ? (
+                          <>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-emerald-600"
+                              disabled={saving || !editName.trim()}
+                              onClick={() => handleUpdate(cat.id)}
+                            >
+                              <Check className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={cancelEdit}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => startEdit(cat)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                              <span className="sr-only">Edit</span>
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              onClick={() => setDeletingId(cat.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              <span className="sr-only">Delete</span>
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </div>
                   )

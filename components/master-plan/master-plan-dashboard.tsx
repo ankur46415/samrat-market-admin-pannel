@@ -98,6 +98,8 @@ export function MasterPlanDashboard() {
     setActiveBranchId,
     items,
     allCategories,
+    branchSummaries,
+    totalAllBranchesInvestment,
     loading,
     syncStatus,
     stats,
@@ -161,6 +163,13 @@ export function MasterPlanDashboard() {
       color: c.color,
     }))
 
+  const allBranchesChartData = branchSummaries
+    .filter((b) => b.totalInvestment > 0)
+    .map((b, index) => ({
+      ...b,
+      color: CHART_FILLS[index % CHART_FILLS.length],
+    }))
+
   if (loading) {
     return <MasterPlanSkeleton />
   }
@@ -222,6 +231,121 @@ export function MasterPlanDashboard() {
             Add item
           </Button>
         </div>
+      </div>
+
+      {/* All branches overview */}
+      <Card className="border-primary/20 bg-primary/[0.02] shadow-md shadow-black/5">
+        <CardHeader>
+          <CardTitle>All Branches — Total Investment</CardTitle>
+          <CardDescription>
+            Combined investment across all branches: {formatInr(totalAllBranchesInvestment)}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {branchSummaries.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No branches yet.</p>
+          ) : (
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div className="h-[240px]">
+                {allBranchesChartData.length === 0 ? (
+                  <div className="flex h-full items-center justify-center text-muted-foreground">
+                    No investment data yet
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={allBranchesChartData}
+                        dataKey="totalInvestment"
+                        nameKey="branchName"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={85}
+                        paddingAngle={2}
+                      >
+                        {allBranchesChartData.map((entry) => (
+                          <Cell key={entry.branchId} fill={entry.color} stroke="hsl(var(--background))" strokeWidth={2} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        content={({ active, payload }) => {
+                          if (!active || !payload?.length) return null
+                          const d = payload[0].payload as (typeof allBranchesChartData)[number]
+                          return (
+                            <div className="rounded-lg border bg-background p-3 shadow-lg">
+                              <div className="flex items-center gap-2">
+                                <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: d.color }} />
+                                <p className="text-sm font-medium">{d.branchName}</p>
+                              </div>
+                              <p className="mt-1 text-sm tabular-nums">{formatInr(d.totalInvestment)}</p>
+                              <p className="text-xs text-muted-foreground">{d.sharePercent.toFixed(1)}% of total</p>
+                            </div>
+                          )
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+              <div className="space-y-3">
+                {branchSummaries.map((branch, index) => {
+                  const isActive = branch.branchId === activeBranchId
+                  const color = CHART_FILLS[index % CHART_FILLS.length]
+                  return (
+                    <div
+                      key={branch.branchId}
+                      className={cn(
+                        "rounded-xl border p-4 transition-colors",
+                        isActive
+                          ? "border-primary/40 bg-primary/5"
+                          : "border-border/70 bg-card"
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <div className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                          <div>
+                            <p className="font-semibold">{branch.branchName}</p>
+                            {isActive ? (
+                              <p className="text-xs text-primary">Currently viewing</p>
+                            ) : null}
+                          </div>
+                        </div>
+                        <Badge variant="outline" className="shrink-0 tabular-nums">
+                          {branch.sharePercent.toFixed(1)}%
+                        </Badge>
+                      </div>
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Investment</p>
+                          <p className="font-semibold tabular-nums">{formatInr(branch.totalInvestment)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Profit</p>
+                          <p className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                            {formatInr(branch.grossProfit)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Items</p>
+                          <p className="font-semibold tabular-nums">{branch.itemCount}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Current branch KPIs */}
+      <div className="flex items-center gap-2">
+        <Badge variant="secondary" className="text-sm font-medium">
+          {activeBranch?.name ?? "Branch"} — details below
+        </Badge>
       </div>
 
       {/* KPI stats */}
@@ -506,6 +630,7 @@ export function MasterPlanDashboard() {
                                 })
                               }}
                               className="h-8 w-14 px-1 text-center tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                              onWheel={(e) => e.currentTarget.blur()}
                             />
                             <Button
                               type="button"

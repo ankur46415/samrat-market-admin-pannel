@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   MASTER_PLAN_CATEGORIES,
-  mergeMasterPlanCategories,
+  branchCategoriesToOptions,
   slugifyCategoryId,
   isDuplicateCategoryName,
   isDuplicateCategoryNameExcept,
@@ -11,8 +11,9 @@ import {
 import { CHART_FILLS } from "@/lib/chart-colors"
 import type {
   MasterPlanBranch,
+  MasterPlanBranchCategory,
+  MasterPlanBranchSummary,
   MasterPlanCategoryAggregate,
-  MasterPlanCustomCategory,
   MasterPlanItem,
   MasterPlanItemInput,
   MasterPlanStats,
@@ -20,6 +21,17 @@ import type {
 import { masterPlanService } from "@/lib/features/master-plan/services/master_plan_service"
 
 export type SyncStatus = "connecting" | "syncing" | "synced" | "error" | "offline"
+
+function sumItems(items: MasterPlanItem[]) {
+  return items.reduce(
+    (acc, item) => {
+      acc.investment += item.whls * item.qty
+      acc.profit += (item.mrp - item.whls) * item.qty
+      return acc
+    },
+    { investment: 0, profit: 0 }
+  )
+}
 
 function computeStats(
   items: MasterPlanItem[],
@@ -65,14 +77,7 @@ function computeStats(
     })
   })
 
-  categories.sort((a, b) => {
-    const aBuiltIn = MASTER_PLAN_CATEGORIES.findIndex((c) => c.id === a.id)
-    const bBuiltIn = MASTER_PLAN_CATEGORIES.findIndex((c) => c.id === b.id)
-    if (aBuiltIn !== -1 && bBuiltIn !== -1) return aBuiltIn - bBuiltIn
-    if (aBuiltIn !== -1) return -1
-    if (bBuiltIn !== -1) return 1
-    return a.name.localeCompare(b.name)
-  })
+  categories.sort((a, b) => a.name.localeCompare(b.name))
 
   const weightedMargin =
     totalInvestment + grossProfit > 0 ? (grossProfit / (totalInvestment + grossProfit)) * 100 : 0
@@ -90,26 +95,24 @@ function computeStats(
 
 export function useMasterPlan() {
   const [branches, setBranches] = useState<MasterPlanBranch[]>([])
-  const [items, setItems] = useState<MasterPlanItem[]>([])
-  const [customCategories, setCustomCategories] = useState<MasterPlanCustomCategory[]>([])
+  const [itemsByBranch, setItemsByBranch] = useState<Record<string, MasterPlanItem[]>>({})
+  const [branchCategories, setBranchCategories] = useState<MasterPlanBranchCategory[]>([])
   const [activeBranchId, setActiveBranchId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("connecting")
   const [error, setError] = useState<string | null>(null)
   const seedAttempted = useRef(false)
+  const categoriesSeedAttempted = useRef<Record<string, boolean>>({})
 
-  const allCategories = useMemo(
-    () => mergeMasterPlanCategories(customCategories),
-    [customCategories]
+  const items = useMemo(
+    () => (activeBranchId ? itemsByBranch[activeBranchId] ?? [] : []),
+    [activeBranchId, itemsByBranch]
   )
 
-  useEffect(() => {
-    const unsub = masterPlanService.subscribeCustomCategories(
-      (data) => setCustomCategories(data),
-      (err) => setError(err.message)
-    )
-    return () => unsub()
-  }, [])
+  const allCategories = useMemo(
+    () => branchCategoriesToOptions(branchCategories),
+    [branchCategories]
+  )
 
   useEffect(() => {
     setSyncStatus("connecting")
@@ -149,72 +152,118 @@ export function useMasterPlan() {
   }, [branches])
 
   useEffect(() => {
+    if (branches.length === 0) return
+    const unsubs = branches.map((branch) =>
+      masterPlanService.subscribeItems(branch.id, (data) => {
+        setItemsByBranch((prev) => ({ ...prev, [branch.id]: data }))
+      })
+    )
+    return () => unsubs.forEach((u) => u())
+  }, [branches])
+
+  useEffect(() => {
     if (!activeBranchId) {
-      setItems([])
+      setBranchCategories([])
       return
     }
-    setSyncStatus("syncing")
-    const unsub = masterPlanService.subscribeItems(
+    const unsub = masterPlanService.subscribeBranchCategories(
       activeBranchId,
       (data) => {
-        setItems(data)
-        setSyncStatus("synced")
+        setBranchCategories(data)
+        if (data.length === 0 && !categoriesSeedAttempted.current[activeBranchId]) {
+          const branch = branches.find((b) => b.id === activeBranchId)
+          if (branch?.isDefault) {
+            categoriesSeedAttempted.current[activeBranchId] = true
+            masterPlanService.seedDefaultCategories(activeBranchId).catch(() => {
+              categoriesSeedAttempted.current[activeBranchId] = false
+            })
+          }
+        }
       },
-      (err) => {
-        setSyncStatus("error")
-        setError(err.message)
-      }
+      (err) => setError(err.message)
     )
     return () => unsub()
-  }, [activeBranchId])
+  }, [activeBranchId, branches])
 
   const { stats, categories } = useMemo(
     () => computeStats(items, allCategories),
     [items, allCategories]
   )
 
+  const branchSummaries = useMemo((): MasterPlanBranchSummary[] => {
+    const rows = branches.map((branch) => {
+      const branchItems = itemsByBranch[branch.id] ?? []
+      const { investment, profit } = sumItems(branchItems)
+      return {
+        branchId: branch.id,
+        branchName: branch.name,
+        totalInvestment: investment,
+        grossProfit: profit,
+        itemCount: branchItems.length,
+        sharePercent: 0,
+      }
+    })
+    const grandTotal = rows.reduce((sum, r) => sum + r.totalInvestment, 0)
+    return rows.map((r) => ({
+      ...r,
+      sharePercent: grandTotal > 0 ? (r.totalInvestment / grandTotal) * 100 : 0,
+    }))
+  }, [branches, itemsByBranch])
+
+  const totalAllBranchesInvestment = useMemo(
+    () => branchSummaries.reduce((sum, b) => sum + b.totalInvestment, 0),
+    [branchSummaries]
+  )
+
   const addCustomCategory = useCallback(
     async (name: string) => {
+      if (!activeBranchId) throw new Error("Select a branch first.")
       const trimmed = name.trim()
       if (!trimmed) throw new Error("Please enter a category name.")
       if (isDuplicateCategoryName(trimmed, allCategories)) {
-        throw new Error("This category already exists.")
+        throw new Error("This category already exists in this branch.")
       }
       setSyncStatus("syncing")
       const id = slugifyCategoryId(trimmed)
-      const color = CHART_FILLS[customCategories.length % CHART_FILLS.length]
-      await masterPlanService.addCustomCategory({ id, name: trimmed, color })
+      const color = CHART_FILLS[branchCategories.length % CHART_FILLS.length]
+      await masterPlanService.addBranchCategory(activeBranchId, {
+        id,
+        name: trimmed,
+        color,
+        sortOrder: branchCategories.length + 1,
+      })
       setSyncStatus("synced")
-      return id
     },
-    [allCategories, customCategories.length]
+    [activeBranchId, allCategories, branchCategories.length]
   )
 
   const updateCustomCategory = useCallback(
     async (id: string, name: string) => {
+      if (!activeBranchId) return
       const trimmed = name.trim()
       if (!trimmed) throw new Error("Please enter a category name.")
       if (isDuplicateCategoryNameExcept(trimmed, allCategories, id)) {
-        throw new Error("This category name already exists.")
+        throw new Error("This category name already exists in this branch.")
       }
       setSyncStatus("syncing")
-      await masterPlanService.updateCustomCategory(id, trimmed)
+      await masterPlanService.updateBranchCategory(activeBranchId, id, trimmed)
       setSyncStatus("synced")
     },
-    [allCategories]
+    [activeBranchId, allCategories]
   )
 
   const deleteCustomCategory = useCallback(
     async (id: string) => {
+      if (!activeBranchId) return
       const inUse = items.some((item) => item.category === id)
       if (inUse) {
-        throw new Error("Cannot delete — items are using this category.")
+        throw new Error("Cannot delete — items in this branch use this category.")
       }
       setSyncStatus("syncing")
-      await masterPlanService.deleteCustomCategory(id)
+      await masterPlanService.deleteBranchCategory(activeBranchId, id)
       setSyncStatus("synced")
     },
-    [items]
+    [activeBranchId, items]
   )
 
   const addItem = useCallback(
@@ -315,7 +364,9 @@ export function useMasterPlan() {
     setActiveBranchId,
     items,
     allCategories,
-    customCategories,
+    branchCategories,
+    branchSummaries,
+    totalAllBranchesInvestment,
     loading,
     syncStatus,
     error,
