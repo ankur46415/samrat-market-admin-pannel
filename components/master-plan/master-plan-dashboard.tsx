@@ -28,11 +28,12 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  Layers,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useMasterPlan } from "@/hooks/use-master-plan"
 import type { MasterPlanItem } from "@/lib/features/master-plan/models"
-import { MASTER_PLAN_CATEGORIES, MASTER_PLAN_STORE_NAME } from "@/lib/features/master-plan/constants"
+import { MASTER_PLAN_STORE_NAME } from "@/lib/features/master-plan/constants"
 import { CHART_FILLS } from "@/lib/chart-colors"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
@@ -51,8 +52,10 @@ import {
 import {
   MasterPlanDeleteDialog,
   MasterPlanItemDialog,
+  MasterPlanOthersDialog,
   formatInr,
   itemMargin,
+  masterPlanCategoryName,
 } from "@/components/master-plan/master-plan-dialogs"
 import type { SyncStatus } from "@/hooks/use-master-plan"
 
@@ -81,10 +84,13 @@ function SyncBadge({ status }: { status: SyncStatus }) {
 export function MasterPlanDashboard() {
   const {
     items,
+    allCategories,
+    customCategories,
     loading,
     syncStatus,
     stats,
     categories,
+    addCustomCategory,
     addItem,
     updateItem,
     deleteItem,
@@ -94,6 +100,7 @@ export function MasterPlanDashboard() {
   const [categoryFilter, setCategoryFilter] = useState<string>("All")
   const [searchQuery, setSearchQuery] = useState("")
   const [itemDialogOpen, setItemDialogOpen] = useState(false)
+  const [othersDialogOpen, setOthersDialogOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<MasterPlanItem | null>(null)
   const [deletingItem, setDeletingItem] = useState<MasterPlanItem | null>(null)
 
@@ -150,6 +157,14 @@ export function MasterPlanDashboard() {
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
+          <Button
+            variant="outline"
+            className="shadow-sm"
+            onClick={() => setOthersDialogOpen(true)}
+          >
+            <Layers className="mr-2 h-4 w-4" />
+            Others
+          </Button>
           <Button
             className="shadow-sm"
             onClick={() => {
@@ -319,7 +334,7 @@ export function MasterPlanDashboard() {
             <CategoryPill active={categoryFilter === "All"} onClick={() => setCategoryFilter("All")}>
               All items
             </CategoryPill>
-            {MASTER_PLAN_CATEGORIES.map((cat) => (
+            {allCategories.map((cat) => (
               <CategoryPill
                 key={cat.id}
                 active={categoryFilter === cat.id}
@@ -364,7 +379,7 @@ export function MasterPlanDashboard() {
                         <TableCell className="font-medium">{item.name}</TableCell>
                         <TableCell className="hidden lg:table-cell">
                           <Badge variant="secondary" className="font-normal">
-                            {item.category}
+                            {masterPlanCategoryName(item.category, allCategories)}
                           </Badge>
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-muted-foreground">
@@ -478,12 +493,22 @@ export function MasterPlanDashboard() {
         open={itemDialogOpen}
         onOpenChange={setItemDialogOpen}
         item={editingItem}
+        categories={allCategories}
         onSave={async (input) => {
           if (editingItem) {
             await updateItem(editingItem.id, input)
           } else {
             await addItem(input)
           }
+        }}
+      />
+
+      <MasterPlanOthersDialog
+        open={othersDialogOpen}
+        onOpenChange={setOthersDialogOpen}
+        customCategories={customCategories}
+        onSave={async (name) => {
+          await addCustomCategory(name)
         }}
       />
 

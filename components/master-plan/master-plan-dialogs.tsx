@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react"
 import {
-  MASTER_PLAN_CATEGORIES,
-  type MasterPlanCategoryId,
   masterPlanCategoryName,
+  type MasterPlanCategoryOption,
 } from "@/lib/features/master-plan/constants"
 import type { MasterPlanItem, MasterPlanItemInput } from "@/lib/features/master-plan/models"
 import { Button } from "@/components/ui/button"
@@ -39,6 +38,7 @@ type ItemDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   item: MasterPlanItem | null
+  categories: MasterPlanCategoryOption[]
   onSave: (input: MasterPlanItemInput) => Promise<void>
 }
 
@@ -64,7 +64,7 @@ function itemToForm(item: MasterPlanItem): MasterPlanItemInput {
   }
 }
 
-export function MasterPlanItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
+export function MasterPlanItemDialog({ open, onOpenChange, item, categories, onSave }: ItemDialogProps) {
   const [form, setForm] = useState<MasterPlanItemInput>(emptyForm)
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
@@ -118,13 +118,13 @@ export function MasterPlanItemDialog({ open, onOpenChange, item, onSave }: ItemD
             </Label>
             <Select
               value={form.category}
-              onValueChange={(v) => setForm((f) => ({ ...f, category: v as MasterPlanCategoryId }))}
+              onValueChange={(v) => setForm((f) => ({ ...f, category: v }))}
             >
               <SelectTrigger className="mt-1.5">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {MASTER_PLAN_CATEGORIES.map((cat) => (
+                {categories.map((cat) => (
                   <SelectItem key={cat.id} value={cat.id}>
                     {cat.name}
                   </SelectItem>
@@ -214,6 +214,96 @@ export function MasterPlanItemDialog({ open, onOpenChange, item, onSave }: ItemD
           </Button>
           <Button onClick={handleSave} disabled={saving}>
             Save item
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+type OthersDialogProps = {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  customCategories: Array<{ id: string; name: string }>
+  onSave: (name: string) => Promise<void>
+}
+
+export function MasterPlanOthersDialog({
+  open,
+  onOpenChange,
+  customCategories,
+  onSave,
+}: OthersDialogProps) {
+  const [name, setName] = useState("")
+  const [error, setError] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    setName("")
+    setError("")
+  }, [open])
+
+  const handleSave = async () => {
+    setSaving(true)
+    setError("")
+    try {
+      await onSave(name)
+      onOpenChange(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add category")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add category</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          {error ? (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {error}
+            </div>
+          ) : null}
+          <div>
+            <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Category name
+            </Label>
+            <Input
+              className="mt-1.5"
+              placeholder="e.g. Electronics, Stationery"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          {customCategories.length > 0 ? (
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Your categories
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {customCategories.map((cat) => (
+                  <span
+                    key={cat.id}
+                    className="rounded-full border border-border bg-muted/50 px-3 py-1 text-xs font-medium"
+                  >
+                    {cat.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={saving || !name.trim()}>
+            Save category
           </Button>
         </DialogFooter>
       </DialogContent>

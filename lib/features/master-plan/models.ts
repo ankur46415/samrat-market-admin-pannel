@@ -1,5 +1,3 @@
-import type { MasterPlanCategoryId } from "@/lib/features/master-plan/constants"
-
 export interface MasterPlanBranch {
   id: string
   name: string
@@ -11,10 +9,17 @@ export interface MasterPlanBranch {
   updatedAt: Date
 }
 
+export interface MasterPlanCustomCategory {
+  id: string
+  name: string
+  color: string
+  createdAt: Date
+}
+
 export interface MasterPlanItem {
   id: string
   branchId: string
-  category: MasterPlanCategoryId
+  category: string
   name: string
   brand: string
   size: string
@@ -32,7 +37,7 @@ export type MasterPlanItemInput = Omit<
 >
 
 export interface MasterPlanCategoryAggregate {
-  id: MasterPlanCategoryId
+  id: string
   name: string
   color: string
   cost: number

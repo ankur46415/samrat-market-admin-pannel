@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   MASTER_PLAN_CATEGORIES,
-  type MasterPlanCategoryId,
+  mergeMasterPlanCategories,
+  slugifyCategoryId,
+  isDuplicateCategoryName,
+  type MasterPlanCategoryOption,
 } from "@/lib/features/master-plan/constants"
+import { CHART_FILLS } from "@/lib/chart-colors"
 import type {
   MasterPlanBranch,
   MasterPlanCategoryAggregate,
+  MasterPlanCustomCategory,
   MasterPlanItem,
   MasterPlanItemInput,
   MasterPlanStats,
@@ -14,17 +19,15 @@ import { masterPlanService } from "@/lib/features/master-plan/services/master_pl
 
 export type SyncStatus = "connecting" | "syncing" | "synced" | "error" | "offline"
 
-function computeStats(items: MasterPlanItem[]): {
+function computeStats(
+  items: MasterPlanItem[],
+  categoryOptions: MasterPlanCategoryOption[]
+): {
   stats: MasterPlanStats
   categories: MasterPlanCategoryAggregate[]
 } {
-  const categorySums: Record<MasterPlanCategoryId, { cost: number; profit: number }> = {
-    Groceries: { cost: 0, profit: 0 },
-    Snacks: { cost: 0, profit: 0 },
-    Foods: { cost: 0, profit: 0 },
-    Household: { cost: 0, profit: 0 },
-    Extras: { cost: 0, profit: 0 },
-  }
+  const sums = new Map<string, { cost: number; profit: number }>()
+  categoryOptions.forEach((c) => sums.set(c.id, { cost: 0, profit: 0 }))
 
   let totalInvestment = 0
   let grossProfit = 0
@@ -34,22 +37,39 @@ function computeStats(items: MasterPlanItem[]): {
     const totalProfit = (item.mrp - item.whls) * item.qty
     totalInvestment += totalCost
     grossProfit += totalProfit
-    if (categorySums[item.category]) {
-      categorySums[item.category].cost += totalCost
-      categorySums[item.category].profit += totalProfit
+
+    if (!sums.has(item.category)) {
+      sums.set(item.category, { cost: 0, profit: 0 })
     }
+    const bucket = sums.get(item.category)!
+    bucket.cost += totalCost
+    bucket.profit += totalProfit
   })
 
-  const categories = MASTER_PLAN_CATEGORIES.map((category) => {
-    const sums = categorySums[category.id]
-    const revenue = sums.cost + sums.profit
-    const margin = revenue > 0 ? (sums.profit / revenue) * 100 : 0
-    return {
-      ...category,
-      cost: sums.cost,
-      profit: sums.profit,
+  const optionById = new Map(categoryOptions.map((c) => [c.id, c]))
+  const categories: MasterPlanCategoryAggregate[] = []
+
+  sums.forEach((sumsForCat, id) => {
+    const meta = optionById.get(id)
+    const revenue = sumsForCat.cost + sumsForCat.profit
+    const margin = revenue > 0 ? (sumsForCat.profit / revenue) * 100 : 0
+    categories.push({
+      id,
+      name: meta?.name ?? id,
+      color: meta?.color ?? "#64748B",
+      cost: sumsForCat.cost,
+      profit: sumsForCat.profit,
       margin: parseFloat(margin.toFixed(1)),
-    }
+    })
+  })
+
+  categories.sort((a, b) => {
+    const aBuiltIn = MASTER_PLAN_CATEGORIES.findIndex((c) => c.id === a.id)
+    const bBuiltIn = MASTER_PLAN_CATEGORIES.findIndex((c) => c.id === b.id)
+    if (aBuiltIn !== -1 && bBuiltIn !== -1) return aBuiltIn - bBuiltIn
+    if (aBuiltIn !== -1) return -1
+    if (bBuiltIn !== -1) return 1
+    return a.name.localeCompare(b.name)
   })
 
   const weightedMargin =
@@ -69,11 +89,25 @@ function computeStats(items: MasterPlanItem[]): {
 export function useMasterPlan() {
   const [branches, setBranches] = useState<MasterPlanBranch[]>([])
   const [items, setItems] = useState<MasterPlanItem[]>([])
+  const [customCategories, setCustomCategories] = useState<MasterPlanCustomCategory[]>([])
   const [activeBranchId, setActiveBranchId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("connecting")
   const [error, setError] = useState<string | null>(null)
   const seedAttempted = useRef(false)
+
+  const allCategories = useMemo(
+    () => mergeMasterPlanCategories(customCategories),
+    [customCategories]
+  )
+
+  useEffect(() => {
+    const unsub = masterPlanService.subscribeCustomCategories(
+      (data) => setCustomCategories(data),
+      (err) => setError(err.message)
+    )
+    return () => unsub()
+  }, [])
 
   useEffect(() => {
     setSyncStatus("connecting")
@@ -132,7 +166,27 @@ export function useMasterPlan() {
     return () => unsub()
   }, [activeBranchId])
 
-  const { stats, categories } = useMemo(() => computeStats(items), [items])
+  const { stats, categories } = useMemo(
+    () => computeStats(items, allCategories),
+    [items, allCategories]
+  )
+
+  const addCustomCategory = useCallback(
+    async (name: string) => {
+      const trimmed = name.trim()
+      if (!trimmed) throw new Error("Please enter a category name.")
+      if (isDuplicateCategoryName(trimmed, allCategories)) {
+        throw new Error("This category already exists.")
+      }
+      setSyncStatus("syncing")
+      const id = slugifyCategoryId(trimmed)
+      const color = CHART_FILLS[customCategories.length % CHART_FILLS.length]
+      await masterPlanService.addCustomCategory({ id, name: trimmed, color })
+      setSyncStatus("synced")
+      return id
+    },
+    [allCategories, customCategories.length]
+  )
 
   const addItem = useCallback(
     async (input: MasterPlanItemInput) => {
@@ -176,11 +230,14 @@ export function useMasterPlan() {
 
   return {
     items,
+    allCategories,
+    customCategories,
     loading,
     syncStatus,
     error,
     stats,
     categories,
+    addCustomCategory,
     addItem,
     updateItem,
     deleteItem,

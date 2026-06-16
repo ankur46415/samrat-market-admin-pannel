@@ -5,10 +5,12 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   writeBatch,
   type Unsubscribe,
@@ -17,12 +19,16 @@ import { db } from "@/lib/firebase"
 import { DEFAULT_MASTER_PLAN_BRANCH } from "@/lib/features/master-plan/constants"
 import type {
   MasterPlanBranch,
+  MasterPlanCustomCategory,
   MasterPlanItem,
   MasterPlanItemInput,
 } from "@/lib/features/master-plan/models"
 import { MASTER_PLAN_SEED_ITEMS } from "@/lib/features/master-plan/seed-data"
 
+import { CHART_FILLS } from "@/lib/chart-colors"
+
 const BRANCHES = "masterPlanBranches"
+const CUSTOM_CATEGORIES = "masterPlanCategories"
 
 function toDate(value: unknown): Date {
   if (value instanceof Timestamp) return value.toDate()
@@ -60,7 +66,44 @@ function itemFromDoc(branchId: string, id: string, data: Record<string, unknown>
   }
 }
 
+function customCategoryFromDoc(id: string, data: Record<string, unknown>): MasterPlanCustomCategory {
+  return {
+    id,
+    name: String(data.name ?? ""),
+    color: String(data.color ?? CHART_FILLS[0]),
+    createdAt: toDate(data.createdAt),
+  }
+}
+
 export class MasterPlanService {
+  subscribeCustomCategories(
+    onData: (categories: MasterPlanCustomCategory[]) => void,
+    onError?: (err: Error) => void
+  ): Unsubscribe {
+    const q = query(collection(db, CUSTOM_CATEGORIES), orderBy("createdAt", "asc"))
+    return onSnapshot(
+      q,
+      (snap) => {
+        onData(snap.docs.map((d) => customCategoryFromDoc(d.id, d.data() as Record<string, unknown>)))
+      },
+      (err) => onError?.(err)
+    )
+  }
+
+  async addCustomCategory(input: { id: string; name: string; color: string }): Promise<string> {
+    const ref = doc(db, CUSTOM_CATEGORIES, input.id)
+    const existing = await getDoc(ref)
+    if (existing.exists()) {
+      throw new Error("This category already exists.")
+    }
+    await setDoc(ref, {
+      name: input.name,
+      color: input.color,
+      createdAt: serverTimestamp(),
+    })
+    return input.id
+  }
+
   subscribeBranches(onData: (branches: MasterPlanBranch[]) => void, onError?: (err: Error) => void): Unsubscribe {
     const q = query(collection(db, BRANCHES), orderBy("createdAt", "asc"))
     return onSnapshot(
