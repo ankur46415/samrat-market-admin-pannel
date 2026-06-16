@@ -465,7 +465,7 @@ export function MasterPlanDashboard() {
                                   qty: Number.isFinite(val) && val >= 0 ? val : 0,
                                 })
                               }}
-                              className="h-8 w-14 px-1 text-center tabular-nums"
+                              className="h-8 w-14 px-1 text-center tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                             />
                             <Button
                               type="button"
