@@ -11,6 +11,7 @@ import {
   Settings,
   ChevronDown,
   LogOut,
+  Map,
 } from "lucide-react"
 import Image from "next/image"
 import {
@@ -86,6 +87,11 @@ const mainNavItems = [
     title: "Reports",
     url: "/reports",
     icon: FileText,
+  },
+  {
+    title: "Master Plan",
+    url: "/master-plan",
+    icon: Map,
   },
 ]
 

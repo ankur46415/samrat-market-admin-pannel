@@ -1,0 +1,1190 @@
+[
+  {
+    "category": "Groceries",
+    "name": "Chakki Atta (10 Kg)",
+    "brand": "Aashirvaad / Fortune",
+    "size": "10 Kg",
+    "whls": 380,
+    "mrp": 430,
+    "qty": 80
+  },
+  {
+    "category": "Groceries",
+    "name": "Chakki Atta (5 Kg)",
+    "brand": "Aashirvaad / Fortune",
+    "size": "5 Kg",
+    "whls": 195,
+    "mrp": 220,
+    "qty": 120
+  },
+  {
+    "category": "Groceries",
+    "name": "Maida (1 Kg)",
+    "brand": "Rajdhani / Fortune",
+    "size": "1 Kg",
+    "whls": 38,
+    "mrp": 45,
+    "qty": 80
+  },
+  {
+    "category": "Groceries",
+    "name": "Maida (500g)",
+    "brand": "Rajdhani / Fortune",
+    "size": "500g",
+    "whls": 20,
+    "mrp": 25,
+    "qty": 100
+  },
+  {
+    "category": "Groceries",
+    "name": "Sooji",
+    "brand": "Rajdhani / Fortune",
+    "size": "500g",
+    "whls": 22,
+    "mrp": 27,
+    "qty": 120
+  },
+  {
+    "category": "Groceries",
+    "name": "Besan (1 Kg)",
+    "brand": "Fortune / Rajdhani",
+    "size": "1 Kg",
+    "whls": 78,
+    "mrp": 90,
+    "qty": 80
+  },
+  {
+    "category": "Groceries",
+    "name": "Besan (500g)",
+    "brand": "Fortune / Rajdhani",
+    "size": "500g",
+    "whls": 40,
+    "mrp": 48,
+    "qty": 100
+  },
+  {
+    "category": "Groceries",
+    "name": "Mustard Oil (Pouch)",
+    "brand": "Bail Kolhu / Engine / Fortune",
+    "size": "1 Litre",
+    "whls": 132,
+    "mrp": 145,
+    "qty": 120
+  },
+  {
+    "category": "Groceries",
+    "name": "Mustard Oil (Bottle)",
+    "brand": "Bail Kolhu / Engine",
+    "size": "1 Litre",
+    "whls": 138,
+    "mrp": 152,
+    "qty": 100
+  },
+  {
+    "category": "Groceries",
+    "name": "Refined Soyabean Oil",
+    "brand": "Fortune / Dhara",
+    "size": "1 Litre",
+    "whls": 115,
+    "mrp": 128,
+    "qty": 120
+  },
+  {
+    "category": "Groceries",
+    "name": "Desi Ghee (Tin)",
+    "brand": "Amul / Ananda / Patanjali",
+    "size": "1 Litre",
+    "whls": 620,
+    "mrp": 680,
+    "qty": 25
+  },
+  {
+    "category": "Groceries",
+    "name": "Desi Ghee (Small)",
+    "brand": "Amul / Patanjali",
+    "size": "200ml",
+    "whls": 130,
+    "mrp": 145,
+    "qty": 60
+  },
+  {
+    "category": "Groceries",
+    "name": "Arhar / Toor Dal",
+    "brand": "Branded Cleaned",
+    "size": "1 Kg",
+    "whls": 145,
+    "mrp": 165,
+    "qty": 120
+  },
+  {
+    "category": "Groceries",
+    "name": "Chana Dal",
+    "brand": "Branded Cleaned",
+    "size": "1 Kg",
+    "whls": 82,
+    "mrp": 95,
+    "qty": 120
+  },
+  {
+    "category": "Groceries",
+    "name": "Moong Dal Chilka",
+    "brand": "Branded Cleaned",
+    "size": "1 Kg",
+    "whls": 105,
+    "mrp": 120,
+    "qty": 100
+  },
+  {
+    "category": "Groceries",
+    "name": "Masoor Dal (Whole)",
+    "brand": "Branded Cleaned",
+    "size": "1 Kg",
+    "whls": 88,
+    "mrp": 100,
+    "qty": 100
+  },
+  {
+    "category": "Groceries",
+    "name": "Urad Dal Gota",
+    "brand": "Branded Cleaned",
+    "size": "1 Kg",
+    "whls": 125,
+    "mrp": 140,
+    "qty": 80
+  },
+  {
+    "category": "Groceries",
+    "name": "Kabuli Chana",
+    "brand": "Branded Cleaned",
+    "size": "1 Kg",
+    "whls": 110,
+    "mrp": 125,
+    "qty": 80
+  },
+  {
+    "category": "Groceries",
+    "name": "Rajma Chitra",
+    "brand": "Premium Regional",
+    "size": "1 Kg",
+    "whls": 120,
+    "mrp": 140,
+    "qty": 80
+  },
+  {
+    "category": "Groceries",
+    "name": "Sugar (Chini) - 1 Kg",
+    "brand": "Local Cleaned",
+    "size": "1 Kg",
+    "whls": 41,
+    "mrp": 45,
+    "qty": 250
+  },
+  {
+    "category": "Groceries",
+    "name": "Sugar (Chini) - 500g",
+    "brand": "Local Cleaned",
+    "size": "500g",
+    "whls": 21,
+    "mrp": 24,
+    "qty": 150
+  },
+  {
+    "category": "Groceries",
+    "name": "Iodized Salt",
+    "brand": "Tata Salt",
+    "size": "1 Kg",
+    "whls": 24,
+    "mrp": 28,
+    "qty": 300
+  },
+  {
+    "category": "Groceries",
+    "name": "Rock Salt (Sendha)",
+    "brand": "Patanjali / Catch",
+    "size": "1 Kg",
+    "whls": 42,
+    "mrp": 55,
+    "qty": 80
+  },
+  {
+    "category": "Groceries",
+    "name": "Sabzi Masala Box",
+    "brand": "Goldiee / Ashok / MDH",
+    "size": "50g",
+    "whls": 24,
+    "mrp": 30,
+    "qty": 250
+  },
+  {
+    "category": "Groceries",
+    "name": "Garam Masala Box",
+    "brand": "Ashok / Goldiee / Everest",
+    "size": "50g",
+    "whls": 32,
+    "mrp": 40,
+    "qty": 150
+  },
+  {
+    "category": "Groceries",
+    "name": "Chicken/Meat Masala",
+    "brand": "Ashok / Goldiee",
+    "size": "50g",
+    "whls": 32,
+    "mrp": 40,
+    "qty": 150
+  },
+  {
+    "category": "Groceries",
+    "name": "Turmeric (Haldi) Powder",
+    "brand": "Goldiee / Ashok",
+    "size": "100g",
+    "whls": 22,
+    "mrp": 28,
+    "qty": 250
+  },
+  {
+    "category": "Groceries",
+    "name": "Coriander (Dhania) Powder",
+    "brand": "Goldiee / Ashok",
+    "size": "100g",
+    "whls": 20,
+    "mrp": 26,
+    "qty": 250
+  },
+  {
+    "category": "Groceries",
+    "name": "Red Chilli (Mirch) Powder",
+    "brand": "Goldiee / Ashok",
+    "size": "100g",
+    "whls": 28,
+    "mrp": 36,
+    "qty": 150
+  },
+  {
+    "category": "Groceries",
+    "name": "Premium Basmati Rice",
+    "brand": "India Gate / Kohinoor",
+    "size": "1 Kg",
+    "whls": 110,
+    "mrp": 130,
+    "qty": 100
+  },
+  {
+    "category": "Groceries",
+    "name": "Daily Use Rice",
+    "brand": "Mini Mogra / Regional",
+    "size": "5 Kg",
+    "whls": 210,
+    "mrp": 240,
+    "qty": 100
+  },
+  {
+    "category": "Groceries",
+    "name": "Jeera (Whole Cumin)",
+    "brand": "Ramdev / Everest / Catch",
+    "size": "100g",
+    "whls": 45,
+    "mrp": 60,
+    "qty": 150
+  },
+  {
+    "category": "Groceries",
+    "name": "Mustard Seeds (Sarso)",
+    "brand": "Local Premium Pack",
+    "size": "200g",
+    "whls": 22,
+    "mrp": 30,
+    "qty": 120
+  },
+  {
+    "category": "Groceries",
+    "name": "Fenugreek Seeds (Methi)",
+    "brand": "Catch / Everest",
+    "size": "100g",
+    "whls": 15,
+    "mrp": 22,
+    "qty": 100
+  },
+  {
+    "category": "Groceries",
+    "name": "Carom Seeds (Ajwain)",
+    "brand": "Everest / Ashok",
+    "size": "100g",
+    "whls": 25,
+    "mrp": 35,
+    "qty": 100
+  },
+  {
+    "category": "Snacks",
+    "name": "Glucose Biscuits",
+    "brand": "Parle-G",
+    "size": "₹5 Pack",
+    "whls": 4.2,
+    "mrp": 5,
+    "qty": 1000
+  },
+  {
+    "category": "Snacks",
+    "name": "Salty Biscuits",
+    "brand": "Monaco",
+    "size": "₹10 Pack",
+    "whls": 8.4,
+    "mrp": 10,
+    "qty": 600
+  },
+  {
+    "category": "Snacks",
+    "name": "Sweet & Salty Biscuits",
+    "brand": "Krackjack",
+    "size": "₹10 Pack",
+    "whls": 8.4,
+    "mrp": 10,
+    "qty": 600
+  },
+  {
+    "category": "Snacks",
+    "name": "Butter Cookies",
+    "brand": "Good Day",
+    "size": "₹10 Pack",
+    "whls": 8.3,
+    "mrp": 10,
+    "qty": 800
+  },
+  {
+    "category": "Snacks",
+    "name": "Cream Biscuits",
+    "brand": "Sunfeast Bounce",
+    "size": "₹10 Pack",
+    "whls": 8.2,
+    "mrp": 10,
+    "qty": 600
+  },
+  {
+    "category": "Snacks",
+    "name": "Premium Cream Biscuits",
+    "brand": "Oreo",
+    "size": "₹10 Pack",
+    "whls": 8.2,
+    "mrp": 10,
+    "qty": 600
+  },
+  {
+    "category": "Snacks",
+    "name": "Chocolate Cream Biscuits",
+    "brand": "Britannia Bourbon",
+    "size": "₹20 Pack",
+    "whls": 16.5,
+    "mrp": 20,
+    "qty": 400
+  },
+  {
+    "category": "Snacks",
+    "name": "Marie Gold Biscuits",
+    "brand": "Britannia Marie",
+    "size": "₹10 Pack",
+    "whls": 8.3,
+    "mrp": 10,
+    "qty": 500
+  },
+  {
+    "category": "Snacks",
+    "name": "Tea-Time Rusk",
+    "brand": "Britannia Toastea",
+    "size": "₹35 Pack",
+    "whls": 29,
+    "mrp": 35,
+    "qty": 120
+  },
+  {
+    "category": "Snacks",
+    "name": "Maska Chaska Crackers",
+    "brand": "Britannia 50-50",
+    "size": "₹10 Pack",
+    "whls": 8.4,
+    "mrp": 10,
+    "qty": 500
+  },
+  {
+    "category": "Snacks",
+    "name": "Digestive Cookies",
+    "brand": "Britannia NutriChoice",
+    "size": "₹25 Pack",
+    "whls": 20.5,
+    "mrp": 25,
+    "qty": 200
+  },
+  {
+    "category": "Snacks",
+    "name": "Chocolate Cookies Premium",
+    "brand": "Hide & Seek",
+    "size": "₹30 Pack",
+    "whls": 24.5,
+    "mrp": 30,
+    "qty": 150
+  },
+  {
+    "category": "Snacks",
+    "name": "Coconut Crunch Cookies",
+    "brand": "Patanjali Coconut",
+    "size": "₹10 Pack",
+    "whls": 8.2,
+    "mrp": 10,
+    "qty": 300
+  },
+  {
+    "category": "Snacks",
+    "name": "Classic Potato Chips",
+    "brand": "Lays (Blue/Green)",
+    "size": "₹5 Pack",
+    "whls": 4.15,
+    "mrp": 5,
+    "qty": 800
+  },
+  {
+    "category": "Snacks",
+    "name": "Classic Potato Chips Large",
+    "brand": "Lays Classic",
+    "size": "₹10 Pack",
+    "whls": 8.3,
+    "mrp": 10,
+    "qty": 600
+  },
+  {
+    "category": "Snacks",
+    "name": "Spiced Corn Puffs",
+    "brand": "Kurkure (Masala)",
+    "size": "₹5 Pack",
+    "whls": 4.15,
+    "mrp": 5,
+    "qty": 800
+  },
+  {
+    "category": "Snacks",
+    "name": "Spiced Corn Puffs Large",
+    "brand": "Kurkure Family",
+    "size": "₹10 Pack",
+    "whls": 8.3,
+    "mrp": 10,
+    "qty": 600
+  },
+  {
+    "category": "Snacks",
+    "name": "Aloo Bhujia",
+    "brand": "Haldiram's / Bikano",
+    "size": "₹5 Pack",
+    "whls": 4.15,
+    "mrp": 5,
+    "qty": 800
+  },
+  {
+    "category": "Snacks",
+    "name": "Mixed Namkeen",
+    "brand": "Haldiram's Navratan",
+    "size": "₹10 Pack",
+    "whls": 8.3,
+    "mrp": 10,
+    "qty": 600
+  },
+  {
+    "category": "Snacks",
+    "name": "Family Size Namkeen",
+    "brand": "Bikaji All-In-One",
+    "size": "₹40 Pack",
+    "whls": 33,
+    "mrp": 40,
+    "qty": 150
+  },
+  {
+    "category": "Snacks",
+    "name": "Budget Chocolates",
+    "brand": "Cadbury Dairy Milk",
+    "size": "₹5 Pack",
+    "whls": 4.25,
+    "mrp": 5,
+    "qty": 800
+  },
+  {
+    "category": "Snacks",
+    "name": "Medium Chocolates",
+    "brand": "Five Star / Munch",
+    "size": "₹10 Pack",
+    "whls": 8.4,
+    "mrp": 10,
+    "qty": 600
+  },
+  {
+    "category": "Snacks",
+    "name": "Crispy Wafer Bars",
+    "brand": "Munch Sachet",
+    "size": "₹10 Pack",
+    "whls": 8.3,
+    "mrp": 10,
+    "qty": 600
+  },
+  {
+    "category": "Snacks",
+    "name": "Premium Chocolates",
+    "brand": "Dairy Milk Silk",
+    "size": "₹70 Pack",
+    "whls": 58,
+    "mrp": 70,
+    "qty": 80
+  },
+  {
+    "category": "Snacks",
+    "name": "Crispy Chocolate Bars",
+    "brand": "KitKat Large",
+    "size": "₹20 Pack",
+    "whls": 16.8,
+    "mrp": 20,
+    "qty": 300
+  },
+  {
+    "category": "Snacks",
+    "name": "Candy Jars (Tangy)",
+    "brand": "Pulse Candy",
+    "size": "Jar (150 pc)",
+    "whls": 105,
+    "mrp": 150,
+    "qty": 50
+  },
+  {
+    "category": "Snacks",
+    "name": "Candy Jars (Mango)",
+    "brand": "Kaccha Mango Bite",
+    "size": "Jar (150 pc)",
+    "whls": 100,
+    "mrp": 150,
+    "qty": 50
+  },
+  {
+    "category": "Snacks",
+    "name": "Toffee/Eclair Jars",
+    "brand": "Cadbury Choclairs",
+    "size": "Jar (100 pc)",
+    "whls": 75,
+    "mrp": 100,
+    "qty": 50
+  },
+  {
+    "category": "Snacks",
+    "name": "Bubble Gum Box",
+    "brand": "Center Fresh / Boomer",
+    "size": "Box (100 pc)",
+    "whls": 75,
+    "mrp": 100,
+    "qty": 50
+  },
+  {
+    "category": "Snacks",
+    "name": "Popcorn Kernels",
+    "brand": "Act II Classic",
+    "size": "Small Pack",
+    "whls": 12,
+    "mrp": 18,
+    "qty": 200
+  },
+  {
+    "category": "Foods",
+    "name": "Instant Noodles (Classic)",
+    "brand": "Maggi 2-Min Noodles",
+    "size": "₹14 Pack",
+    "whls": 12.1,
+    "mrp": 14,
+    "qty": 800
+  },
+  {
+    "category": "Foods",
+    "name": "Instant Noodles (Spicy)",
+    "brand": "Sunfeast Yippee",
+    "size": "₹14 Pack",
+    "whls": 12,
+    "mrp": 14,
+    "qty": 600
+  },
+  {
+    "category": "Foods",
+    "name": "Instant Macaroni/Pasta",
+    "brand": "Bambino Pasta",
+    "size": "Small Pkt",
+    "whls": 22,
+    "mrp": 28,
+    "qty": 150
+  },
+  {
+    "category": "Foods",
+    "name": "Tomato Ketchup (Pouch)",
+    "brand": "Kissan Pouch",
+    "size": "1 Kg",
+    "whls": 120,
+    "mrp": 145,
+    "qty": 50
+  },
+  {
+    "category": "Foods",
+    "name": "Tomato Ketchup (Small)",
+    "brand": "Kissan Tomato",
+    "size": "₹15 Pouch",
+    "whls": 12.2,
+    "mrp": 15,
+    "qty": 200
+  },
+  {
+    "category": "Foods",
+    "name": "Red Tea Leaves (Premium)",
+    "brand": "Tata Tea Gold",
+    "size": "250g",
+    "whls": 110,
+    "mrp": 130,
+    "qty": 80
+  },
+  {
+    "category": "Foods",
+    "name": "Red Tea Leaves (Budget)",
+    "brand": "Tata Tea Agni",
+    "size": "250g",
+    "whls": 68,
+    "mrp": 80,
+    "qty": 150
+  },
+  {
+    "category": "Foods",
+    "name": "Instant Coffee Sachets",
+    "brand": "Nescafe Classic",
+    "size": "₹2 Sachet",
+    "whls": 1.65,
+    "mrp": 2,
+    "qty": 1000
+  },
+  {
+    "category": "Foods",
+    "name": "Premium Coffee Glass Jar",
+    "brand": "Nescafe Classic",
+    "size": "50g Jar",
+    "whls": 145,
+    "mrp": 175,
+    "qty": 40
+  },
+  {
+    "category": "Foods",
+    "name": "Healthy Malt Drinks",
+    "brand": "Horlicks / Bournvita",
+    "size": "500g Jar",
+    "whls": 220,
+    "mrp": 265,
+    "qty": 40
+  },
+  {
+    "category": "Foods",
+    "name": "Glucose Powder",
+    "brand": "Glucon-D Orange",
+    "size": "200g",
+    "whls": 55,
+    "mrp": 68,
+    "qty": 100
+  },
+  {
+    "category": "Foods",
+    "name": "Real Fruit Juices",
+    "brand": "Real Mixed Fruit",
+    "size": "1 Litre",
+    "whls": 95,
+    "mrp": 120,
+    "qty": 80
+  },
+  {
+    "category": "Foods",
+    "name": "Rose Sherbet Syrup",
+    "brand": "Rooh Afza",
+    "size": "700ml Bottle",
+    "whls": 145,
+    "mrp": 170,
+    "qty": 60
+  },
+  {
+    "category": "Foods",
+    "name": "Soda Soft Drinks",
+    "brand": "Thums Up / Sprite",
+    "size": "250ml PET",
+    "whls": 16.5,
+    "mrp": 20,
+    "qty": 300
+  },
+  {
+    "category": "Foods",
+    "name": "Soda Soft Drinks Large",
+    "brand": "Coca-Cola / Limca",
+    "size": "750ml PET",
+    "whls": 34,
+    "mrp": 40,
+    "qty": 150
+  },
+  {
+    "category": "Foods",
+    "name": "Mineral Drinking Water",
+    "brand": "Kinley / Bisleri",
+    "size": "1 Litre",
+    "whls": 14,
+    "mrp": 20,
+    "qty": 400
+  },
+  {
+    "category": "Foods",
+    "name": "Crispy papadum",
+    "brand": "Lijjat Punjabi Masala",
+    "size": "Pack of 10",
+    "whls": 54,
+    "mrp": 65,
+    "qty": 100
+  },
+  {
+    "category": "Foods",
+    "name": "Soybean Food Chunks",
+    "brand": "Nutrela",
+    "size": "200g Pack",
+    "whls": 18,
+    "mrp": 22,
+    "qty": 200
+  },
+  {
+    "category": "Foods",
+    "name": "Natural Honey Squeeze",
+    "brand": "Dabur Honey",
+    "size": "250g Squeeze",
+    "whls": 92,
+    "mrp": 115,
+    "qty": 50
+  },
+  {
+    "category": "Household",
+    "name": "Mass Detergent Powder",
+    "brand": "Ghadi Regular",
+    "size": "1 Kg",
+    "whls": 58,
+    "mrp": 68,
+    "qty": 150
+  },
+  {
+    "category": "Household",
+    "name": "Premium Detergent Powder",
+    "brand": "Surf Excel Easy Wash",
+    "size": "1 Kg",
+    "whls": 122,
+    "mrp": 145,
+    "qty": 100
+  },
+  {
+    "category": "Household",
+    "name": "Detergent Bars (Budget)",
+    "brand": "Ghadi Bar",
+    "size": "Large (₹10)",
+    "whls": 8.3,
+    "mrp": 10,
+    "qty": 400
+  },
+  {
+    "category": "Household",
+    "name": "Detergent Bars (Premium)",
+    "brand": "Rin Blue Bar",
+    "size": "Large Pack",
+    "whls": 16.2,
+    "mrp": 20,
+    "qty": 300
+  },
+  {
+    "category": "Household",
+    "name": "Dishwash Liquids",
+    "brand": "Vim Gel Pouch",
+    "size": "₹20 Pouch",
+    "whls": 16.4,
+    "mrp": 20,
+    "qty": 200
+  },
+  {
+    "category": "Household",
+    "name": "Dishwash Bars",
+    "brand": "Vim Green Bar",
+    "size": "Large Pack",
+    "whls": 16.2,
+    "mrp": 20,
+    "qty": 300
+  },
+  {
+    "category": "Household",
+    "name": "Steel Scrubbers",
+    "brand": "Scotch-Brite Heavy",
+    "size": "1 Pc Pack",
+    "whls": 8.5,
+    "mrp": 15,
+    "qty": 400
+  },
+  {
+    "category": "Household",
+    "name": "Green Scrub Pads",
+    "brand": "Scotch-Brite Medium",
+    "size": "1 Pc Pack",
+    "whls": 11.5,
+    "mrp": 18,
+    "qty": 300
+  },
+  {
+    "category": "Household",
+    "name": "Toilet Cleaner (Blue)",
+    "brand": "Harpic Original",
+    "size": "500ml",
+    "whls": 78,
+    "mrp": 95,
+    "qty": 100
+  },
+  {
+    "category": "Household",
+    "name": "Bathroom Cleaner (Red)",
+    "brand": "Harpic Bathroom",
+    "size": "500ml",
+    "whls": 78,
+    "mrp": 95,
+    "qty": 80
+  },
+  {
+    "category": "Household",
+    "name": "Floor Disinfectant Phenyl",
+    "brand": "Lizol Pine",
+    "size": "1 Litre",
+    "whls": 135,
+    "mrp": 165,
+    "qty": 60
+  },
+  {
+    "category": "Household",
+    "name": "Neem Floor Phenyl",
+    "brand": "Trishul / Local",
+    "size": "1 Litre",
+    "whls": 45,
+    "mrp": 75,
+    "qty": 100
+  },
+  {
+    "category": "Household",
+    "name": "Liquid Fabric Softeners",
+    "brand": "Comfort Morning",
+    "size": "Pouch Pack",
+    "whls": 3.1,
+    "mrp": 4,
+    "qty": 500
+  },
+  {
+    "category": "Household",
+    "name": "Mosquito Vaporizers",
+    "brand": "Good Knight Flash",
+    "size": "1 Pc Refill",
+    "whls": 64,
+    "mrp": 80,
+    "qty": 100
+  },
+  {
+    "category": "Household",
+    "name": "Mosquito Coil Boxes",
+    "brand": "Maxo Active",
+    "size": "10 Coils Pack",
+    "whls": 31,
+    "mrp": 38,
+    "qty": 120
+  },
+  {
+    "category": "Household",
+    "name": "Matchbox Bundles",
+    "brand": "Ship Homelites",
+    "size": "Bundle (x100)",
+    "whls": 72,
+    "mrp": 100,
+    "qty": 60
+  },
+  {
+    "category": "Household",
+    "name": "Antiseptic Handwash Refills",
+    "brand": "Dettol Liquid",
+    "size": "Refill Pouch",
+    "whls": 85,
+    "mrp": 99,
+    "qty": 80
+  },
+  {
+    "category": "Household",
+    "name": "Garbage Bags Roll",
+    "brand": "Eco-Clean Rolls",
+    "size": "30 Bags Roll",
+    "whls": 35,
+    "mrp": 60,
+    "qty": 100
+  },
+  {
+    "category": "Household",
+    "name": "Glass Window Cleaners",
+    "brand": "Colin Spray",
+    "size": "500ml Spray",
+    "whls": 84,
+    "mrp": 105,
+    "qty": 40
+  },
+  {
+    "category": "Household",
+    "name": "Napkin Paper Tissues",
+    "brand": "Soft-Touch Premium",
+    "size": "100 Pulls Pack",
+    "whls": 22,
+    "mrp": 40,
+    "qty": 150
+  },
+  {
+    "category": "Household",
+    "name": "Premium Grass Broom",
+    "brand": "Phool Jhadu",
+    "size": "1 Pc",
+    "whls": 65,
+    "mrp": 95,
+    "qty": 100
+  },
+  {
+    "category": "Household",
+    "name": "Coconut Fiber Broom",
+    "brand": "Nariyal Jhadu",
+    "size": "1 Pc",
+    "whls": 35,
+    "mrp": 55,
+    "qty": 100
+  },
+  {
+    "category": "Extras",
+    "name": "Premium Agarbatti Jars",
+    "brand": "Cycle Three-in-One",
+    "size": "Big Jar",
+    "whls": 65,
+    "mrp": 90,
+    "qty": 100
+  },
+  {
+    "category": "Extras",
+    "name": "Puja Camphor (Kapur)",
+    "brand": "Mangalam Premium Box",
+    "size": "Small Box",
+    "whls": 14,
+    "mrp": 20,
+    "qty": 200
+  },
+  {
+    "category": "Extras",
+    "name": "Cotton Wicks Round (Batti)",
+    "brand": "Local Round Cotton",
+    "size": "1 Pkt Pack",
+    "whls": 6,
+    "mrp": 12,
+    "qty": 250
+  },
+  {
+    "category": "Extras",
+    "name": "Cotton Wicks Long (Batti)",
+    "brand": "Local Long Cotton",
+    "size": "1 Pkt Pack",
+    "whls": 6,
+    "mrp": 12,
+    "qty": 250
+  },
+  {
+    "category": "Extras",
+    "name": "Puja Wet Dhoop Cups",
+    "brand": "Pooja Samagri",
+    "size": "Cup Box",
+    "whls": 38,
+    "mrp": 50,
+    "qty": 100
+  },
+  {
+    "category": "Extras",
+    "name": "Sandalwood Dhoop Sticks",
+    "brand": "Cycle Brand",
+    "size": "Sticks Pkt",
+    "whls": 22,
+    "mrp": 35,
+    "qty": 150
+  },
+  {
+    "category": "Extras",
+    "name": "Readymade Ghee Diya Wicks",
+    "brand": "Premium Ghee Batti",
+    "size": "Box of 50",
+    "whls": 55,
+    "mrp": 75,
+    "qty": 100
+  },
+  {
+    "category": "Extras",
+    "name": "Kumkum / Sindoor Box",
+    "brand": "Local Natural Box",
+    "size": "1 Pc",
+    "whls": 12,
+    "mrp": 20,
+    "qty": 150
+  },
+  {
+    "category": "Extras",
+    "name": "Puja Panchadeep Oil",
+    "brand": "Panchadeep Diya Oil",
+    "size": "1 Litre",
+    "whls": 140,
+    "mrp": 180,
+    "qty": 50
+  },
+  {
+    "category": "Extras",
+    "name": "Lifebuoy Bath Soap",
+    "brand": "Lifebuoy Total",
+    "size": "100g Bar",
+    "whls": 24,
+    "mrp": 28,
+    "qty": 300
+  },
+  {
+    "category": "Extras",
+    "name": "Dettol Germ Soap",
+    "brand": "Dettol Soap",
+    "size": "125g Bar",
+    "whls": 43,
+    "mrp": 49,
+    "qty": 200
+  },
+  {
+    "category": "Extras",
+    "name": "Santoor Sandal Soap",
+    "brand": "Santoor",
+    "size": "100g Bar",
+    "whls": 31,
+    "mrp": 36,
+    "qty": 250
+  },
+  {
+    "category": "Extras",
+    "name": "Colgate Toothpaste",
+    "brand": "Colgate Strong Teeth",
+    "size": "150g Tube",
+    "whls": 82,
+    "mrp": 98,
+    "qty": 120
+  },
+  {
+    "category": "Extras",
+    "name": "Sensodyne Toothpaste",
+    "brand": "Sensodyne Sensitive",
+    "size": "100g Tube",
+    "whls": 115,
+    "mrp": 135,
+    "qty": 80
+  },
+  {
+    "category": "Extras",
+    "name": "Medium Toothbrush",
+    "brand": "Pepsodent / Oral-B",
+    "size": "1 Pc Pack",
+    "whls": 14,
+    "mrp": 25,
+    "qty": 250
+  },
+  {
+    "category": "Extras",
+    "name": "Clinic Plus Shampoo Pouch",
+    "brand": "Clinic Plus",
+    "size": "Pack of 100",
+    "whls": 75,
+    "mrp": 100,
+    "qty": 100
+  },
+  {
+    "category": "Extras",
+    "name": "Anti-Dandruff Shampoo",
+    "brand": "Head & Shoulders",
+    "size": "180ml Bottle",
+    "whls": 155,
+    "mrp": 185,
+    "qty": 40
+  },
+  {
+    "category": "Extras",
+    "name": "Nihar Shanti Hair Oil",
+    "brand": "Nihar Amla",
+    "size": "200ml Bottle",
+    "whls": 52,
+    "mrp": 60,
+    "qty": 100
+  },
+  {
+    "category": "Extras",
+    "name": "Parachute Coconut Hair Oil",
+    "brand": "Parachute Blue",
+    "size": "200ml Bottle",
+    "whls": 84,
+    "mrp": 95,
+    "qty": 100
+  },
+  {
+    "category": "Extras",
+    "name": "Ponds Talcum Powder",
+    "brand": "Ponds Dreamflower",
+    "size": "100g Pack",
+    "whls": 88,
+    "mrp": 105,
+    "qty": 60
+  },
+  {
+    "category": "Extras",
+    "name": "Gillette Disposable Razor",
+    "brand": "Gillette Presto",
+    "size": "Disposable 1 Pc",
+    "whls": 18,
+    "mrp": 25,
+    "qty": 200
+  },
+  {
+    "category": "Extras",
+    "name": "Dettol Shaving Cream",
+    "brand": "Dettol Fresh",
+    "size": "70g Tube",
+    "whls": 72,
+    "mrp": 85,
+    "qty": 60
+  },
+  {
+    "category": "Extras",
+    "name": "Whisper Sanitary Pads",
+    "brand": "Whisper Choice",
+    "size": "8 Pads Pkt",
+    "whls": 35,
+    "mrp": 45,
+    "qty": 200
+  },
+  {
+    "category": "Extras",
+    "name": "Pampers Baby Diapers",
+    "brand": "Pampers Pants M",
+    "size": "Pack of 10",
+    "whls": 125,
+    "mrp": 149,
+    "qty": 60
+  },
+  {
+    "category": "Extras",
+    "name": "Johnsons Baby Soap",
+    "brand": "Johnsons Soap",
+    "size": "75g Bar",
+    "whls": 52,
+    "mrp": 60,
+    "qty": 80
+  },
+  {
+    "category": "Extras",
+    "name": "Johnsons Baby Powder",
+    "brand": "Johnsons Powder",
+    "size": "100g Pack",
+    "whls": 98,
+    "mrp": 115,
+    "qty": 50
+  }
+]
