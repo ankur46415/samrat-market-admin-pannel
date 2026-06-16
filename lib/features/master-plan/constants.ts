@@ -79,10 +79,19 @@ export function isBuiltinCategoryId(id: string): boolean {
   return BUILTIN_CATEGORY_IDS.has(id)
 }
 
-export const MASTER_PLAN_STORE_NAME = "Samrat Supermarket Jaunpur"
+export function isDuplicateBranchName(
+  name: string,
+  branches: Array<{ id: string; name: string }>,
+  exceptId?: string
+): boolean {
+  const normalized = name.trim().toLowerCase()
+  return branches.some(
+    (b) => b.id !== exceptId && b.name.trim().toLowerCase() === normalized
+  )
+}
 
 export const DEFAULT_MASTER_PLAN_BRANCH = {
-  name: MASTER_PLAN_STORE_NAME,
+  name: "Rashan",
   description: "",
   strategyLabel: "",
   investmentCap: 0,

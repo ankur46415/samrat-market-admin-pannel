@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import {
   Bar,
   BarChart,
@@ -29,16 +29,24 @@ import {
   CheckCircle2,
   AlertCircle,
   Tags,
+  GitBranch,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useMasterPlan } from "@/hooks/use-master-plan"
 import type { MasterPlanItem } from "@/lib/features/master-plan/models"
-import { MASTER_PLAN_STORE_NAME } from "@/lib/features/master-plan/constants"
+import { DEFAULT_MASTER_PLAN_BRANCH } from "@/lib/features/master-plan/constants"
 import { CHART_FILLS } from "@/lib/chart-colors"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Table,
@@ -53,6 +61,7 @@ import {
   MasterPlanDeleteDialog,
   MasterPlanItemDialog,
   MasterPlanCategoryDialog,
+  MasterPlanBranchDialog,
   formatInr,
   itemMargin,
   masterPlanCategoryName,
@@ -83,6 +92,10 @@ function SyncBadge({ status }: { status: SyncStatus }) {
 
 export function MasterPlanDashboard() {
   const {
+    branches,
+    activeBranch,
+    activeBranchId,
+    setActiveBranchId,
     items,
     allCategories,
     loading,
@@ -92,6 +105,9 @@ export function MasterPlanDashboard() {
     addCustomCategory,
     updateCustomCategory,
     deleteCustomCategory,
+    createBranch,
+    updateBranch,
+    deleteBranch,
     addItem,
     updateItem,
     deleteItem,
@@ -102,8 +118,14 @@ export function MasterPlanDashboard() {
   const [searchQuery, setSearchQuery] = useState("")
   const [itemDialogOpen, setItemDialogOpen] = useState(false)
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false)
+  const [branchDialogOpen, setBranchDialogOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<MasterPlanItem | null>(null)
   const [deletingItem, setDeletingItem] = useState<MasterPlanItem | null>(null)
+
+  useEffect(() => {
+    setCategoryFilter("All")
+    setSearchQuery("")
+  }, [activeBranchId])
 
   const filteredItems = useMemo(() => {
     const q = searchQuery.toLowerCase()
@@ -153,8 +175,26 @@ export function MasterPlanDashboard() {
             <span className="text-sm font-medium uppercase tracking-wide">Master Plan</span>
           </div>
           <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-            {MASTER_PLAN_STORE_NAME}
+            {activeBranch?.name ?? DEFAULT_MASTER_PLAN_BRANCH.name}
           </h1>
+          <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center">
+            <Select value={activeBranchId ?? undefined} onValueChange={setActiveBranchId}>
+              <SelectTrigger className="w-full sm:w-56">
+                <SelectValue placeholder="Select branch" />
+              </SelectTrigger>
+              <SelectContent>
+                {branches.map((branch) => (
+                  <SelectItem key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button variant="outline" className="shadow-sm" onClick={() => setBranchDialogOpen(true)}>
+              <GitBranch className="mr-2 h-4 w-4" />
+              Manage Branches
+            </Button>
+          </div>
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <SyncBadge status={syncStatus} />
             <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">
@@ -561,6 +601,19 @@ export function MasterPlanDashboard() {
         }}
         onUpdate={updateCustomCategory}
         onDelete={deleteCustomCategory}
+      />
+
+      <MasterPlanBranchDialog
+        open={branchDialogOpen}
+        onOpenChange={setBranchDialogOpen}
+        branches={branches}
+        activeBranchId={activeBranchId}
+        onSelect={setActiveBranchId}
+        onAdd={async (name) => {
+          await createBranch(name)
+        }}
+        onUpdate={updateBranch}
+        onDelete={deleteBranch}
       />
 
       <MasterPlanDeleteDialog

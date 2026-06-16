@@ -5,6 +5,7 @@ import {
   slugifyCategoryId,
   isDuplicateCategoryName,
   isDuplicateCategoryNameExcept,
+  isDuplicateBranchName,
   type MasterPlanCategoryOption,
 } from "@/lib/features/master-plan/constants"
 import { CHART_FILLS } from "@/lib/chart-colors"
@@ -256,7 +257,62 @@ export function useMasterPlan() {
     [items, updateItem]
   )
 
+  const activeBranch = useMemo(
+    () => branches.find((b) => b.id === activeBranchId) ?? null,
+    [branches, activeBranchId]
+  )
+
+  const createBranch = useCallback(
+    async (name: string) => {
+      const trimmed = name.trim()
+      if (!trimmed) throw new Error("Please enter a branch name.")
+      if (isDuplicateBranchName(trimmed, branches)) {
+        throw new Error("This branch already exists.")
+      }
+      setSyncStatus("syncing")
+      const id = await masterPlanService.createBranch(trimmed)
+      setActiveBranchId(id)
+      setSyncStatus("synced")
+      return id
+    },
+    [branches]
+  )
+
+  const updateBranch = useCallback(
+    async (id: string, name: string) => {
+      const trimmed = name.trim()
+      if (!trimmed) throw new Error("Please enter a branch name.")
+      if (isDuplicateBranchName(trimmed, branches, id)) {
+        throw new Error("This branch name already exists.")
+      }
+      setSyncStatus("syncing")
+      await masterPlanService.updateBranch(id, trimmed)
+      setSyncStatus("synced")
+    },
+    [branches]
+  )
+
+  const deleteBranch = useCallback(
+    async (id: string) => {
+      if (branches.length <= 1) {
+        throw new Error("Cannot delete the last branch.")
+      }
+      setSyncStatus("syncing")
+      await masterPlanService.deleteBranch(id)
+      if (activeBranchId === id) {
+        const remaining = branches.filter((b) => b.id !== id)
+        setActiveBranchId(remaining.find((b) => b.isDefault)?.id ?? remaining[0]?.id ?? null)
+      }
+      setSyncStatus("synced")
+    },
+    [branches, activeBranchId]
+  )
+
   return {
+    branches,
+    activeBranch,
+    activeBranchId,
+    setActiveBranchId,
     items,
     allCategories,
     customCategories,
@@ -268,6 +324,9 @@ export function useMasterPlan() {
     addCustomCategory,
     updateCustomCategory,
     deleteCustomCategory,
+    createBranch,
+    updateBranch,
+    deleteBranch,
     addItem,
     updateItem,
     deleteItem,

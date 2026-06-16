@@ -165,6 +165,37 @@ export class MasterPlanService {
     return branchRef.id
   }
 
+  async createBranch(name: string): Promise<string> {
+    const ref = await addDoc(collection(db, BRANCHES), {
+      name: name.trim(),
+      description: "",
+      strategyLabel: "",
+      investmentCap: 0,
+      isDefault: false,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+    return ref.id
+  }
+
+  async updateBranch(id: string, name: string): Promise<void> {
+    await updateDoc(doc(db, BRANCHES, id), {
+      name: name.trim(),
+      updatedAt: serverTimestamp(),
+    })
+  }
+
+  async deleteBranch(branchId: string): Promise<void> {
+    const itemsSnap = await getDocs(collection(db, BRANCHES, branchId, "items"))
+    const docs = itemsSnap.docs
+    for (let i = 0; i < docs.length; i += 450) {
+      const batch = writeBatch(db)
+      docs.slice(i, i + 450).forEach((d) => batch.delete(d.ref))
+      await batch.commit()
+    }
+    await deleteDoc(doc(db, BRANCHES, branchId))
+  }
+
   async addItem(branchId: string, input: MasterPlanItemInput, sortOrder: number): Promise<string> {
     const ref = await addDoc(collection(db, BRANCHES, branchId, "items"), {
       ...input,
