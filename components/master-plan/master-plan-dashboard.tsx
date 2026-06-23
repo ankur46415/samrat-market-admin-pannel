@@ -578,8 +578,10 @@ export function MasterPlanDashboard() {
               size="sm"
               className="shrink-0 shadow-sm"
               disabled={filteredItems.length === 0}
-              onClick={() => {
+              onClick={async () => {
                 const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
+                const pageW = doc.internal.pageSize.getWidth()
+                const pageH = doc.internal.pageSize.getHeight()
 
                 const branchName = activeBranch?.name ?? "Master Plan"
                 const filterLabel =
@@ -587,17 +589,54 @@ export function MasterPlanDashboard() {
                     ? "All Items"
                     : filterCategories.find((c) => c.id === categoryFilter)?.name ?? categoryFilter
 
-                // Title
-                doc.setFontSize(16)
-                doc.text(branchName, 14, 18)
+                // ── Load logo once ──
+                let logoDataUrl: string | null = null
+                try {
+                  const resp = await fetch("/images/samrat-market-logo.png")
+                  const blob = await resp.blob()
+                  logoDataUrl = await new Promise<string>((res) => {
+                    const reader = new FileReader()
+                    reader.onloadend = () => res(reader.result as string)
+                    reader.readAsDataURL(blob)
+                  })
+                } catch {
+                  // continue without logo
+                }
+
+                // ── Header ──
+                doc.setFontSize(22)
+                doc.setFont("helvetica", "bold")
+                doc.setTextColor(27, 27, 31)
+                doc.text("Samrat Market", pageW / 2, 18, { align: "center" })
+
                 doc.setFontSize(10)
+                doc.setFont("helvetica", "normal")
                 doc.setTextColor(100)
-                doc.text(`Category: ${filterLabel}  •  ${filteredItems.length} items`, 14, 25)
+                doc.text("Zafarabad, Jaunpur, Uttar Pradesh", pageW / 2, 25, { align: "center" })
+
+                // Divider line
+                doc.setDrawColor(200)
+                doc.setLineWidth(0.4)
+                doc.line(14, 29, pageW - 14, 29)
+
+                // Branch & filter info
+                doc.setFontSize(13)
+                doc.setFont("helvetica", "bold")
+                doc.setTextColor(39, 39, 42)
+                doc.text(branchName, 14, 37)
+
+                doc.setFontSize(9)
+                doc.setFont("helvetica", "normal")
+                doc.setTextColor(120)
+                const dateStr = new Date().toLocaleDateString("en-IN", {
+                  day: "2-digit", month: "short", year: "numeric",
+                })
+                doc.text(`Category: ${filterLabel}  •  ${filteredItems.length} items  •  ${dateStr}`, 14, 43)
                 doc.setTextColor(0)
 
-                // Table
+                // ── Table ──
                 autoTable(doc, {
-                  startY: 32,
+                  startY: 49,
                   head: [["#", "Item Name", "Size", "Qty"]],
                   body: filteredItems.map((item, idx) => [
                     idx + 1,
@@ -605,21 +644,48 @@ export function MasterPlanDashboard() {
                     item.size || "—",
                     item.qty,
                   ]),
-                  styles: { fontSize: 10, cellPadding: 3 },
+                  styles: { fontSize: 10, cellPadding: 3.5, lineColor: [220, 220, 220], lineWidth: 0.2 },
                   headStyles: {
-                    fillColor: [39, 39, 42],
+                    fillColor: [27, 27, 31],
                     textColor: 255,
                     fontStyle: "bold",
+                    fontSize: 10,
                   },
                   columnStyles: {
-                    0: { halign: "center", cellWidth: 12 },
-                    3: { halign: "center", cellWidth: 18 },
+                    0: { halign: "center", cellWidth: 14 },
+                    1: { cellWidth: 100 },
+                    3: { halign: "center", cellWidth: 20 },
                   },
-                  alternateRowStyles: { fillColor: [245, 245, 245] },
+                  alternateRowStyles: { fillColor: [248, 248, 250] },
+                  margin: { left: 14, right: 14 },
                 })
 
-                const date = new Date().toISOString().slice(0, 10)
-                doc.save(`${branchName.replace(/\s+/g, "_")}_items_${date}.pdf`)
+                // ── Footer with logo on every page ──
+                const totalPages = doc.getNumberOfPages()
+                for (let i = 1; i <= totalPages; i++) {
+                  doc.setPage(i)
+
+                  // Footer divider
+                  doc.setDrawColor(210)
+                  doc.setLineWidth(0.3)
+                  doc.line(14, pageH - 20, pageW - 14, pageH - 20)
+
+                  // Logo (small, centered)
+                  if (logoDataUrl) {
+                    const logoSize = 10
+                    doc.addImage(logoDataUrl, "PNG", (pageW - logoSize) / 2, pageH - 18, logoSize, logoSize)
+                  }
+
+                  // Footer text
+                  doc.setFontSize(7)
+                  doc.setTextColor(160)
+                  doc.text("Samrat Market  •  Zafarabad, Jaunpur", pageW / 2, pageH - 6, { align: "center" })
+
+                  // Page number
+                  doc.text(`Page ${i} of ${totalPages}`, pageW - 14, pageH - 6, { align: "right" })
+                }
+
+                doc.save(`Samrat_Market_${branchName.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.pdf`)
               }}
             >
               <Download className="mr-2 h-4 w-4" />
