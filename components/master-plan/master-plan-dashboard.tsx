@@ -15,7 +15,7 @@ import {
   Legend,
 } from "recharts"
 import {
-  Map,
+  Map as MapIcon,
   Plus,
   Search,
   IndianRupee,
@@ -62,6 +62,7 @@ import {
   MasterPlanItemDialog,
   MasterPlanCategoryDialog,
   MasterPlanBranchDialog,
+  MasterPlanBulkImportDialog,
   formatInr,
   itemMargin,
   masterPlanCategoryName,
@@ -111,6 +112,7 @@ export function MasterPlanDashboard() {
     updateBranch,
     deleteBranch,
     addItem,
+    addItemsBulk,
     updateItem,
     deleteItem,
     adjustQty,
@@ -119,6 +121,7 @@ export function MasterPlanDashboard() {
   const [categoryFilter, setCategoryFilter] = useState<string>("All")
   const [searchQuery, setSearchQuery] = useState("")
   const [itemDialogOpen, setItemDialogOpen] = useState(false)
+  const [bulkImportDialogOpen, setBulkImportDialogOpen] = useState(false)
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false)
   const [branchDialogOpen, setBranchDialogOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<MasterPlanItem | null>(null)
@@ -128,6 +131,31 @@ export function MasterPlanDashboard() {
     setCategoryFilter("All")
     setSearchQuery("")
   }, [activeBranchId])
+
+  /** Merge allCategories with any category IDs found on items but missing from allCategories */
+  const filterCategories = useMemo(() => {
+    const catMap = new Map(allCategories.map((c) => [c.id, c]))
+
+    items.forEach((item) => {
+      if (item.category && !catMap.has(item.category)) {
+        // Build a clean display name: strip "custom-" prefix and title-case
+        const raw = item.category.startsWith("custom-")
+          ? item.category.slice(7)
+          : item.category
+        const displayName = raw
+          .replace(/-/g, " ")
+          .replace(/\b\w/g, (ch) => ch.toUpperCase())
+
+        catMap.set(item.category, {
+          id: item.category,
+          name: displayName,
+          color: "#64748B",
+        })
+      }
+    })
+
+    return Array.from(catMap.values())
+  }, [allCategories, items])
 
   const filteredItems = useMemo(() => {
     const q = searchQuery.toLowerCase()
@@ -180,7 +208,7 @@ export function MasterPlanDashboard() {
       <div className="flex flex-col gap-6 border-b border-border/60 pb-8 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 space-y-2">
           <div className="flex items-center gap-2 text-primary">
-            <Map className="h-7 w-7 shrink-0" aria-hidden />
+            <MapIcon className="h-7 w-7 shrink-0" aria-hidden />
             <span className="text-sm font-medium uppercase tracking-wide">Master Plan</span>
           </div>
           <h1 className="text-3xl font-semibold tracking-tight text-foreground">
@@ -219,6 +247,14 @@ export function MasterPlanDashboard() {
           >
             <Tags className="mr-2 h-4 w-4" />
             Add Category
+          </Button>
+          <Button
+            variant="outline"
+            className="shadow-sm"
+            onClick={() => setBulkImportDialogOpen(true)}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Import Bulk
           </Button>
           <Button
             className="shadow-sm"
@@ -547,7 +583,7 @@ export function MasterPlanDashboard() {
             <CategoryPill active={categoryFilter === "All"} onClick={() => setCategoryFilter("All")}>
               All items
             </CategoryPill>
-            {allCategories.map((cat) => (
+            {filterCategories.map((cat) => (
               <CategoryPill
                 key={cat.id}
                 active={categoryFilter === cat.id}
@@ -592,7 +628,7 @@ export function MasterPlanDashboard() {
                         <TableCell className="font-medium">{item.name}</TableCell>
                         <TableCell className="hidden lg:table-cell">
                           <Badge variant="secondary" className="font-normal">
-                            {masterPlanCategoryName(item.category, allCategories)}
+                            {masterPlanCategoryName(item.category, filterCategories)}
                           </Badge>
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-muted-foreground">
@@ -707,7 +743,7 @@ export function MasterPlanDashboard() {
         open={itemDialogOpen}
         onOpenChange={setItemDialogOpen}
         item={editingItem}
-        categories={allCategories}
+        categories={filterCategories}
         onSave={async (input) => {
           if (editingItem) {
             await updateItem(editingItem.id, input)
@@ -717,10 +753,17 @@ export function MasterPlanDashboard() {
         }}
       />
 
+      <MasterPlanBulkImportDialog
+        open={bulkImportDialogOpen}
+        onOpenChange={setBulkImportDialogOpen}
+        categories={filterCategories}
+        onSaveBulk={addItemsBulk}
+      />
+
       <MasterPlanCategoryDialog
         open={categoryDialogOpen}
         onOpenChange={setCategoryDialogOpen}
-        categories={allCategories}
+        categories={filterCategories}
         onAdd={async (name) => {
           await addCustomCategory(name)
         }}

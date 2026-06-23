@@ -234,6 +234,20 @@ export class MasterPlanService {
     return ref.id
   }
 
+  async addItemsBulk(branchId: string, inputs: MasterPlanItemInput[], startSortOrder: number): Promise<void> {
+    const batch = writeBatch(db)
+    inputs.forEach((input, index) => {
+      const itemRef = doc(collection(db, BRANCHES, branchId, "items"))
+      batch.set(itemRef, {
+        ...input,
+        sortOrder: startSortOrder + index,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      })
+    })
+    await batch.commit()
+  }
+
   async updateItem(branchId: string, itemId: string, input: Partial<MasterPlanItemInput & { qty: number }>): Promise<void> {
     await updateDoc(doc(db, BRANCHES, branchId, "items", itemId), {
       ...input,

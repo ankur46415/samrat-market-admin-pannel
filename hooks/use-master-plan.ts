@@ -276,6 +276,16 @@ export function useMasterPlan() {
     [activeBranchId, items.length]
   )
 
+  const addItemsBulk = useCallback(
+    async (inputs: MasterPlanItemInput[]) => {
+      if (!activeBranchId) return
+      setSyncStatus("syncing")
+      await masterPlanService.addItemsBulk(activeBranchId, inputs, items.length + 1)
+      setSyncStatus("synced")
+    },
+    [activeBranchId, items.length]
+  )
+
   const updateItem = useCallback(
     async (itemId: string, input: Partial<MasterPlanItemInput & { qty: number }>) => {
       if (!activeBranchId) return
@@ -379,6 +389,7 @@ export function useMasterPlan() {
     updateBranch,
     deleteBranch,
     addItem,
+    addItemsBulk,
     updateItem,
     deleteItem,
     adjustQty,
