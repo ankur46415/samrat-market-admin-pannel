@@ -30,6 +30,7 @@ import {
   AlertCircle,
   Tags,
   GitBranch,
+  Download,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useMasterPlan } from "@/hooks/use-master-plan"
@@ -68,6 +69,8 @@ import {
   masterPlanCategoryName,
 } from "@/components/master-plan/master-plan-dialogs"
 import type { SyncStatus } from "@/hooks/use-master-plan"
+import { jsPDF } from "jspdf"
+import autoTable from "jspdf-autotable"
 
 function SyncBadge({ status }: { status: SyncStatus }) {
   const config: Record<
@@ -563,10 +566,66 @@ export function MasterPlanDashboard() {
       {/* Inventory table */}
       <Card className="border-border/80 shadow-md shadow-black/5">
         <CardHeader className="space-y-1 border-b border-border/60 bg-muted/20 pb-4">
-          <CardTitle className="text-lg">Inventory Matrix</CardTitle>
-          <CardDescription>
-            Manage quantities, wholesale & retail prices — {filteredItems.length} of {items.length} items shown
-          </CardDescription>
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <CardTitle className="text-lg">Inventory Matrix</CardTitle>
+              <CardDescription>
+                Manage quantities, wholesale & retail prices — {filteredItems.length} of {items.length} items shown
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0 shadow-sm"
+              disabled={filteredItems.length === 0}
+              onClick={() => {
+                const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
+
+                const branchName = activeBranch?.name ?? "Master Plan"
+                const filterLabel =
+                  categoryFilter === "All"
+                    ? "All Items"
+                    : filterCategories.find((c) => c.id === categoryFilter)?.name ?? categoryFilter
+
+                // Title
+                doc.setFontSize(16)
+                doc.text(branchName, 14, 18)
+                doc.setFontSize(10)
+                doc.setTextColor(100)
+                doc.text(`Category: ${filterLabel}  •  ${filteredItems.length} items`, 14, 25)
+                doc.setTextColor(0)
+
+                // Table
+                autoTable(doc, {
+                  startY: 32,
+                  head: [["#", "Item Name", "Size", "Qty"]],
+                  body: filteredItems.map((item, idx) => [
+                    idx + 1,
+                    item.name,
+                    item.size || "—",
+                    item.qty,
+                  ]),
+                  styles: { fontSize: 10, cellPadding: 3 },
+                  headStyles: {
+                    fillColor: [39, 39, 42],
+                    textColor: 255,
+                    fontStyle: "bold",
+                  },
+                  columnStyles: {
+                    0: { halign: "center", cellWidth: 12 },
+                    3: { halign: "center", cellWidth: 18 },
+                  },
+                  alternateRowStyles: { fillColor: [245, 245, 245] },
+                })
+
+                const date = new Date().toISOString().slice(0, 10)
+                doc.save(`${branchName.replace(/\s+/g, "_")}_items_${date}.pdf`)
+              }}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Download PDF
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6 pt-6">
           <div className="relative w-full">
