@@ -603,21 +603,27 @@ export function MasterPlanDashboard() {
                   // continue without logo
                 }
 
-                // ── Header ──
+                // ── Header with logo ──
+                const logoH = 16
+                if (logoDataUrl) {
+                  doc.addImage(logoDataUrl, "PNG", 14, 8, logoH, logoH)
+                }
+
+                const textX = logoDataUrl ? 14 + logoH + 4 : 14
                 doc.setFontSize(22)
                 doc.setFont("helvetica", "bold")
                 doc.setTextColor(27, 27, 31)
-                doc.text("Samrat Market", pageW / 2, 18, { align: "center" })
+                doc.text("Samrat Market", textX, 17)
 
                 doc.setFontSize(10)
                 doc.setFont("helvetica", "normal")
                 doc.setTextColor(100)
-                doc.text("Zafarabad, Jaunpur, Uttar Pradesh", pageW / 2, 25, { align: "center" })
+                doc.text("Zafarabad, Jaunpur, Uttar Pradesh", textX, 23)
 
                 // Divider line
                 doc.setDrawColor(200)
                 doc.setLineWidth(0.4)
-                doc.line(14, 29, pageW - 14, 29)
+                doc.line(14, 28, pageW - 14, 28)
 
                 // Branch & filter info
                 doc.setFontSize(13)
