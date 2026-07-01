@@ -204,16 +204,16 @@ export function MasterPlanDashboard() {
       color: CHART_FILLS[index % CHART_FILLS.length],
     }))
 
-  const topProfitCategory = profitChartData.length > 0 
+  const topProfitCategory = profitChartData.length > 0
     ? profitChartData.reduce((prev, curr) => (prev.profit > curr.profit ? prev : curr))
     : null
 
-  const topMarginCategory = profitChartData.length > 0 
+  const topMarginCategory = profitChartData.length > 0
     ? profitChartData.reduce((prev, curr) => {
-        const prevMargin = prev.cost > 0 ? (prev.profit / prev.cost) : 0
-        const currMargin = curr.cost > 0 ? (curr.profit / curr.cost) : 0
-        return prevMargin > currMargin ? prev : curr
-      })
+      const prevMargin = prev.cost > 0 ? (prev.profit / prev.cost) : 0
+      const currMargin = curr.cost > 0 ? (curr.profit / curr.cost) : 0
+      return prevMargin > currMargin ? prev : curr
+    })
     : null
 
   if (loading) {
@@ -301,54 +301,123 @@ export function MasterPlanDashboard() {
             <p className="text-4xl font-black tabular-nums text-blue-900 drop-shadow-sm leading-none">{formatInr(totalAllBranchesInvestment)}</p>
           </div>
         </CardHeader>
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 space-y-8">
           {branchSummaries.length === 0 ? (
             <p className="text-sm text-muted-foreground">No branches yet.</p>
           ) : (
-            <div className="grid gap-8 lg:grid-cols-5 lg:items-center">
-              <div className="h-[320px] lg:col-span-2">
-                {allBranchesChartData.length === 0 ? (
-                  <div className="flex h-full items-center justify-center text-muted-foreground">
-                    No investment data yet
+            <>
+              {/* Row 1: three charts side by side, equal height */}
+              <div className="grid gap-4 lg:grid-cols-3">
+                <div className="rounded-xl border border-blue-100 bg-white/60 p-4">
+                  <p className="text-sm font-bold text-slate-800 mb-3">Investment Share</p>
+                  <div className="h-[240px]">
+                    {allBranchesChartData.length === 0 ? (
+                      <div className="flex h-full items-center justify-center text-muted-foreground">
+                        No investment data yet
+                      </div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={allBranchesChartData}
+                            dataKey="totalInvestment"
+                            nameKey="branchName"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={45}
+                            outerRadius={75}
+                            paddingAngle={2}
+                          >
+                            {allBranchesChartData.map((entry) => (
+                              <Cell key={entry.branchId} fill={entry.color} stroke="#ffffff" strokeWidth={3} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            content={({ active, payload }) => {
+                              if (!active || !payload?.length) return null
+                              const d = payload[0].payload as (typeof allBranchesChartData)[number]
+                              return (
+                                <div className="rounded-xl border border-blue-100 bg-white/95 backdrop-blur-sm p-4 shadow-xl shadow-blue-900/10">
+                                  <div className="flex items-center gap-2">
+                                    <div className="h-3 w-3 rounded-full shadow-sm" style={{ backgroundColor: d.color }} />
+                                    <p className="text-sm font-bold text-slate-800">{d.branchName}</p>
+                                  </div>
+                                  <p className="mt-2 text-base font-semibold tabular-nums text-blue-700">{formatInr(d.totalInvestment)}</p>
+                                  <p className="text-xs font-medium text-slate-500">{d.sharePercent.toFixed(1)}% of total</p>
+                                </div>
+                              )
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    )}
                   </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={allBranchesChartData}
-                        dataKey="totalInvestment"
-                        nameKey="branchName"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={50}
-                        outerRadius={85}
-                        paddingAngle={2}
-                      >
-                        {allBranchesChartData.map((entry) => (
-                          <Cell key={entry.branchId} fill={entry.color} stroke="#ffffff" strokeWidth={3} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        content={({ active, payload }) => {
-                          if (!active || !payload?.length) return null
-                          const d = payload[0].payload as (typeof allBranchesChartData)[number]
-                          return (
-                            <div className="rounded-xl border border-blue-100 bg-white/95 backdrop-blur-sm p-4 shadow-xl shadow-blue-900/10">
-                              <div className="flex items-center gap-2">
-                                <div className="h-3 w-3 rounded-full shadow-sm" style={{ backgroundColor: d.color }} />
+                </div>
+
+                <div className="rounded-xl border border-blue-100 bg-white/60 p-4">
+                  <p className="text-sm font-bold text-slate-800 mb-3">Profit by Branch</p>
+                  <div className="h-[240px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={branchSummaries} layout="vertical" margin={{ left: 8, right: 16 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#dbeafe" />
+                        <XAxis type="number" tick={{ fontSize: 11, fill: "#64748b" }} tickFormatter={(v) => formatInr(v)} />
+                        <YAxis
+                          type="category"
+                          dataKey="branchName"
+                          tick={{ fontSize: 11, fill: "#64748b" }}
+                          width={80}
+                        />
+                        <Tooltip
+                          content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null
+                            const d = payload[0].payload as (typeof branchSummaries)[number]
+                            return (
+                              <div className="rounded-xl border border-blue-100 bg-white/95 backdrop-blur-sm p-3 shadow-xl shadow-blue-900/10">
                                 <p className="text-sm font-bold text-slate-800">{d.branchName}</p>
+                                <p className="text-sm font-semibold tabular-nums text-orange-600">{formatInr(d.grossProfit)}</p>
                               </div>
-                              <p className="mt-2 text-base font-semibold tabular-nums text-blue-700">{formatInr(d.totalInvestment)}</p>
-                              <p className="text-xs font-medium text-slate-500">{d.sharePercent.toFixed(1)}% of total</p>
-                            </div>
-                          )
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                )}
+                            )
+                          }}
+                        />
+                        <Bar dataKey="grossProfit" fill="#f97316" radius={[0, 6, 6, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-blue-100 bg-white/60 p-4">
+                  <p className="text-sm font-bold text-slate-800 mb-3">Investment vs Profit</p>
+                  <div className="h-[240px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={branchSummaries} margin={{ left: 0, right: 8 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#dbeafe" />
+                        <XAxis dataKey="branchName" tick={{ fontSize: 10, fill: "#64748b" }} />
+                        <YAxis tick={{ fontSize: 11, fill: "#64748b" }} tickFormatter={(v) => formatInr(v)} />
+                        <Tooltip
+                          content={({ active, payload, label }) => {
+                            if (!active || !payload?.length) return null
+                            return (
+                              <div className="rounded-xl border border-blue-100 bg-white/95 backdrop-blur-sm p-3 shadow-xl shadow-blue-900/10">
+                                <p className="text-sm font-bold text-slate-800 mb-1">{label}</p>
+                                {payload.map((p) => (
+                                  <p key={p.dataKey} className="text-xs font-semibold tabular-nums" style={{ color: p.color }}>
+                                    {p.name}: {formatInr(p.value as number)}
+                                  </p>
+                                ))}
+                              </div>
+                            )
+                          }}
+                        />
+                        <Bar dataKey="totalInvestment" name="Investment" fill="#3b82f6" radius={[6, 6, 0, 0]} />
+                        <Bar dataKey="grossProfit" name="Profit" fill="#f97316" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
               </div>
-              <div className="space-y-3 lg:col-span-3 max-h-[360px] overflow-y-auto pr-2">
+
+              {/* Row 2: branch cards, full width, wraps naturally */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {branchSummaries.map((branch, index) => {
                   const isActive = branch.branchId === activeBranchId
                   const color = CHART_FILLS[index % CHART_FILLS.length]
@@ -396,7 +465,7 @@ export function MasterPlanDashboard() {
                   )
                 })}
               </div>
-            </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -449,16 +518,15 @@ export function MasterPlanDashboard() {
           </CardContent>
         </Card>
       </div>
-
       {/* Charts */}
-      <div className="grid gap-6 xl:grid-cols-2">
-        <Card className="border-blue-100 bg-white shadow-lg shadow-blue-900/5">
+      <div className="grid gap-6 xl:grid-cols-2 items-stretch">
+        <Card className="border-blue-100 bg-white shadow-lg shadow-blue-900/5 flex flex-col">
           <CardHeader>
             <CardTitle className="text-slate-800">Budget Allocation</CardTitle>
             <CardDescription className="text-slate-500 font-medium">Opening stock investment by category</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="h-[220px]">
+          <CardContent className="flex flex-col flex-1">
+            <div className="flex-1 min-h-[200px]">
               {budgetChartData.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-muted-foreground">
                   No data yet
@@ -513,8 +581,9 @@ export function MasterPlanDashboard() {
                 </ResponsiveContainer>
               )}
             </div>
+
             {budgetChartData.length > 0 ? (
-              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <div className="mt-6 grid gap-3 sm:grid-cols-2 shrink-0">
                 {budgetChartData.map((entry, index) => (
                   <div key={entry.id} className="flex items-center gap-3 bg-slate-50/50 p-2 rounded-lg border border-slate-100">
                     <div
@@ -534,6 +603,27 @@ export function MasterPlanDashboard() {
                 ))}
               </div>
             ) : null}
+
+            {budgetChartData.length > 0 ? (
+              <div className="grid grid-cols-2 gap-4 mt-6 pt-4 border-t border-slate-100 shrink-0">
+                <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100/60 shadow-sm flex flex-col justify-between">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600/80 mb-1">Total Categories</p>
+                  <p className="text-xl font-black tabular-nums text-blue-700">{budgetChartData.length}</p>
+                </div>
+                <div className="bg-orange-50/50 p-4 rounded-xl border border-orange-100/60 shadow-sm flex flex-col justify-between">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-orange-600/80 mb-1">Biggest Allocation</p>
+                  {(() => {
+                    const top = [...budgetChartData].sort((a, b) => b.cost - a.cost)[0]
+                    return (
+                      <div>
+                        <p className="text-sm font-extrabold text-slate-800 leading-tight mb-0.5 truncate" title={top.name}>{top.name}</p>
+                        <p className="text-xs font-black tabular-nums text-orange-600">{formatInr(top.cost)}</p>
+                      </div>
+                    )
+                  })()}
+                </div>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -543,7 +633,7 @@ export function MasterPlanDashboard() {
             <CardDescription className="text-slate-500 font-medium">Purchase cost vs expected gross profit per category</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col flex-1">
-            <div className="h-[280px] shrink-0">
+            <div className="flex-1 min-h-[200px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={profitChartData}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border/60" />
@@ -582,34 +672,33 @@ export function MasterPlanDashboard() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <div className="mt-auto pt-6">
-              {(topProfitCategory || topMarginCategory) && (
-                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100">
-                  {topMarginCategory && (
-                    <div className="bg-orange-50/50 p-4 rounded-xl border border-orange-100/60 shadow-sm flex flex-col justify-between">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-orange-600/80 mb-1">Highest Margin</p>
-                      <div>
-                        <p className="text-sm font-extrabold text-slate-800 leading-tight mb-0.5 truncate" title={topMarginCategory.name}>{topMarginCategory.name}</p>
-                        <p className="text-xs font-black tabular-nums text-orange-600">
-                          {topMarginCategory.cost > 0 ? ((topMarginCategory.profit / topMarginCategory.cost) * 100).toFixed(1) : 0}% Yield
-                        </p>
-                      </div>
+
+            {(topProfitCategory || topMarginCategory) && (
+              <div className="grid grid-cols-2 gap-4 mt-6 pt-4 border-t border-slate-100 shrink-0">
+                {topMarginCategory && (
+                  <div className="bg-orange-50/50 p-4 rounded-xl border border-orange-100/60 shadow-sm flex flex-col justify-between">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-orange-600/80 mb-1">Highest Margin</p>
+                    <div>
+                      <p className="text-sm font-extrabold text-slate-800 leading-tight mb-0.5 truncate" title={topMarginCategory.name}>{topMarginCategory.name}</p>
+                      <p className="text-xs font-black tabular-nums text-orange-600">
+                        {topMarginCategory.cost > 0 ? ((topMarginCategory.profit / topMarginCategory.cost) * 100).toFixed(1) : 0}% Yield
+                      </p>
                     </div>
-                  )}
-                  {topProfitCategory && (
-                    <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100/60 shadow-sm flex flex-col justify-between">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600/80 mb-1">Top Contributor</p>
-                      <div>
-                        <p className="text-sm font-extrabold text-slate-800 leading-tight mb-0.5 truncate" title={topProfitCategory.name}>{topProfitCategory.name}</p>
-                        <p className="text-xs font-black tabular-nums text-blue-700">
-                          {formatInr(topProfitCategory.profit)} Profit
-                        </p>
-                      </div>
+                  </div>
+                )}
+                {topProfitCategory && (
+                  <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100/60 shadow-sm flex flex-col justify-between">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600/80 mb-1">Top Contributor</p>
+                    <div>
+                      <p className="text-sm font-extrabold text-slate-800 leading-tight mb-0.5 truncate" title={topProfitCategory.name}>{topProfitCategory.name}</p>
+                      <p className="text-xs font-black tabular-nums text-blue-700">
+                        {formatInr(topProfitCategory.profit)} Profit
+                      </p>
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
