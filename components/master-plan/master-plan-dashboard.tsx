@@ -204,6 +204,18 @@ export function MasterPlanDashboard() {
       color: CHART_FILLS[index % CHART_FILLS.length],
     }))
 
+  const topProfitCategory = profitChartData.length > 0 
+    ? profitChartData.reduce((prev, curr) => (prev.profit > curr.profit ? prev : curr))
+    : null
+
+  const topMarginCategory = profitChartData.length > 0 
+    ? profitChartData.reduce((prev, curr) => {
+        const prevMargin = prev.cost > 0 ? (prev.profit / prev.cost) : 0
+        const currMargin = curr.cost > 0 ? (curr.profit / curr.cost) : 0
+        return prevMargin > currMargin ? prev : curr
+      })
+    : null
+
   if (loading) {
     return <MasterPlanSkeleton />
   }
@@ -277,18 +289,24 @@ export function MasterPlanDashboard() {
 
       {/* All branches overview */}
       <Card className="border-blue-200/60 bg-gradient-to-br from-white to-blue-50/40 shadow-xl shadow-blue-900/5">
-        <CardHeader>
-          <CardTitle className="text-blue-900">All Branches — Total Investment</CardTitle>
-          <CardDescription className="text-blue-700/70 font-medium">
-            Combined investment across all branches: {formatInr(totalAllBranchesInvestment)}
-          </CardDescription>
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between pb-6 border-b border-blue-100">
+          <div className="space-y-1">
+            <CardTitle className="text-2xl font-bold text-blue-900">All Branches Overview</CardTitle>
+            <CardDescription className="text-blue-700/70 font-medium">
+              Investment and profit breakdown across your network
+            </CardDescription>
+          </div>
+          <div className="text-left sm:text-right bg-blue-50/50 px-6 py-4 rounded-2xl border border-blue-100 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-1">Total Investment</p>
+            <p className="text-4xl font-black tabular-nums text-blue-900 drop-shadow-sm leading-none">{formatInr(totalAllBranchesInvestment)}</p>
+          </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           {branchSummaries.length === 0 ? (
             <p className="text-sm text-muted-foreground">No branches yet.</p>
           ) : (
-            <div className="grid gap-6 lg:grid-cols-2">
-              <div className="h-[240px]">
+            <div className="grid gap-8 lg:grid-cols-5 lg:items-center">
+              <div className="h-[320px] lg:col-span-2">
                 {allBranchesChartData.length === 0 ? (
                   <div className="flex h-full items-center justify-center text-muted-foreground">
                     No investment data yet
@@ -330,7 +348,7 @@ export function MasterPlanDashboard() {
                   </ResponsiveContainer>
                 )}
               </div>
-              <div className="space-y-3">
+              <div className="space-y-3 lg:col-span-3 max-h-[360px] overflow-y-auto pr-2">
                 {branchSummaries.map((branch, index) => {
                   const isActive = branch.branchId === activeBranchId
                   const color = CHART_FILLS[index % CHART_FILLS.length]
@@ -519,13 +537,13 @@ export function MasterPlanDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-blue-100 bg-white shadow-lg shadow-blue-900/5">
+        <Card className="border-blue-100 bg-white shadow-lg shadow-blue-900/5 flex flex-col">
           <CardHeader>
             <CardTitle className="text-slate-800">Investment vs. Profit Yield</CardTitle>
             <CardDescription className="text-slate-500 font-medium">Purchase cost vs expected gross profit per category</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="h-[280px]">
+          <CardContent className="flex flex-col flex-1">
+            <div className="h-[280px] shrink-0">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={profitChartData}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border/60" />
@@ -563,6 +581,34 @@ export function MasterPlanDashboard() {
                   <Bar dataKey="profit" name="Gross Profit" fill="#f97316" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+            <div className="mt-auto pt-6">
+              {(topProfitCategory || topMarginCategory) && (
+                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100">
+                  {topMarginCategory && (
+                    <div className="bg-orange-50/50 p-4 rounded-xl border border-orange-100/60 shadow-sm flex flex-col justify-between">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-orange-600/80 mb-1">Highest Margin</p>
+                      <div>
+                        <p className="text-sm font-extrabold text-slate-800 leading-tight mb-0.5 truncate" title={topMarginCategory.name}>{topMarginCategory.name}</p>
+                        <p className="text-xs font-black tabular-nums text-orange-600">
+                          {topMarginCategory.cost > 0 ? ((topMarginCategory.profit / topMarginCategory.cost) * 100).toFixed(1) : 0}% Yield
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {topProfitCategory && (
+                    <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100/60 shadow-sm flex flex-col justify-between">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600/80 mb-1">Top Contributor</p>
+                      <div>
+                        <p className="text-sm font-extrabold text-slate-800 leading-tight mb-0.5 truncate" title={topProfitCategory.name}>{topProfitCategory.name}</p>
+                        <p className="text-xs font-black tabular-nums text-blue-700">
+                          {formatInr(topProfitCategory.profit)} Profit
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

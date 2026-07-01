@@ -32,6 +32,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetFooter,
+} from "@/components/ui/sheet"
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -118,11 +125,11 @@ export function MasterPlanItemDialog({ open, onOpenChange, item, categories, onS
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{item ? "Edit item" : "Add new item"}</DialogTitle>
-        </DialogHeader>
+    <Sheet open={open} onOpenChange={handleOpenChange}>
+      <SheetContent className="w-full sm:w-[500px] md:w-[40vw] md:max-w-[40vw] overflow-y-auto px-6 sm:px-10">
+        <SheetHeader>
+          <SheetTitle>{item ? "Edit item" : "Add new item"}</SheetTitle>
+        </SheetHeader>
         <div className="space-y-4">
           {error ? (
             <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -227,16 +234,16 @@ export function MasterPlanItemDialog({ open, onOpenChange, item, categories, onS
             </div>
           </div>
         </div>
-        <DialogFooter>
+        <SheetFooter className="mt-6 pt-4 border-t">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button onClick={handleSave} disabled={saving}>
             Save item
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   )
 }
 
