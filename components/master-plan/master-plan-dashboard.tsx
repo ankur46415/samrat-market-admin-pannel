@@ -41,6 +41,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -127,6 +129,7 @@ export function MasterPlanDashboard() {
   const [bulkImportDialogOpen, setBulkImportDialogOpen] = useState(false)
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false)
   const [branchDialogOpen, setBranchDialogOpen] = useState(false)
+  const [isEditingEnabled, setIsEditingEnabled] = useState(false)
   const [editingItem, setEditingItem] = useState<MasterPlanItem | null>(null)
   const [deletingItem, setDeletingItem] = useState<MasterPlanItem | null>(null)
 
@@ -208,18 +211,18 @@ export function MasterPlanDashboard() {
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-8 pb-10">
       {/* Page header */}
-      <div className="flex flex-col gap-6 border-b border-border/60 pb-8 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex flex-col gap-6 border-b border-blue-100 pb-8 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 space-y-2">
-          <div className="flex items-center gap-2 text-primary">
+          <div className="flex items-center gap-2 text-blue-600">
             <MapIcon className="h-7 w-7 shrink-0" aria-hidden />
-            <span className="text-sm font-medium uppercase tracking-wide">Master Plan</span>
+            <span className="text-sm font-bold uppercase tracking-widest text-blue-500">Master Plan</span>
           </div>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+          <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 drop-shadow-sm">
             {activeBranch?.name ?? DEFAULT_MASTER_PLAN_BRANCH.name}
           </h1>
           <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center">
             <Select value={activeBranchId ?? undefined} onValueChange={setActiveBranchId}>
-              <SelectTrigger className="w-full sm:w-56">
+              <SelectTrigger className="w-full sm:w-56 border-blue-200 bg-white shadow-sm focus:ring-blue-500">
                 <SelectValue placeholder="Select branch" />
               </SelectTrigger>
               <SelectContent>
@@ -230,14 +233,14 @@ export function MasterPlanDashboard() {
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" className="shadow-sm" onClick={() => setBranchDialogOpen(true)}>
+            <Button variant="outline" className="shadow-sm border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800 transition-colors" onClick={() => setBranchDialogOpen(true)}>
               <GitBranch className="mr-2 h-4 w-4" />
               Manage Branches
             </Button>
           </div>
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <SyncBadge status={syncStatus} />
-            <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">
+            <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700 px-3 py-1 font-semibold shadow-sm">
               {stats.itemCount} items
             </Badge>
           </div>
@@ -245,7 +248,7 @@ export function MasterPlanDashboard() {
         <div className="flex shrink-0 flex-wrap gap-2">
           <Button
             variant="outline"
-            className="shadow-sm"
+            className="shadow-sm border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800 transition-colors"
             onClick={() => setCategoryDialogOpen(true)}
           >
             <Tags className="mr-2 h-4 w-4" />
@@ -253,14 +256,14 @@ export function MasterPlanDashboard() {
           </Button>
           <Button
             variant="outline"
-            className="shadow-sm"
+            className="shadow-sm border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800 transition-colors"
             onClick={() => setBulkImportDialogOpen(true)}
           >
             <Plus className="mr-2 h-4 w-4" />
             Import Bulk
           </Button>
           <Button
-            className="shadow-sm"
+            className="shadow-lg shadow-orange-500/20 border-none bg-gradient-to-r from-orange-500 to-orange-600 text-white hover:from-orange-600 hover:to-orange-700 transition-all duration-300 transform hover:-translate-y-0.5"
             onClick={() => {
               setEditingItem(null)
               setItemDialogOpen(true)
@@ -273,10 +276,10 @@ export function MasterPlanDashboard() {
       </div>
 
       {/* All branches overview */}
-      <Card className="border-primary/20 bg-primary/[0.02] shadow-md shadow-black/5">
+      <Card className="border-blue-200/60 bg-gradient-to-br from-white to-blue-50/40 shadow-xl shadow-blue-900/5">
         <CardHeader>
-          <CardTitle>All Branches — Total Investment</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-blue-900">All Branches — Total Investment</CardTitle>
+          <CardDescription className="text-blue-700/70 font-medium">
             Combined investment across all branches: {formatInr(totalAllBranchesInvestment)}
           </CardDescription>
         </CardHeader>
@@ -304,7 +307,7 @@ export function MasterPlanDashboard() {
                         paddingAngle={2}
                       >
                         {allBranchesChartData.map((entry) => (
-                          <Cell key={entry.branchId} fill={entry.color} stroke="hsl(var(--background))" strokeWidth={2} />
+                          <Cell key={entry.branchId} fill={entry.color} stroke="#ffffff" strokeWidth={3} />
                         ))}
                       </Pie>
                       <Tooltip
@@ -312,13 +315,13 @@ export function MasterPlanDashboard() {
                           if (!active || !payload?.length) return null
                           const d = payload[0].payload as (typeof allBranchesChartData)[number]
                           return (
-                            <div className="rounded-lg border bg-background p-3 shadow-lg">
+                            <div className="rounded-xl border border-blue-100 bg-white/95 backdrop-blur-sm p-4 shadow-xl shadow-blue-900/10">
                               <div className="flex items-center gap-2">
-                                <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: d.color }} />
-                                <p className="text-sm font-medium">{d.branchName}</p>
+                                <div className="h-3 w-3 rounded-full shadow-sm" style={{ backgroundColor: d.color }} />
+                                <p className="text-sm font-bold text-slate-800">{d.branchName}</p>
                               </div>
-                              <p className="mt-1 text-sm tabular-nums">{formatInr(d.totalInvestment)}</p>
-                              <p className="text-xs text-muted-foreground">{d.sharePercent.toFixed(1)}% of total</p>
+                              <p className="mt-2 text-base font-semibold tabular-nums text-blue-700">{formatInr(d.totalInvestment)}</p>
+                              <p className="text-xs font-medium text-slate-500">{d.sharePercent.toFixed(1)}% of total</p>
                             </div>
                           )
                         }}
@@ -335,40 +338,40 @@ export function MasterPlanDashboard() {
                     <div
                       key={branch.branchId}
                       className={cn(
-                        "rounded-xl border p-4 transition-colors",
+                        "rounded-xl border p-4 transition-all duration-300",
                         isActive
-                          ? "border-primary/40 bg-primary/5"
-                          : "border-border/70 bg-card"
+                          ? "border-blue-400 bg-blue-50/80 shadow-md shadow-blue-500/10 scale-[1.02]"
+                          : "border-blue-100 bg-white hover:border-blue-300 hover:shadow-md"
                       )}
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <div className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="h-3.5 w-3.5 shrink-0 rounded-full shadow-sm" style={{ backgroundColor: color }} />
                           <div>
-                            <p className="font-semibold">{branch.branchName}</p>
+                            <p className="font-bold text-slate-800">{branch.branchName}</p>
                             {isActive ? (
-                              <p className="text-xs text-primary">Currently viewing</p>
+                              <p className="text-xs font-semibold text-blue-600">Currently viewing</p>
                             ) : null}
                           </div>
                         </div>
-                        <Badge variant="outline" className="shrink-0 tabular-nums">
+                        <Badge variant="outline" className="shrink-0 tabular-nums border-blue-200 text-blue-700 bg-blue-50/50">
                           {branch.sharePercent.toFixed(1)}%
                         </Badge>
                       </div>
-                      <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
-                        <div>
-                          <p className="text-xs text-muted-foreground">Investment</p>
-                          <p className="font-semibold tabular-nums">{formatInr(branch.totalInvestment)}</p>
+                      <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
+                        <div className="bg-white/60 p-2 rounded-lg border border-slate-100">
+                          <p className="text-xs font-medium text-slate-500">Investment</p>
+                          <p className="font-bold tabular-nums text-slate-800">{formatInr(branch.totalInvestment)}</p>
                         </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">Profit</p>
-                          <p className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                        <div className="bg-orange-50/50 p-2 rounded-lg border border-orange-100">
+                          <p className="text-xs font-medium text-orange-600/80">Profit</p>
+                          <p className="font-bold tabular-nums text-orange-600">
                             {formatInr(branch.grossProfit)}
                           </p>
                         </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">Items</p>
-                          <p className="font-semibold tabular-nums">{branch.itemCount}</p>
+                        <div className="bg-white/60 p-2 rounded-lg border border-slate-100">
+                          <p className="text-xs font-medium text-slate-500">Items</p>
+                          <p className="font-bold tabular-nums text-slate-800">{branch.itemCount}</p>
                         </div>
                       </div>
                     </div>
@@ -382,59 +385,59 @@ export function MasterPlanDashboard() {
 
       {/* Current branch KPIs */}
       <div className="flex items-center gap-2">
-        <Badge variant="secondary" className="text-sm font-medium">
+        <Badge variant="secondary" className="text-sm font-bold bg-blue-100 text-blue-800 px-4 py-1.5 shadow-sm">
           {activeBranch?.name ?? "Branch"} — details below
         </Badge>
       </div>
 
       {/* KPI stats */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <Card className="border-border/80 shadow-sm">
+        <Card className="border-blue-100 bg-white shadow-lg shadow-blue-900/5 hover:shadow-xl transition-shadow duration-300">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Investment</CardTitle>
-            <div className="rounded-full bg-chart-1/10 p-2">
-              <IndianRupee className="h-4 w-4 text-chart-1" />
+            <CardTitle className="text-sm font-bold text-slate-600 uppercase tracking-wider">Total Investment</CardTitle>
+            <div className="rounded-xl bg-blue-100 p-2.5 shadow-inner">
+              <IndianRupee className="h-5 w-5 text-blue-600" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold tabular-nums">{formatInr(stats.totalInvestment)}</div>
-            <p className="mt-1 text-xs text-muted-foreground">Opening stock purchase cost</p>
+            <div className="text-3xl font-extrabold tabular-nums text-slate-800">{formatInr(stats.totalInvestment)}</div>
+            <p className="mt-2 text-xs font-medium text-slate-500">Opening stock purchase cost</p>
           </CardContent>
         </Card>
-        <Card className="border-border/80 shadow-sm">
+        <Card className="border-orange-100 bg-gradient-to-br from-white to-orange-50/30 shadow-lg shadow-orange-900/5 hover:shadow-xl transition-shadow duration-300">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Est. Gross Profit</CardTitle>
-            <div className="rounded-full bg-emerald-500/10 p-2">
-              <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            <CardTitle className="text-sm font-bold text-orange-600 uppercase tracking-wider">Est. Gross Profit</CardTitle>
+            <div className="rounded-xl bg-gradient-to-br from-orange-100 to-orange-200 p-2.5 shadow-inner">
+              <TrendingUp className="h-5 w-5 text-orange-600" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+            <div className="text-3xl font-extrabold tabular-nums text-orange-600 drop-shadow-sm">
               {formatInr(stats.grossProfit)}
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">Expected margin on opening stock</p>
+            <p className="mt-2 text-xs font-medium text-orange-700/60">Expected margin on opening stock</p>
           </CardContent>
         </Card>
-        <Card className="border-border/80 shadow-sm sm:col-span-2 xl:col-span-1">
+        <Card className="border-blue-100 bg-white shadow-lg shadow-blue-900/5 hover:shadow-xl transition-shadow duration-300 sm:col-span-2 xl:col-span-1">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Weighted Avg Margin</CardTitle>
-            <div className="rounded-full bg-chart-4/10 p-2">
-              <Percent className="h-4 w-4 text-chart-4" />
+            <CardTitle className="text-sm font-bold text-slate-600 uppercase tracking-wider">Weighted Avg Margin</CardTitle>
+            <div className="rounded-xl bg-blue-50 p-2.5 shadow-inner border border-blue-100">
+              <Percent className="h-5 w-5 text-blue-500" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold tabular-nums">{stats.weightedMargin.toFixed(1)}%</div>
-            <p className="mt-1 text-xs text-muted-foreground">Across all categories</p>
+            <div className="text-3xl font-extrabold tabular-nums text-slate-800">{stats.weightedMargin.toFixed(1)}<span className="text-2xl text-slate-400">%</span></div>
+            <p className="mt-2 text-xs font-medium text-slate-500">Across all categories</p>
           </CardContent>
         </Card>
       </div>
 
       {/* Charts */}
       <div className="grid gap-6 xl:grid-cols-2">
-        <Card className="border-border/80 shadow-md shadow-black/5">
+        <Card className="border-blue-100 bg-white shadow-lg shadow-blue-900/5">
           <CardHeader>
-            <CardTitle>Budget Allocation</CardTitle>
-            <CardDescription>Opening stock investment by category</CardDescription>
+            <CardTitle className="text-slate-800">Budget Allocation</CardTitle>
+            <CardDescription className="text-slate-500 font-medium">Opening stock investment by category</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-[220px]">
@@ -459,7 +462,7 @@ export function MasterPlanDashboard() {
                         <Cell
                           key={entry.id}
                           fill={entry.color || CHART_FILLS[index % CHART_FILLS.length]}
-                          stroke="hsl(var(--background))"
+                          stroke="#ffffff"
                           strokeWidth={2}
                         />
                       ))}
@@ -473,15 +476,15 @@ export function MasterPlanDashboard() {
                           color?: string
                         }
                         return (
-                          <div className="rounded-lg border bg-background p-3 shadow-lg">
+                          <div className="rounded-xl border border-blue-100 bg-white/95 backdrop-blur-sm p-4 shadow-xl shadow-blue-900/10">
                             <div className="flex items-center gap-2">
                               <div
-                                className="h-2.5 w-2.5 rounded-full"
+                                className="h-3 w-3 rounded-full shadow-sm"
                                 style={{ backgroundColor: d.color }}
                               />
-                              <p className="text-sm font-medium">{d.name}</p>
+                              <p className="text-sm font-bold text-slate-800">{d.name}</p>
                             </div>
-                            <p className="mt-1 text-lg font-bold tabular-nums">
+                            <p className="mt-2 text-lg font-extrabold tabular-nums text-blue-700">
                               {formatInr(d.cost)}
                             </p>
                           </div>
@@ -493,20 +496,20 @@ export function MasterPlanDashboard() {
               )}
             </div>
             {budgetChartData.length > 0 ? (
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
                 {budgetChartData.map((entry, index) => (
-                  <div key={entry.id} className="flex items-center gap-2 text-sm">
+                  <div key={entry.id} className="flex items-center gap-3 bg-slate-50/50 p-2 rounded-lg border border-slate-100">
                     <div
-                      className="h-3 w-3 shrink-0 rounded-full"
+                      className="h-3.5 w-3.5 shrink-0 rounded-full shadow-sm"
                       style={{
                         backgroundColor:
                           entry.color || CHART_FILLS[index % CHART_FILLS.length],
                       }}
                     />
-                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-600">
                       {entry.name}
                     </span>
-                    <span className="shrink-0 font-medium tabular-nums">
+                    <span className="shrink-0 font-bold text-slate-800 tabular-nums">
                       {formatInr(entry.cost)}
                     </span>
                   </div>
@@ -516,10 +519,10 @@ export function MasterPlanDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/80 shadow-md shadow-black/5">
+        <Card className="border-blue-100 bg-white shadow-lg shadow-blue-900/5">
           <CardHeader>
-            <CardTitle>Investment vs. Profit Yield</CardTitle>
-            <CardDescription>Purchase cost vs expected gross profit per category</CardDescription>
+            <CardTitle className="text-slate-800">Investment vs. Profit Yield</CardTitle>
+            <CardDescription className="text-slate-500 font-medium">Purchase cost vs expected gross profit per category</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-[280px]">
@@ -541,21 +544,23 @@ export function MasterPlanDashboard() {
                         profit: number
                       }
                       return (
-                        <div className="rounded-lg border bg-background p-3 shadow-lg">
-                          <p className="mb-1 text-sm font-medium">{d.name}</p>
-                          <p className="text-sm tabular-nums">
-                            Purchase: {formatInr(d.cost)}
-                          </p>
-                          <p className="text-sm tabular-nums">
-                            Profit: {formatInr(d.profit)}
-                          </p>
+                        <div className="rounded-xl border border-blue-100 bg-white/95 backdrop-blur-sm p-4 shadow-xl shadow-blue-900/10">
+                          <p className="mb-2 text-sm font-bold text-slate-800">{d.name}</p>
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium tabular-nums text-slate-600">
+                              Purchase: <span className="font-bold text-slate-800">{formatInr(d.cost)}</span>
+                            </p>
+                            <p className="text-sm font-medium tabular-nums text-orange-600">
+                              Profit: <span className="font-bold text-orange-600">{formatInr(d.profit)}</span>
+                            </p>
+                          </div>
                         </div>
                       )
                     }}
                   />
-                  <Legend />
-                  <Bar dataKey="cost" name="Purchase Cost" fill="hsl(var(--muted))" radius={4} />
-                  <Bar dataKey="profit" name="Gross Profit" fill="hsl(var(--chart-2))" radius={4} />
+                  <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                  <Bar dataKey="cost" name="Purchase Cost" fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="profit" name="Gross Profit" fill="#f97316" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -564,19 +569,19 @@ export function MasterPlanDashboard() {
       </div>
 
       {/* Inventory table */}
-      <Card className="border-border/80 shadow-md shadow-black/5">
-        <CardHeader className="space-y-1 border-b border-border/60 bg-muted/20 pb-4">
+      <Card className="border-blue-200 bg-white shadow-2xl shadow-blue-900/10 ring-1 ring-black/5 overflow-hidden">
+        <CardHeader className="space-y-1 border-b border-blue-100 bg-gradient-to-r from-blue-50/80 to-white pb-6">
           <div className="flex items-start justify-between gap-4">
-            <div className="space-y-1">
-              <CardTitle className="text-lg">Inventory Matrix</CardTitle>
-              <CardDescription>
-                Manage quantities, wholesale & retail prices — {filteredItems.length} of {items.length} items shown
+            <div className="space-y-2">
+              <CardTitle className="text-2xl font-bold text-blue-900">Inventory Matrix</CardTitle>
+              <CardDescription className="text-blue-700/80 font-medium">
+                Manage quantities, wholesale & retail prices — <span className="font-bold text-orange-600">{filteredItems.length}</span> of {items.length} items shown
               </CardDescription>
             </div>
             <Button
               variant="outline"
               size="sm"
-              className="shrink-0 shadow-sm"
+              className="shrink-0 shadow-sm border-blue-200 text-blue-700 hover:bg-blue-100 hover:text-blue-800 font-semibold"
               disabled={filteredItems.length === 0}
               onClick={async () => {
                 const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
@@ -699,18 +704,31 @@ export function MasterPlanDashboard() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="space-y-6 pt-6">
-          <div className="relative w-full">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search items or brands…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-11 rounded-lg border-border/80 pl-10 shadow-sm"
-            />
+        <CardContent className="space-y-6 pt-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative w-full sm:max-w-md">
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-blue-400" />
+              <Input
+                placeholder="Search items or brands…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-12 rounded-xl border-blue-200 pl-11 shadow-sm focus-visible:ring-blue-500 bg-blue-50/30 text-base"
+              />
+            </div>
+            <div className="flex shrink-0 items-center gap-3 rounded-xl border border-orange-200 bg-orange-50/80 px-5 py-3 shadow-sm">
+              <Switch
+                id="edit-mode"
+                checked={isEditingEnabled}
+                onCheckedChange={setIsEditingEnabled}
+                className="data-[state=checked]:bg-orange-500"
+              />
+              <Label htmlFor="edit-mode" className="cursor-pointer font-bold text-orange-800 uppercase tracking-wide text-xs">
+                Edit Quantities
+              </Label>
+            </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 pt-2">
             <CategoryPill active={categoryFilter === "All"} onClick={() => setCategoryFilter("All")}>
               All items
             </CategoryPill>
@@ -725,25 +743,31 @@ export function MasterPlanDashboard() {
             ))}
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-border/80 bg-card shadow-sm">
+          <div className="overflow-x-auto rounded-xl border border-blue-200 bg-white shadow-xl shadow-blue-900/5 ring-1 ring-blue-100">
             {filteredItems.length === 0 ? (
-              <div className="py-16 text-center text-muted-foreground">No matching items found.</div>
+              <div className="py-24 text-center">
+                <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 mb-4">
+                  <Search className="h-8 w-8 text-blue-300" />
+                </div>
+                <h3 className="text-lg font-semibold text-slate-800">No matching items</h3>
+                <p className="mt-1 text-slate-500">Try adjusting your search or category filter.</p>
+              </div>
             ) : (
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/50 hover:bg-muted/50">
-                    <TableHead className="w-12 text-center">#</TableHead>
-                    <TableHead className="min-w-[160px]">Item</TableHead>
-                    <TableHead className="hidden lg:table-cell">Category</TableHead>
-                    <TableHead className="hidden md:table-cell min-w-[140px]">Brand</TableHead>
-                    <TableHead className="hidden sm:table-cell text-right">Size</TableHead>
-                    <TableHead className="text-right">Whls</TableHead>
-                    <TableHead className="text-right">MRP</TableHead>
-                    <TableHead className="text-right">Margin</TableHead>
-                    <TableHead className="text-center min-w-[130px]">Qty</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="text-right text-emerald-600 dark:text-emerald-400">Profit</TableHead>
-                    <TableHead className="text-center w-24">Actions</TableHead>
+                  <TableRow className="bg-gradient-to-r from-blue-700 via-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-600 border-none">
+                    <TableHead className="w-8 px-2 text-center text-xs font-bold text-blue-50 uppercase tracking-wider">#</TableHead>
+                    <TableHead className="px-2 text-xs font-bold text-blue-50 uppercase tracking-wider">Item</TableHead>
+                    <TableHead className="px-2 text-xs font-bold text-blue-50 uppercase tracking-wider">Category</TableHead>
+                    <TableHead className="px-2 text-xs font-bold text-blue-50 uppercase tracking-wider">Brand</TableHead>
+                    <TableHead className="px-2 text-xs text-right font-bold text-blue-50 uppercase tracking-wider">Size</TableHead>
+                    <TableHead className="px-2 text-xs text-right font-bold text-blue-50 uppercase tracking-wider">Whls</TableHead>
+                    <TableHead className="px-2 text-xs text-right font-bold text-blue-50 uppercase tracking-wider">MRP</TableHead>
+                    <TableHead className="px-2 text-xs text-right font-bold text-blue-50 uppercase tracking-wider">Margin</TableHead>
+                    <TableHead className="px-2 text-xs text-center w-[100px] font-bold text-blue-50 uppercase tracking-wider">Qty</TableHead>
+                    <TableHead className="px-2 text-xs text-right font-bold text-blue-50 uppercase tracking-wider">Total</TableHead>
+                    <TableHead className="px-2 text-xs text-right font-extrabold text-orange-200 uppercase tracking-wider">Profit</TableHead>
+                    <TableHead className="w-16 px-2 text-xs text-center font-bold text-blue-50 uppercase tracking-wider">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -752,36 +776,37 @@ export function MasterPlanDashboard() {
                     const totalProfit = (item.mrp - item.whls) * item.qty
                     const margin = itemMargin(item.mrp, item.whls)
                     return (
-                      <TableRow key={item.id}>
-                        <TableCell className="text-center text-muted-foreground tabular-nums">
+                      <TableRow key={item.id} className="hover:bg-blue-50/50 transition-colors border-b border-blue-50">
+                        <TableCell className="px-2 text-center text-xs text-slate-400 font-medium tabular-nums">
                           {idx + 1}
                         </TableCell>
-                        <TableCell className="font-medium">{item.name}</TableCell>
-                        <TableCell className="hidden lg:table-cell">
-                          <Badge variant="secondary" className="font-normal">
+                        <TableCell className="px-2 text-xs font-bold text-slate-800 max-w-[140px] truncate" title={item.name}>{item.name}</TableCell>
+                        <TableCell className="px-2 text-xs">
+                          <Badge variant="secondary" className="px-2 py-0.5 text-[10px] font-semibold max-w-[80px] truncate block text-center bg-blue-100 text-blue-700 hover:bg-blue-200 border-none">
                             {masterPlanCategoryName(item.category, filterCategories)}
                           </Badge>
                         </TableCell>
-                        <TableCell className="hidden md:table-cell text-muted-foreground">
+                        <TableCell className="px-2 text-xs text-slate-500 font-medium max-w-[80px] truncate" title={item.brand}>
                           {item.brand}
                         </TableCell>
-                        <TableCell className="hidden sm:table-cell text-right text-muted-foreground">
+                        <TableCell className="px-2 text-xs text-right text-slate-500 whitespace-nowrap">
                           {item.size}
                         </TableCell>
-                        <TableCell className="text-right tabular-nums">₹{item.whls.toFixed(2)}</TableCell>
-                        <TableCell className="text-right tabular-nums">₹{item.mrp.toFixed(2)}</TableCell>
-                        <TableCell className="text-right">
-                          <Badge variant="outline" className="tabular-nums font-normal">
+                        <TableCell className="px-2 text-xs text-right text-slate-600 font-semibold tabular-nums whitespace-nowrap">₹{item.whls.toFixed(2)}</TableCell>
+                        <TableCell className="px-2 text-xs text-right text-slate-800 font-bold tabular-nums whitespace-nowrap">₹{item.mrp.toFixed(2)}</TableCell>
+                        <TableCell className="px-2 text-xs text-right">
+                          <Badge variant="outline" className="px-2 py-0.5 text-[10px] tabular-nums font-bold block text-center w-max ml-auto bg-orange-50 border-orange-200 text-orange-700">
                             {margin.toFixed(1)}%
                           </Badge>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="px-2">
                           <div className="flex items-center justify-center gap-1">
                             <Button
                               type="button"
                               variant="outline"
                               size="icon"
-                              className="h-7 w-7"
+                              className="h-6 w-6 shrink-0 border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300"
+                              disabled={!isEditingEnabled}
                               onClick={() => adjustQty(item.id, -1)}
                             >
                               <Minus className="h-3 w-3" />
@@ -790,55 +815,59 @@ export function MasterPlanDashboard() {
                               type="number"
                               min={0}
                               value={item.qty}
+                              disabled={!isEditingEnabled}
                               onChange={(e) => {
                                 const val = parseInt(e.target.value, 10)
                                 updateItem(item.id, {
                                   qty: Number.isFinite(val) && val >= 0 ? val : 0,
                                 })
                               }}
-                              className="h-8 w-14 px-1 text-center tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                              className="h-6 w-12 px-0 text-center text-xs font-bold text-blue-900 border-blue-200 focus-visible:ring-blue-500 tabular-nums disabled:opacity-50 disabled:bg-slate-50 disabled:cursor-not-allowed [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                               onWheel={(e) => e.currentTarget.blur()}
                             />
                             <Button
                               type="button"
                               variant="outline"
                               size="icon"
-                              className="h-7 w-7"
+                              className="h-6 w-6 shrink-0 border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300"
+                              disabled={!isEditingEnabled}
                               onClick={() => adjustQty(item.id, 1)}
                             >
                               <Plus className="h-3 w-3" />
                             </Button>
                           </div>
                         </TableCell>
-                        <TableCell className="text-right font-medium tabular-nums">
+                        <TableCell className="px-2 text-xs text-right font-bold text-blue-700 tabular-nums whitespace-nowrap">
                           {formatInr(totalCost)}
                         </TableCell>
-                        <TableCell className="text-right font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                        <TableCell className="px-2 text-xs text-right font-extrabold tabular-nums text-orange-600 whitespace-nowrap">
                           {formatInr(totalProfit)}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="px-2">
                           <div className="flex justify-center gap-1">
                             <Button
                               type="button"
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8"
+                              className="h-7 w-7 shrink-0 text-blue-500 hover:bg-blue-100 hover:text-blue-700"
+                              disabled={!isEditingEnabled}
                               onClick={() => {
                                 setEditingItem(item)
                                 setItemDialogOpen(true)
                               }}
                             >
-                              <Pencil className="h-4 w-4" />
+                              <Pencil className="h-3.5 w-3.5" />
                               <span className="sr-only">Edit</span>
                             </Button>
                             <Button
                               type="button"
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              className="h-7 w-7 shrink-0 text-red-400 hover:bg-red-50 hover:text-red-600"
+                              disabled={!isEditingEnabled}
                               onClick={() => setDeletingItem(item)}
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Trash2 className="h-3 w-3" />
                               <span className="sr-only">Delete</span>
                             </Button>
                           </div>
@@ -847,21 +876,21 @@ export function MasterPlanDashboard() {
                     )
                   })}
                 </TableBody>
-                <TableFooter className="bg-muted/30">
+                <TableFooter className="bg-gradient-to-r from-blue-50 to-white border-t-2 border-blue-200 shadow-[inset_0_1px_0_rgba(255,255,255,1)]">
                   <TableRow>
-                    <TableCell colSpan={8} className="text-right text-xs font-semibold uppercase tracking-wide">
+                    <TableCell colSpan={8} className="px-2 text-right text-[11px] font-extrabold text-blue-800 uppercase tracking-widest">
                       Filtered total ({filteredItems.length})
                     </TableCell>
-                    <TableCell className="text-center font-bold tabular-nums">
+                    <TableCell className="px-2 text-center text-sm font-black text-blue-900 tabular-nums">
                       {tableTotals.qty.toLocaleString("en-IN")}
                     </TableCell>
-                    <TableCell className="text-right font-bold tabular-nums">
+                    <TableCell className="px-2 text-right text-sm font-black text-blue-700 tabular-nums whitespace-nowrap">
                       {formatInr(tableTotals.budget)}
                     </TableCell>
-                    <TableCell className="text-right font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                    <TableCell className="px-2 text-right text-sm font-black text-orange-600 tabular-nums whitespace-nowrap">
                       {formatInr(tableTotals.profit)}
                     </TableCell>
-                    <TableCell />
+                    <TableCell className="px-2" />
                   </TableRow>
                 </TableFooter>
               </Table>
@@ -940,10 +969,10 @@ function CategoryPill({
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors sm:text-sm",
+        "rounded-full border px-4 py-1.5 text-xs font-bold transition-all duration-300 sm:text-sm shadow-sm",
         active
-          ? "border-primary bg-primary text-primary-foreground shadow-sm"
-          : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+          ? "border-blue-600 bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-md shadow-blue-500/30 scale-105"
+          : "border-blue-200 bg-white text-blue-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-900 hover:shadow"
       )}
     >
       {children}
