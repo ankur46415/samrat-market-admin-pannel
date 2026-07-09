@@ -8,6 +8,10 @@ import {
   getDocs,
   setDoc,
   updateDoc,
+  query,
+  where,
+  limit,
+  Timestamp,
 } from "firebase/firestore"
 
 export interface LiveBillingSession {
@@ -56,7 +60,8 @@ export async function completeLiveBillingSession(
 
   const soldAt = new Date().toISOString()
   const salesRows: Record<string, unknown>[] = []
-  itemsSnap.forEach((itemDoc) => {
+  
+  for (const itemDoc of itemsSnap.docs) {
     const itemData = itemDoc.data() as Record<string, unknown>
     const barcode = String(itemData.barcode ?? itemDoc.id)
 
@@ -81,7 +86,85 @@ export async function completeLiveBillingSession(
       ...(customer?.customerPhone ? { customerPhone: customer.customerPhone } : {}),
     }
     salesRows.push(salePayload)
-  })
+
+    // Deduct stock and batches for the item
+    try {
+      console.log(`[StockDeduct] Processing barcode: "${itemPayload.barcode}", qty: ${itemPayload.quantity}`)
+
+      // Try matching by barcode field first
+      const productQuery = query(
+        collection(db, "products"),
+        where("barcode", "==", itemPayload.barcode),
+        limit(1)
+      )
+      const productSnap = await getDocs(productQuery)
+
+      // Fallback: try matching by document ID (some products use barcode as doc ID)
+      let productDoc = productSnap.empty ? null : productSnap.docs[0]
+      if (!productDoc) {
+        const directRef = doc(db, "products", itemPayload.barcode)
+        const directSnap = await getDoc(directRef)
+        if (directSnap.exists()) {
+          productDoc = directSnap as any
+        }
+      }
+
+      if (productDoc) {
+        const productId = productDoc.id
+        const productData = productDoc.data() as Record<string, unknown>
+        console.log(`[StockDeduct] Found product: ${productId}, currentStock: ${productData.stock}`)
+
+        // Fetch batches
+        const batchesCol = collection(db, "products", productId, "batches")
+        const batchesSnap = await getDocs(batchesCol)
+        console.log(`[StockDeduct] Batches found: ${batchesSnap.size}`)
+
+        const batchesList = batchesSnap.docs
+          .map((d) => {
+            const bd = d.data() as Record<string, unknown>
+            let expiryDate = new Date()
+            if (bd.expiryDate && typeof (bd.expiryDate as any).toDate === "function") {
+              expiryDate = (bd.expiryDate as any).toDate()
+            } else if (bd.expiryDate) {
+              expiryDate = new Date(String(bd.expiryDate))
+            }
+            return {
+              id: d.id,
+              ref: d.ref,
+              quantity: Number(bd.quantity ?? 0),
+              expiryDate,
+            }
+          })
+          .sort((a, b) => a.expiryDate.getTime() - b.expiryDate.getTime())
+
+        let remainingQtyToDeduct = itemPayload.quantity
+        for (const batch of batchesList) {
+          if (remainingQtyToDeduct <= 0) break
+          if (batch.quantity <= remainingQtyToDeduct) {
+            remainingQtyToDeduct -= batch.quantity
+            await updateDoc(batch.ref, { quantity: 0 })
+          } else {
+            const nextQty = batch.quantity - remainingQtyToDeduct
+            remainingQtyToDeduct = 0
+            await updateDoc(batch.ref, { quantity: nextQty })
+          }
+        }
+
+        const currentStock = firestoreNumber(productData.stock, 0)
+        const newStock = Math.max(0, currentStock - itemPayload.quantity)
+        console.log(`[StockDeduct] Updating stock: ${currentStock} → ${newStock}`)
+        await updateDoc(productDoc.ref, {
+          stock: newStock,
+          updatedAt: Timestamp.now(),
+        })
+        console.log(`[StockDeduct] Stock updated successfully for ${productId}`)
+      } else {
+        console.warn(`[StockDeduct] Product NOT FOUND for barcode: "${itemPayload.barcode}". Stock not deducted.`)
+      }
+    } catch (stockErr) {
+      console.error(`Failed to deduct stock for barcode ${itemPayload.barcode}:`, stockErr)
+    }
+  }
 
   await updateDoc(liveSessionRef, {
     status: "completed",
