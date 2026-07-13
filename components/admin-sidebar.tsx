@@ -12,6 +12,7 @@ import {
   ChevronDown,
   LogOut,
   Map,
+  ShoppingBag,
 } from "lucide-react"
 import Image from "next/image"
 import {
@@ -92,6 +93,11 @@ const mainNavItems = [
     title: "Master Plan",
     url: "/master-plan",
     icon: Map,
+  },
+  {
+    title: "Purchase Catalog",
+    url: "/purchase-catalog",
+    icon: ShoppingBag,
   },
 ]
 
