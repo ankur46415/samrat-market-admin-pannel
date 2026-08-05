@@ -13,6 +13,7 @@ import {
   Minus,
   Pencil,
   Plus,
+  Printer,
   Receipt,
   ScanBarcode,
   Search,
@@ -39,11 +40,8 @@ import {
   updateSessionItemQuantity,
 } from "@/lib/features/live_billing_admin/services/live_billing_admin_service"
 import type { EditableLiveItem } from "@/components/live-billing/live-bill-items-editor"
-import { ThermalPrinterControls } from "@/components/printing/thermal-printer-controls"
 import type { ReceiptData } from "@/lib/printing/receipt-data"
-import { saveLastReceipt } from "@/lib/printing/receipt-data"
-import { getPrinterSettings } from "@/lib/printing/printer-settings"
-import { printThermalReceipt } from "@/lib/printing/thermal-printer-client"
+import { printReceiptInBrowser } from "@/lib/printing/receipt-html"
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -81,6 +79,7 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
   const [clock, setClock] = useState(() => new Date())
   const [customerPhone, setCustomerPhone] = useState("")
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
+  const [printing, setPrinting] = useState(false)
   const customerInputRef = useRef<HTMLInputElement>(null)
 
   const cashierName = user?.name || user?.email || "Cashier"
@@ -102,6 +101,44 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
 
   const matchedCustomer = customers.find((c) => c.phone.trim() === customerPhone.trim()) ?? null
   const selectedCustomer = customers.find((c) => c.id === selectedCustomerId) ?? matchedCustomer
+
+  const buildCurrentReceipt = useCallback((): ReceiptData | null => {
+    if (items.length === 0) return null
+    return {
+      billNo: sessionId ? `BILL-${sessionId.slice(-6).toUpperCase()}` : `BILL-${Date.now()}`,
+      date: new Date(),
+      customerName: selectedCustomer?.name,
+      customerPhone: selectedCustomer?.phone,
+      items: items.map((i) => ({
+        name: i.name,
+        quantity: i.quantity,
+        price: i.price,
+        total: i.quantity * i.price,
+      })),
+      subtotal: totals.total,
+      total: totals.total,
+      paymentMethod: "cash",
+      amountPaid: totals.total,
+      change: 0,
+    }
+  }, [items, selectedCustomer, sessionId, totals.total])
+
+  const handlePrintBill = useCallback(() => {
+    const receipt = buildCurrentReceipt()
+    if (!receipt) {
+      toast.error("Scan at least one product first")
+      return
+    }
+    try {
+      setPrinting(true)
+      printReceiptInBrowser(receipt)
+    } catch (e) {
+      console.error(e)
+      toast.error(e instanceof Error ? e.message : "Print failed")
+    } finally {
+      setPrinting(false)
+    }
+  }, [buildCurrentReceipt])
 
   useEffect(() => {
     const t = setInterval(() => setClock(new Date()), 1000)
@@ -272,42 +309,7 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
             }
           : undefined
       )
-
-      const receipt: ReceiptData = {
-        billNo: result.billNo ?? `BILL-${Date.now()}`,
-        date: new Date(),
-        customerName: selectedCustomer?.name,
-        customerPhone: selectedCustomer?.phone,
-        items: items.map((i) => ({
-          name: i.name,
-          quantity: i.quantity,
-          price: i.price,
-          total: i.quantity * i.price,
-        })),
-        subtotal: totals.total,
-        total: totals.total,
-        paymentMethod: "cash",
-        amountPaid: totals.total,
-        change: 0,
-      }
-      saveLastReceipt(receipt)
-
-      if (getPrinterSettings().autoPrint) {
-        try {
-          const printMode = await printThermalReceipt(receipt)
-          if (printMode === "serial") {
-            toast.success(result.billNo ? `Bill ${result.billNo} printed` : "Bill printed on XPrinter")
-          } else {
-            toast.success(result.billNo ? `Bill ${result.billNo} completed — printing…` : "Bill completed — printing…")
-          }
-        } catch (printErr) {
-          console.error(printErr)
-          toast.error(printErr instanceof Error ? printErr.message : "Bill saved but print failed")
-        }
-      } else {
-        toast.success(result.billNo ? `Bill ${result.billNo} completed` : "Bill completed")
-      }
-
+      toast.success(result.billNo ? `Bill ${result.billNo} completed` : "Bill completed")
       onExit?.()
       router.push("/generate-bill")
     } catch (e) {
@@ -316,7 +318,7 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
     } finally {
       setActing(false)
     }
-  }, [items, onExit, router, selectedCustomer, sessionId, totals.lines, totals.total])
+  }, [onExit, router, selectedCustomer, sessionId, totals.lines])
 
   const goFinalize = useCallback(() => {
     if (totals.lines === 0) {
@@ -421,8 +423,7 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          <ThermalPrinterControls className="hidden md:flex" />
+        <div className="flex shrink-0 items-center gap-3">
           <Badge variant="outline" className="hidden gap-1.5 border-primary/30 bg-primary/10 text-primary lg:inline-flex">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
@@ -436,10 +437,6 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
           </div>
         </div>
       </header>
-
-      <div className="border-b border-border/60 px-4 py-2 md:hidden">
-        <ThermalPrinterControls />
-      </div>
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* Main cart area */}
@@ -773,6 +770,20 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
           )}
 
           <div className="shrink-0 space-y-2 border-t border-border/60 bg-muted/15 p-5">
+            <Button
+              variant="secondary"
+              className="h-12 w-full text-base font-semibold"
+              disabled={totals.lines === 0 || printing || acting}
+              onClick={handlePrintBill}
+            >
+              {printing ? (
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              ) : (
+                <Printer className="mr-2 h-5 w-5" />
+              )}
+              Print this bill
+            </Button>
+
             {view === "billing" ? (
               <>
                 <Button className="h-12 w-full text-base font-semibold" disabled={!isActive || totals.lines === 0 || acting} onClick={goFinalize}>
