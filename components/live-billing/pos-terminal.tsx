@@ -39,6 +39,11 @@ import {
   updateSessionItemQuantity,
 } from "@/lib/features/live_billing_admin/services/live_billing_admin_service"
 import type { EditableLiveItem } from "@/components/live-billing/live-bill-items-editor"
+import { ThermalPrinterControls } from "@/components/printing/thermal-printer-controls"
+import type { ReceiptData } from "@/lib/printing/receipt-data"
+import { saveLastReceipt } from "@/lib/printing/receipt-data"
+import { getPrinterSettings } from "@/lib/printing/printer-settings"
+import { printThermalReceipt } from "@/lib/printing/thermal-printer-client"
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -267,7 +272,42 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
             }
           : undefined
       )
-      toast.success(result.billNo ? `Bill ${result.billNo} completed` : "Bill completed")
+
+      const receipt: ReceiptData = {
+        billNo: result.billNo ?? `BILL-${Date.now()}`,
+        date: new Date(),
+        customerName: selectedCustomer?.name,
+        customerPhone: selectedCustomer?.phone,
+        items: items.map((i) => ({
+          name: i.name,
+          quantity: i.quantity,
+          price: i.price,
+          total: i.quantity * i.price,
+        })),
+        subtotal: totals.total,
+        total: totals.total,
+        paymentMethod: "cash",
+        amountPaid: totals.total,
+        change: 0,
+      }
+      saveLastReceipt(receipt)
+
+      if (getPrinterSettings().autoPrint) {
+        try {
+          const printMode = await printThermalReceipt(receipt)
+          if (printMode === "serial") {
+            toast.success(result.billNo ? `Bill ${result.billNo} printed` : "Bill printed on XPrinter")
+          } else {
+            toast.success(result.billNo ? `Bill ${result.billNo} completed — printing…` : "Bill completed — printing…")
+          }
+        } catch (printErr) {
+          console.error(printErr)
+          toast.error(printErr instanceof Error ? printErr.message : "Bill saved but print failed")
+        }
+      } else {
+        toast.success(result.billNo ? `Bill ${result.billNo} completed` : "Bill completed")
+      }
+
       onExit?.()
       router.push("/generate-bill")
     } catch (e) {
@@ -276,7 +316,7 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
     } finally {
       setActing(false)
     }
-  }, [onExit, router, selectedCustomer, sessionId, totals.lines])
+  }, [items, onExit, router, selectedCustomer, sessionId, totals.lines, totals.total])
 
   const goFinalize = useCallback(() => {
     if (totals.lines === 0) {
@@ -381,8 +421,9 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-3">
-          <Badge variant="outline" className="hidden gap-1.5 border-primary/30 bg-primary/10 text-primary sm:inline-flex">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <ThermalPrinterControls className="hidden md:flex" />
+          <Badge variant="outline" className="hidden gap-1.5 border-primary/30 bg-primary/10 text-primary lg:inline-flex">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
@@ -395,6 +436,10 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
           </div>
         </div>
       </header>
+
+      <div className="border-b border-border/60 px-4 py-2 md:hidden">
+        <ThermalPrinterControls />
+      </div>
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* Main cart area */}
