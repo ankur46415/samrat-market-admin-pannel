@@ -40,6 +40,15 @@ export function firestoreNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(n) ? n : fallback
 }
 
+/** Live session line item qty — web uses `quantity`, mobile may use `qty` / `count`. */
+export function liveSessionItemQuantity(data: Record<string, unknown>): number {
+  for (const key of ["quantity", "qty", "count", "itemQty"] as const) {
+    const n = firestoreNumber(data[key], NaN)
+    if (Number.isFinite(n) && n >= 0) return n
+  }
+  return 0
+}
+
 function firstFiniteNumber(data: Record<string, unknown>, keys: readonly string[]): number | null {
   for (const key of keys) {
     const raw = data[key]
@@ -120,3 +129,86 @@ export function normalizeProductUnit(raw: unknown, fallback = "pcs"): string {
   const s = String(raw).trim()
   return s.length > 0 ? s : fallback
 }
+
+/** Clean barcode text from USB/Bluetooth scanner guns (strip control chars, trim). */
+export function normalizeScannedBarcode(raw: string): string {
+  return raw.replace(/[\r\n\t\u0000-\u001F\u007F-\u009F]/g, "").trim()
+}
+
+/** Build lookup keys for the same physical barcode (EAN padding, digits-only, etc.). */
+export function getBarcodeLookupCandidates(raw: string): string[] {
+  const normalized = normalizeScannedBarcode(raw)
+  const candidates = new Set<string>()
+  if (normalized) candidates.add(normalized)
+
+  const digitsOnly = normalized.replace(/\D/g, "")
+  if (digitsOnly) {
+    candidates.add(digitsOnly)
+    if (/^\d{12}$/.test(digitsOnly)) candidates.add(`0${digitsOnly}`)
+    if (/^0\d{13}$/.test(digitsOnly)) candidates.add(digitsOnly.slice(1))
+  }
+
+  return [...candidates]
+}
+
+const BARCODE_FIELD_KEYS = [
+  "barcode",
+  "barCode",
+  "BarCode",
+  "productBarcode",
+  "sku",
+  "ean",
+  "upc",
+  "code",
+] as const
+
+/** Collect every barcode-like value from a Firestore product doc (incl. doc id). */
+export function barcodeValuesFromFirestore(data: Record<string, unknown>, docId?: string): string[] {
+  const values = new Set<string>()
+
+  for (const key of BARCODE_FIELD_KEYS) {
+    const raw = data[key]
+    if (raw === undefined || raw === null) continue
+    for (const candidate of getBarcodeLookupCandidates(String(raw))) {
+      values.add(candidate)
+    }
+  }
+
+  if (docId?.trim()) {
+    for (const candidate of getBarcodeLookupCandidates(docId)) {
+      values.add(candidate)
+    }
+  }
+
+  return [...values]
+}
+
+/** True when scanned code matches a stored barcode (handles padding / format drift). */
+export function barcodesMatch(stored: string, scanned: string): boolean {
+  const scannedSet = new Set(getBarcodeLookupCandidates(scanned))
+  return getBarcodeLookupCandidates(stored).some((candidate) => scannedSet.has(candidate))
+}
+
+export type BarcodeProductRef = {
+  id: string
+  name: string
+  price: number
+  barcode?: string
+}
+
+/** Match a scanned barcode against an in-memory product list (from useProducts). */
+export function findCachedProductByBarcode(
+  products: BarcodeProductRef[],
+  scanned: string
+): BarcodeProductRef | null {
+  const cleaned = normalizeScannedBarcode(scanned)
+  if (!cleaned) return null
+
+  for (const product of products) {
+    if (product.barcode && barcodesMatch(product.barcode, cleaned)) return product
+    if (barcodesMatch(product.id, cleaned)) return product
+  }
+
+  return null
+}
+

@@ -7,33 +7,19 @@ import { collection, doc, onSnapshot } from "firebase/firestore"
 import { ArrowLeft, Search, UserRound } from "lucide-react"
 import { db } from "@/lib/firebase"
 import { useCustomers } from "@/hooks/use-firestore"
-import { firestoreNumber } from "@/lib/stock"
+import { firestoreNumber, liveSessionItemQuantity } from "@/lib/stock"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { LiveSessionBillEditor } from "@/components/live-billing/live-session-bill-editor"
 import {
   completeLiveBillingSession,
   cancelLiveBillingSession,
 } from "@/lib/features/live_billing_admin/services/live_billing_admin_service"
-
-type LiveItem = {
-  barcode: string
-  name: string
-  price: number
-  quantity: number
-}
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -51,7 +37,9 @@ export default function GenerateBillCheckoutPage() {
   const { customers, loading: customersLoading } = useCustomers()
 
   const [sessionStatus, setSessionStatus] = useState<string>("active")
-  const [items, setItems] = useState<LiveItem[]>([])
+  const [itemCount, setItemCount] = useState(0)
+  const [itemQty, setItemQty] = useState(0)
+  const [itemTotal, setItemTotal] = useState(0)
   const [loadingItems, setLoadingItems] = useState(true)
   const [customerPhone, setCustomerPhone] = useState("")
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
@@ -85,22 +73,24 @@ export default function GenerateBillCheckoutPage() {
     const unsubItems = onSnapshot(
       itemsCol,
       (snapshot) => {
-        const next = snapshot.docs
-          .map((d) => {
-            const data = d.data() as Record<string, unknown>
-            return {
-              barcode: String(data.barcode ?? d.id),
-              name: String(data.name ?? "").trim(),
-              price: firestoreNumber(data.price, 0),
-              quantity: firestoreNumber(data.quantity, 0),
-            } satisfies LiveItem
-          })
-          .sort((a, b) => a.name.localeCompare(b.name))
-        setItems(next)
+        let qty = 0
+        let total = 0
+        for (const d of snapshot.docs) {
+          const data = d.data() as Record<string, unknown>
+          const q = liveSessionItemQuantity(data)
+          const p = firestoreNumber(data.price, 0)
+          qty += q
+          total += q * p
+        }
+        setItemCount(snapshot.docs.length)
+        setItemQty(qty)
+        setItemTotal(total)
         setLoadingItems(false)
       },
       () => {
-        setItems([])
+        setItemCount(0)
+        setItemQty(0)
+        setItemTotal(0)
         setLoadingItems(false)
       }
     )
@@ -131,12 +121,14 @@ export default function GenerateBillCheckoutPage() {
     if (matchedCustomer) setSelectedCustomerId(matchedCustomer.id)
   }, [matchedCustomer])
 
-  const totals = useMemo(() => {
-    const lines = items.length
-    const qty = items.reduce((sum, i) => sum + i.quantity, 0)
-    const total = items.reduce((sum, i) => sum + i.quantity * i.price, 0)
-    return { lines, qty, total }
-  }, [items])
+  const totals = useMemo(
+    () => ({
+      lines: itemCount,
+      qty: itemQty,
+      total: itemTotal,
+    }),
+    [itemCount, itemQty, itemTotal]
+  )
 
   const handleSearchCustomer = () => {
     if (!normalizedPhone) {
@@ -176,7 +168,11 @@ export default function GenerateBillCheckoutPage() {
             }
           : undefined
       )
-      toast.success(`Bill generated. Sales rows: ${result.salesWritten}`)
+      toast.success(
+        result.billNo
+          ? `Bill ${result.billNo} saved with ${result.completedItems} item(s)`
+          : `Bill saved with ${result.completedItems} item(s)`
+      )
       router.push("/generate-bill")
     } catch (e: any) {
       console.error(e)
@@ -259,50 +255,16 @@ export default function GenerateBillCheckoutPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Scanned Items</CardTitle>
-              <CardDescription>Live updates from phone scanning session.</CardDescription>
+              <CardTitle>Bill Items</CardTitle>
+              <CardDescription>
+                Add or remove products before completing the bill.
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              {loadingItems ? (
-                <div className="space-y-3">
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                </div>
-              ) : (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Product</TableHead>
-                        <TableHead className="text-right">Qty</TableHead>
-                        <TableHead className="text-right">Price</TableHead>
-                        <TableHead className="text-right">Total</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {items.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={4} className="h-20 text-center">
-                            No items scanned yet.
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        items.map((it) => (
-                          <TableRow key={it.barcode}>
-                            <TableCell className="font-medium">{it.name || it.barcode}</TableCell>
-                            <TableCell className="text-right">{it.quantity}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(it.price)}</TableCell>
-                            <TableCell className="text-right font-medium">
-                              {formatCurrency(it.quantity * it.price)}
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
+              <LiveSessionBillEditor
+                sessionId={sessionId}
+                editable={sessionStatus === "active"}
+              />
             </CardContent>
           </Card>
         </div>

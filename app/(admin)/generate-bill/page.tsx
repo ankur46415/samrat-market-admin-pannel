@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { collection, onSnapshot, query, where } from "firebase/firestore"
+import { ScanBarcode } from "lucide-react"
 import { db } from "@/lib/firebase"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -10,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AdminActiveSessionsList } from "@/components/live-billing/admin-active-sessions-list"
-import { AdminSessionItems } from "@/components/live-billing/admin-session-items"
+import { LiveSessionBillEditor } from "@/components/live-billing/live-session-bill-editor"
 import {
   cancelLiveBillingSession,
   type LiveBillingSession,
@@ -128,7 +130,15 @@ export default function GenerateBillPage() {
           <p className="text-muted-foreground">Complete the selected live billing session.</p>
         </div>
 
-        {selectedSessionId && selectedCancelled ? <Badge variant="destructive">Cancelled</Badge> : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button asChild className="gap-2">
+            <Link href="/generate-bill/scan">
+              <ScanBarcode className="h-4 w-4" />
+              Scan &amp; Generate Bill
+            </Link>
+          </Button>
+          {selectedSessionId && selectedCancelled ? <Badge variant="destructive">Cancelled</Badge> : null}
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -216,9 +226,9 @@ export default function GenerateBillPage() {
                 </div>
               </div>
 
-              <AdminSessionItems
+              <LiveSessionBillEditor
                 sessionId={selectedSessionId}
-                status={selectedCancelled ? "cancelled" : selectedSessionExists ? "active" : "completed"}
+                editable={!selectedCancelled && selectedSessionExists}
               />
             </>
           )}

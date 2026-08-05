@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Package, Layers } from "lucide-react"
 import { useProducts, useCategories } from "@/hooks/use-firestore"
+import { BarcodeScannerInput } from "@/components/inventory/barcode-scanner-input"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -52,6 +53,14 @@ export default function AddProductPage() {
     expiry: "",
     minStock: "10",
   })
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const barcode = params.get("barcode")?.trim()
+    if (barcode) {
+      setFormData((prev) => ({ ...prev, barcode }))
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -181,12 +190,12 @@ export default function AddProductPage() {
                     <Label htmlFor="barcode" className={labelClass}>
                       Barcode <span className="text-destructive">*</span>
                     </Label>
-                    <Input
+                    <BarcodeScannerInput
                       id="barcode"
                       placeholder="e.g. 8901234567890"
                       value={formData.barcode}
-                      onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                      className={cn(inputClass, "font-mono text-base")}
+                      onChange={(barcode) => setFormData({ ...formData, barcode })}
+                      className={inputClass}
                     />
                   </div>
 

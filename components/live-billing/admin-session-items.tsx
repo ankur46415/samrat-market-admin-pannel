@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { collection, onSnapshot } from "firebase/firestore"
 import { db } from "@/lib/firebase"
-import { firestoreNumber } from "@/lib/stock"
+import { firestoreNumber, liveSessionItemQuantity } from "@/lib/stock"
 import type { LiveBillingLineItem } from "@/lib/features/live_billing_admin/services/live_billing_admin_service"
 import {
   Table,
@@ -50,7 +50,7 @@ export function AdminSessionItems({
               barcode: String(data.barcode ?? doc.id),
               name: String(data.name ?? "").trim(),
               price: firestoreNumber(data.price, 0),
-              quantity: firestoreNumber(data.quantity, 0),
+              quantity: liveSessionItemQuantity(data),
             } satisfies LiveBillingLineItem
           })
           .sort((a, b) => a.name.localeCompare(b.name))

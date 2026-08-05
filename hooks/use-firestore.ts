@@ -20,6 +20,7 @@ import {
 import { db } from "@/lib/firebase"
 import type { Product, ProductBatch, Customer, Sale, LedgerEntry, DashboardStats, Order } from "@/lib/types"
 import { saleFromFirestoreDoc } from "@/lib/sale-from-firestore"
+import { omitUndefinedFields } from "@/lib/utils"
 import { InventoryBatchService } from "@/lib/features/inventory/services/inventory_batch_service"
 import {
   coerceProductStockFromFirestore,
@@ -315,7 +316,7 @@ export function useCustomers() {
 
   const addCustomer = useCallback(async (customer: Omit<Customer, "id" | "createdAt" | "updatedAt">) => {
     const docRef = await addDoc(collection(db, "customers"), {
-      ...customer,
+      ...omitUndefinedFields(customer as Record<string, unknown>),
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
     })
@@ -324,7 +325,7 @@ export function useCustomers() {
 
   const updateCustomer = useCallback(async (id: string, data: Partial<Customer>) => {
     await updateDoc(doc(db, "customers", id), {
-      ...data,
+      ...omitUndefinedFields(data as Record<string, unknown>),
       updatedAt: Timestamp.now(),
     })
   }, [])
