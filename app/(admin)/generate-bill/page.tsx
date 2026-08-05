@@ -4,15 +4,14 @@ import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { collection, onSnapshot, query, where } from "firebase/firestore"
-import { ScanBarcode } from "lucide-react"
+import { Monitor, Receipt, ScanBarcode } from "lucide-react"
 import { db } from "@/lib/firebase"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { AdminActiveSessionsList } from "@/components/live-billing/admin-active-sessions-list"
-import { LiveSessionBillEditor } from "@/components/live-billing/live-session-bill-editor"
 import {
   cancelLiveBillingSession,
   type LiveBillingSession,
@@ -20,8 +19,13 @@ import {
 
 function toDate(value: unknown): Date | undefined {
   if (!value) return undefined
-  if (typeof value === "object" && value && "toDate" in value && typeof (value as any).toDate === "function") {
-    return (value as any).toDate()
+  if (
+    typeof value === "object" &&
+    value &&
+    "toDate" in value &&
+    typeof (value as { toDate: () => Date }).toDate === "function"
+  ) {
+    return (value as { toDate: () => Date }).toDate()
   }
   if (value instanceof Date) return value
   if (typeof value === "string") {
@@ -36,8 +40,6 @@ export default function GenerateBillPage() {
   const [sessions, setSessions] = useState<LiveBillingSession[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
-  const [selectedSessionMeta, setSelectedSessionMeta] = useState<LiveBillingSession | null>(null)
-  const [selectedCancelled, setSelectedCancelled] = useState(false)
   const [acting, setActing] = useState(false)
 
   useEffect(() => {
@@ -47,10 +49,10 @@ export default function GenerateBillPage() {
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const nextSessions: LiveBillingSession[] = snapshot.docs.map((doc) => {
-          const data = doc.data() as Record<string, unknown>
+        const nextSessions: LiveBillingSession[] = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data() as Record<string, unknown>
           return {
-            sessionId: doc.id,
+            sessionId: docSnap.id,
             createdAt: toDate(data.createdAt),
             status: String(data.status ?? "active"),
             cashierId: typeof data.cashierId === "string" ? data.cashierId : undefined,
@@ -70,171 +72,142 @@ export default function GenerateBillPage() {
     return () => unsubscribe()
   }, [])
 
-  // If selected session is no longer in active list, clear local active indicator.
-  useEffect(() => {
-    if (!selectedSessionId) return
-    const stillActive = sessions.some((s) => s.sessionId === selectedSessionId)
-    if (!stillActive && !selectedCancelled) {
-      setSelectedSessionMeta((prev) => (prev ? { ...prev, status: "completed" } : prev))
-    }
-  }, [sessions, selectedCancelled, selectedSessionId])
+  const selectedSession = useMemo(
+    () => sessions.find((s) => s.sessionId === selectedSessionId) ?? null,
+    [sessions, selectedSessionId]
+  )
 
-  const selectedSessionExists = useMemo(() => {
-    if (!selectedSessionId) return false
-    return sessions.some((s) => s.sessionId === selectedSessionId)
-  }, [sessions, selectedSessionId])
-
-  const handleSelect = (sessionId: string) => {
-    setSelectedSessionId(sessionId)
-    setSelectedSessionMeta(sessions.find((s) => s.sessionId === sessionId) ?? null)
-    setSelectedCancelled(false)
-  }
-
-  const handleCancel = async () => {
-    if (!selectedSessionId || selectedCancelled) {
-      setSelectedSessionId(null)
-      setSelectedSessionMeta(null)
-      setSelectedCancelled(false)
-      return
-    }
-
-    const ok = window.confirm(
-      "Cancel this bill? Live session status will be set to cancelled (it will disappear from Active Sessions)."
-    )
-    if (!ok) return
-
+  const handleCancel = async (sessionId: string) => {
+    if (!window.confirm("Cancel this active bill?")) return
     try {
       setActing(true)
-      await cancelLiveBillingSession(selectedSessionId)
+      await cancelLiveBillingSession(sessionId)
       toast.success("Bill cancelled")
-      setSelectedCancelled(true)
-      setSelectedSessionMeta((prev) => (prev ? { ...prev, status: "cancelled" } : prev))
+      if (selectedSessionId === sessionId) setSelectedSessionId(null)
     } catch (e) {
       console.error(e)
-      toast.error("Failed to cancel bill")
+      toast.error("Failed to cancel")
     } finally {
       setActing(false)
     }
   }
 
-  const handleCheckout = () => {
-    if (!selectedSessionId) return
-    router.push(`/generate-bill/checkout?sessionId=${encodeURIComponent(selectedSessionId)}`)
-  }
-
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Generate Bill</h1>
-          <p className="text-muted-foreground">Complete the selected live billing session.</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary">Billing</p>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Generate Bill</h1>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+            Supermarket POS billing — scan continuously, use keyboard shortcuts, complete bills quickly.
+          </p>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Button asChild className="gap-2">
-            <Link href="/generate-bill/scan">
-              <ScanBarcode className="h-4 w-4" />
-              Scan &amp; Generate Bill
-            </Link>
-          </Button>
-          {selectedSessionId && selectedCancelled ? <Badge variant="destructive">Cancelled</Badge> : null}
-        </div>
+        <Button asChild size="lg" className="shrink-0 gap-2 font-semibold">
+          <Link href="/generate-bill/scan">
+            <ScanBarcode className="h-5 w-5" />
+            Open POS Terminal
+          </Link>
+        </Button>
       </div>
 
+      <Card className="overflow-hidden border-border/80 shadow-sm">
+        <CardHeader className="border-b border-border/60 bg-muted/20 pb-4">
+          <CardTitle className="text-base">Keyboard shortcuts</CardTitle>
+          <CardDescription>Use these keys inside the POS terminal for faster billing</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2 pt-4">
+          {["F2 Scan", "F10 Pay", "Esc Cancel", "Del Remove", "↑↓ Select"].map((key) => (
+            <span key={key} className="rounded-md border border-border bg-muted/50 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+              {key}
+            </span>
+          ))}
+        </CardContent>
+      </Card>
+
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-1">
+        <div className="space-y-4 lg:col-span-1">
+          <div className="flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-lg font-semibold">
+              <Monitor className="h-5 w-5 text-muted-foreground" />
+              Active Sessions
+            </h2>
+            <Badge variant="secondary">{sessions.length} open</Badge>
+          </div>
+
           {loading ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>Active Sessions</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-16 w-full" />
-                ))}
-              </CardContent>
-            </Card>
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
           ) : (
             <AdminActiveSessionsList
               sessions={sessions}
               selectedSessionId={selectedSessionId}
-              onSelectSession={handleSelect}
+              onSelectSession={setSelectedSessionId}
             />
           )}
         </div>
 
-        <div className="lg:col-span-2 space-y-4">
-          {!selectedSessionId ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>Pick a session</CardTitle>
+        <div className="lg:col-span-2">
+          {!selectedSession ? (
+            <Card className="flex min-h-[280px] flex-col items-center justify-center border-dashed p-8 text-center">
+              <Receipt className="mb-4 h-12 w-12 text-muted-foreground/40" />
+              <h3 className="text-lg font-semibold">No session selected</h3>
+              <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+                Select an active session to resume in POS, or open a new terminal to start fresh billing.
+              </p>
+              <Button asChild className="mt-6 gap-2" variant="outline">
+                <Link href="/generate-bill/scan">
+                  <ScanBarcode className="h-4 w-4" />
+                  New POS Session
+                </Link>
+              </Button>
+            </Card>
+          ) : (
+            <Card className="border-border/80 shadow-sm">
+              <CardHeader className="border-b border-border/60 bg-muted/20">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <CardDescription>Resume Session</CardDescription>
+                    <CardTitle className="mt-1 font-mono text-sm">{selectedSession.sessionId}</CardTitle>
+                    {selectedSession.cashierId ? (
+                      <p className="mt-1 text-sm text-muted-foreground">Cashier: {selectedSession.cashierId}</p>
+                    ) : null}
+                    {selectedSession.createdAt ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Started {selectedSession.createdAt.toLocaleString("en-IN")}
+                      </p>
+                    ) : null}
+                  </div>
+                  <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary">
+                    Active
+                  </Badge>
+                </div>
               </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  Select an active session from the left. Items will appear live as phone scanning
-                  continues.
+              <CardContent className="space-y-4 pt-6">
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    className="gap-2 font-semibold"
+                    onClick={() =>
+                      router.push(`/generate-bill/scan?sessionId=${encodeURIComponent(selectedSession.sessionId)}`)
+                    }
+                  >
+                    <ScanBarcode className="h-4 w-4" />
+                    Resume in POS
+                  </Button>
+                  <Button variant="outline" disabled={acting} onClick={() => void handleCancel(selectedSession.sessionId)}>
+                    Cancel Session
+                  </Button>
+                </div>
+                <p className="border-t border-border/60 pt-4 text-xs text-muted-foreground">
+                  Resume opens the full POS terminal with scan, edit, and payment.
                 </p>
               </CardContent>
             </Card>
-          ) : (
-            <>
-              <div className="rounded-lg border p-4 flex items-start justify-between gap-4 flex-wrap">
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Selected Session</p>
-                  <p className="text-sm font-semibold">{selectedSessionId}</p>
-                  <div className="flex flex-wrap gap-x-3 gap-y-1">
-                    <span className="text-xs text-muted-foreground">
-                      Status:{" "}
-                      <span className="font-medium text-foreground">
-                        {selectedCancelled ? "cancelled" : selectedSessionExists ? "active" : "completed"}
-                      </span>
-                    </span>
-                    {selectedSessionMeta?.cashierId ? (
-                      <span className="text-xs text-muted-foreground">
-                        Cashier:{" "}
-                        <span className="font-medium text-foreground">
-                          {selectedSessionMeta.cashierId}
-                        </span>
-                      </span>
-                    ) : null}
-                    {selectedSessionMeta?.createdAt ? (
-                      <span className="text-xs text-muted-foreground">
-                        Started:{" "}
-                        <span className="font-medium text-foreground">
-                          {selectedSessionMeta.createdAt.toLocaleString("en-IN")}
-                        </span>
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="flex gap-3 items-center">
-                  {!selectedCancelled ? (
-                    <>
-                      <Button variant="outline" onClick={handleCancel} disabled={acting}>
-                        Cancel Bill
-                      </Button>
-                      <Button onClick={handleCheckout} disabled={acting || !selectedSessionExists}>
-                        Checkout
-                      </Button>
-                    </>
-                  ) : (
-                    <Button variant="outline" onClick={handleCancel}>
-                      Close
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              <LiveSessionBillEditor
-                sessionId={selectedSessionId}
-                editable={!selectedCancelled && selectedSessionExists}
-              />
-            </>
           )}
         </div>
       </div>
     </div>
   )
 }
-

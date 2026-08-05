@@ -454,3 +454,37 @@ export async function removeItemFromSession(sessionId: string, itemDocId: string
   await deleteDoc(doc(db, "live_sessions", sessionId, "items", itemDocId))
 }
 
+/** Set line quantity manually (both `quantity` and `qty` for mobile compatibility). Removes line if qty ≤ 0. */
+export async function updateSessionItemQuantity(
+  sessionId: string,
+  itemDocId: string,
+  quantity: number
+): Promise<void> {
+  const nextQty = Math.floor(quantity)
+  if (nextQty <= 0) {
+    await removeItemFromSession(sessionId, itemDocId)
+    return
+  }
+
+  await updateDoc(doc(db, "live_sessions", sessionId, "items", itemDocId), {
+    quantity: nextQty,
+    qty: nextQty,
+  })
+}
+
+/** Override selling rate for a line item on the active bill. */
+export async function updateSessionItemPrice(
+  sessionId: string,
+  itemDocId: string,
+  price: number
+): Promise<void> {
+  const nextPrice = Math.max(0, Number(price))
+  if (!Number.isFinite(nextPrice)) {
+    throw new Error("Invalid price")
+  }
+
+  await updateDoc(doc(db, "live_sessions", sessionId, "items", itemDocId), {
+    price: nextPrice,
+  })
+}
+
