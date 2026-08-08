@@ -1,6 +1,12 @@
 import { db } from "@/lib/firebase"
 import { firestoreNumber, getBarcodeLookupCandidates, normalizeScannedBarcode, barcodeValuesFromFirestore, findCachedProductByBarcode, liveSessionItemQuantity, type BarcodeProductRef } from "@/lib/stock"
 import {
+  clampDiscountPercent,
+  discountedUnitPrice,
+  lineDiscountSaved,
+  lineItemAmount,
+} from "@/lib/billing/line-discount"
+import {
   addDoc,
   collection,
   doc,
@@ -30,6 +36,7 @@ export interface LiveBillingLineItem {
   name: string
   price: number
   quantity: number
+  discountPercent?: number
 }
 
 export interface CheckoutCustomerInfo {
@@ -113,11 +120,15 @@ export async function completeLiveBillingSession(
     const itemData = itemDoc.data() as Record<string, unknown>
     const barcode = String(itemData.barcode ?? itemDoc.id)
 
+    const basePrice = firestoreNumber(itemData.price, 0)
+    const discountPercent = clampDiscountPercent(firestoreNumber(itemData.discountPercent, 0))
+
     const itemPayload: LiveBillingLineItem = {
       barcode,
       name: String(itemData.name ?? "").trim(),
-      price: firestoreNumber(itemData.price, 0),
+      price: basePrice,
       quantity: liveSessionItemQuantity(itemData),
+      discountPercent,
     }
     lineItems.push(itemPayload)
 
@@ -216,23 +227,35 @@ export async function completeLiveBillingSession(
   if (lineItems.length > 0) {
     billNo = generateBillNo(sessionId)
     const subtotal = lineItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
+    const totalDiscount = lineItems.reduce(
+      (sum, item) => sum + lineDiscountSaved(item.quantity, item.price, item.discountPercent ?? 0),
+      0
+    )
+    const total = lineItems.reduce(
+      (sum, item) => sum + lineItemAmount(item.quantity, item.price, item.discountPercent ?? 0),
+      0
+    )
 
     const salePayload: Record<string, unknown> = {
       billNo,
       sessionId,
-      items: lineItems.map((item) => ({
-        productId: item.barcode,
-        productName: item.name,
-        quantity: item.quantity,
-        price: item.price,
-        total: item.price * item.quantity,
-      })),
+      items: lineItems.map((item) => {
+        const unitPrice = discountedUnitPrice(item.price, item.discountPercent ?? 0)
+        return {
+          productId: item.barcode,
+          productName: item.name,
+          quantity: item.quantity,
+          price: unitPrice,
+          total: lineItemAmount(item.quantity, item.price, item.discountPercent ?? 0),
+          ...(item.discountPercent ? { discountPercent: item.discountPercent } : {}),
+        }
+      }),
       subtotal,
-      discount: 0,
+      discount: totalDiscount,
       tax: 0,
-      total: subtotal,
+      total,
       paymentMethod: "cash",
-      amountPaid: subtotal,
+      amountPaid: total,
       change: 0,
       soldAt,
       createdAt: Timestamp.now(),
@@ -485,6 +508,18 @@ export async function updateSessionItemPrice(
 
   await updateDoc(doc(db, "live_sessions", sessionId, "items", itemDocId), {
     price: nextPrice,
+  })
+}
+
+/** Apply per-line discount % (0–100) on the active bill. */
+export async function updateSessionItemDiscount(
+  sessionId: string,
+  itemDocId: string,
+  discountPercent: number
+): Promise<void> {
+  const next = clampDiscountPercent(discountPercent)
+  await updateDoc(doc(db, "live_sessions", sessionId, "items", itemDocId), {
+    discountPercent: next,
   })
 }
 

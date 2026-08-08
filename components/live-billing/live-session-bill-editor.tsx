@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { collection, onSnapshot } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { firestoreNumber, liveSessionItemQuantity } from "@/lib/stock"
+import { clampDiscountPercent } from "@/lib/billing/line-discount"
 import {
   LiveBillItemsEditor,
   type EditableLiveItem,
@@ -35,6 +36,7 @@ export function LiveSessionBillEditor({
               name: String(data.name ?? "").trim(),
               price: firestoreNumber(data.price, 0),
               quantity: liveSessionItemQuantity(data),
+              discountPercent: clampDiscountPercent(firestoreNumber(data.discountPercent, 0)),
             } satisfies EditableLiveItem
           })
           .sort((a, b) => a.name.localeCompare(b.name))

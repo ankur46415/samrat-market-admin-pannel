@@ -19,13 +19,21 @@ function escapeHtml(value: string): string {
 /** 80mm / 58mm thermal receipt HTML for browser print (XPrinter driver). */
 export function buildReceiptPrintHtml(receipt: ReceiptData, paperWidthMm: 58 | 80 = 80): string {
   const itemRows = receipt.items
-    .map(
-      (item) => `
+    .map((item) => {
+      const discountNote =
+        item.discountPercent && item.discountPercent > 0
+          ? ` <span class="muted">(−${item.discountPercent}%)</span>`
+          : ""
+      const rateNote =
+        item.basePrice && item.basePrice !== item.price
+          ? `<span class="muted"><s>${formatInr(item.basePrice)}</s> ${formatInr(item.price)}</span>`
+          : formatInr(item.price)
+      return `
       <tr>
-        <td>${escapeHtml(item.name)}<br /><span class="muted">x${item.quantity} @ ${formatInr(item.price)}</span></td>
+        <td>${escapeHtml(item.name)}${discountNote}<br /><span class="muted">x${item.quantity} @ ${rateNote}</span></td>
         <td class="right">${formatInr(item.total)}</td>
       </tr>`
-    )
+    })
     .join("")
 
   return `<!DOCTYPE html>
@@ -35,32 +43,37 @@ export function buildReceiptPrintHtml(receipt: ReceiptData, paperWidthMm: 58 | 8
     <title>Bill ${escapeHtml(receipt.billNo)}</title>
     <style>
       @page { size: ${paperWidthMm}mm auto; margin: 2mm; }
-      * { box-sizing: border-box; }
+      * { box-sizing: border-box; font-weight: 700; }
       body {
         width: ${paperWidthMm}mm;
         margin: 0 auto;
         padding: 4mm 3mm;
         font-family: "Courier New", Courier, monospace;
         font-size: 11px;
+        font-weight: 700;
         line-height: 1.35;
         color: #000;
         background: #fff;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
       }
       .center { text-align: center; }
       .bold { font-weight: 700; }
       .title { font-size: 16px; font-weight: 700; margin: 0; }
-      .muted { color: #444; font-size: 10px; }
+      .muted { color: #000; font-size: 10px; font-weight: 700; }
       .divider { border-top: 1px dashed #000; margin: 6px 0; }
       table { width: 100%; border-collapse: collapse; }
-      td { vertical-align: top; padding: 2px 0; }
+      td { vertical-align: top; padding: 2px 0; font-weight: 700; }
       .right { text-align: right; white-space: nowrap; }
       .total { font-size: 14px; font-weight: 700; }
-      .footer { margin-top: 8px; font-size: 10px; }
+      .footer { margin-top: 8px; font-size: 10px; font-weight: 700; }
+      @media print {
+        body, td, p, div, span { font-weight: 700 !important; color: #000 !important; }
+      }
     </style>
   </head>
   <body>
     <div class="center">
-      <img src="/images/samrat-market-logo.png" alt="" width="48" height="48" style="border-radius:8px;" onerror="this.style.display='none'" />
       <p class="title">SAMRAT MARKET</p>
       <p class="muted">Retail Invoice</p>
     </div>
@@ -92,11 +105,6 @@ export function buildReceiptPrintHtml(receipt: ReceiptData, paperWidthMm: 58 | 8
         ${
           receipt.discount && receipt.discount > 0
             ? `<tr><td>Discount</td><td class="right">-${formatInr(receipt.discount)}</td></tr>`
-            : ""
-        }
-        ${
-          receipt.tax && receipt.tax > 0
-            ? `<tr><td>Tax</td><td class="right">${formatInr(receipt.tax)}</td></tr>`
             : ""
         }
         <tr>

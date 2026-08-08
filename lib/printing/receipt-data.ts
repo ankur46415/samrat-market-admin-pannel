@@ -3,6 +3,8 @@ export type ReceiptLineItem = {
   quantity: number
   price: number
   total: number
+  basePrice?: number
+  discountPercent?: number
 }
 
 export type ReceiptData = {

@@ -36,10 +36,16 @@ import {
   completeLiveBillingSession,
   getOrCreateScannerBillingSession,
   removeItemFromSession,
+  updateSessionItemDiscount,
   updateSessionItemPrice,
   updateSessionItemQuantity,
 } from "@/lib/features/live_billing_admin/services/live_billing_admin_service"
 import type { EditableLiveItem } from "@/components/live-billing/live-bill-items-editor"
+import { PosLineDiscountCell } from "@/components/live-billing/pos-line-discount-cell"
+import {
+  discountedUnitPrice,
+  lineItemAmount,
+} from "@/lib/billing/line-discount"
 import type { ReceiptData } from "@/lib/printing/receipt-data"
 import { printReceiptInBrowser } from "@/lib/printing/receipt-html"
 
@@ -112,16 +118,19 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
       items: items.map((i) => ({
         name: i.name,
         quantity: i.quantity,
-        price: i.price,
-        total: i.quantity * i.price,
+        price: discountedUnitPrice(i.price, i.discountPercent),
+        basePrice: i.price,
+        discountPercent: i.discountPercent,
+        total: lineItemAmount(i.quantity, i.price, i.discountPercent),
       })),
-      subtotal: totals.total,
+      subtotal: items.reduce((sum, i) => sum + i.quantity * i.price, 0),
+      discount: totals.discountSaved,
       total: totals.total,
       paymentMethod: "cash",
       amountPaid: totals.total,
       change: 0,
     }
-  }, [items, selectedCustomer, sessionId, totals.total])
+  }, [items, selectedCustomer, sessionId, totals.discountSaved, totals.total])
 
   const handlePrintBill = useCallback(() => {
     const receipt = buildCurrentReceipt()
@@ -250,6 +259,24 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
       }
     },
     [editingPrice, isActive, sessionId]
+  )
+
+  const handleDiscountChange = useCallback(
+    async (item: EditableLiveItem, discountPercent: number) => {
+      if (!sessionId || !isActive) return
+      if (discountPercent === item.discountPercent) return
+
+      setUpdatingItemId(item.itemDocId)
+      try {
+        await updateSessionItemDiscount(sessionId, item.itemDocId, discountPercent)
+      } catch (e) {
+        console.error(e)
+        toast.error("Failed to update discount")
+      } finally {
+        setUpdatingItemId(null)
+      }
+    },
+    [isActive, sessionId]
   )
 
   const toggleEditItem = useCallback(
@@ -505,6 +532,7 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
                     <th className="pb-2">Product</th>
                     <th className="w-16 pb-2 text-right">Qty</th>
                     <th className="w-24 pb-2 text-right">Rate</th>
+                    <th className="w-28 pb-2 text-right">Discount</th>
                     <th className="w-28 pb-2 text-right">Amount</th>
                     {isActive ? <th className="w-16 pb-2 text-right">Edit</th> : null}
                   </tr>
@@ -589,11 +617,32 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
                               className="ml-auto h-9 w-24 text-right tabular-nums"
                             />
                           ) : (
-                            <span className="tabular-nums text-muted-foreground">{formatCurrency(item.price)}</span>
+                            <div className="text-right">
+                              <span className="tabular-nums text-muted-foreground">{formatCurrency(item.price)}</span>
+                              {item.discountPercent > 0 ? (
+                                <p className="text-[11px] font-medium text-primary">
+                                  → {formatCurrency(discountedUnitPrice(item.price, item.discountPercent))}
+                                </p>
+                              ) : null}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3 text-right">
+                          {isActive ? (
+                            <PosLineDiscountCell
+                              item={item}
+                              disabled={!isActive}
+                              updating={isUpdating}
+                              onChange={(row, pct) => void handleDiscountChange(row, pct)}
+                            />
+                          ) : item.discountPercent > 0 ? (
+                            <span className="text-sm font-medium text-primary">−{item.discountPercent}%</span>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">—</span>
                           )}
                         </td>
                         <td className="py-3 text-right font-semibold tabular-nums text-foreground">
-                          {formatCurrency(item.quantity * item.price)}
+                          {formatCurrency(lineItemAmount(item.quantity, item.price, item.discountPercent))}
                         </td>
                         {isActive ? (
                           <td className="py-3 text-right">
@@ -686,6 +735,11 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
                 <p className="text-xl font-bold tabular-nums">{totals.qty}</p>
               </div>
             </div>
+            {totals.discountSaved > 0 ? (
+              <p className="mt-3 text-sm text-primary">
+                Discount saved: −{formatCurrency(totals.discountSaved)}
+              </p>
+            ) : null}
           </div>
 
           {view === "finalize" ? (

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { collection, onSnapshot } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { firestoreNumber, liveSessionItemQuantity } from "@/lib/stock"
+import { clampDiscountPercent, lineItemAmount } from "@/lib/billing/line-discount"
 import type { LiveBillingLineItem } from "@/lib/features/live_billing_admin/services/live_billing_admin_service"
 import {
   Table,
@@ -51,6 +52,7 @@ export function AdminSessionItems({
               name: String(data.name ?? "").trim(),
               price: firestoreNumber(data.price, 0),
               quantity: liveSessionItemQuantity(data),
+              discountPercent: clampDiscountPercent(firestoreNumber(data.discountPercent, 0)),
             } satisfies LiveBillingLineItem
           })
           .sort((a, b) => a.name.localeCompare(b.name))
@@ -70,7 +72,10 @@ export function AdminSessionItems({
   const totals = useMemo(() => {
     const lineCount = items.length
     const totalQty = items.reduce((sum, i) => sum + i.quantity, 0)
-    const grandTotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0)
+    const grandTotal = items.reduce(
+      (sum, i) => sum + lineItemAmount(i.quantity, i.price, i.discountPercent ?? 0),
+      0
+    )
     return { lineCount, totalQty, grandTotal }
   }, [items])
 

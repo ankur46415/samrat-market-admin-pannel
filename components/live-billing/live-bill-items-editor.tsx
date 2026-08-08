@@ -16,6 +16,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { useProducts } from "@/hooks/use-firestore"
 import { normalizeScannedBarcode } from "@/lib/stock"
+import { lineItemAmount } from "@/lib/billing/line-discount"
 import {
   removeItemFromSession,
   scanItemIntoSession,
@@ -27,6 +28,7 @@ export type EditableLiveItem = {
   name: string
   price: number
   quantity: number
+  discountPercent: number
 }
 
 function formatCurrency(amount: number) {
@@ -150,7 +152,7 @@ export function LiveBillItemsEditor({
                   <TableCell className="text-right">{it.quantity}</TableCell>
                   <TableCell className="text-right">{formatCurrency(it.price)}</TableCell>
                   <TableCell className="text-right font-medium">
-                    {formatCurrency(it.quantity * it.price)}
+                    {formatCurrency(lineItemAmount(it.quantity, it.price, it.discountPercent))}
                   </TableCell>
                   {editable ? (
                     <TableCell className="text-right">

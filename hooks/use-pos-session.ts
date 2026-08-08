@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { collection, doc, onSnapshot } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { firestoreNumber, liveSessionItemQuantity } from "@/lib/stock"
+import { clampDiscountPercent, lineItemAmount } from "@/lib/billing/line-discount"
 import type { EditableLiveItem } from "@/components/live-billing/live-bill-items-editor"
 
 export function usePosSession(sessionId: string | null) {
@@ -47,6 +48,7 @@ export function usePosSession(sessionId: string | null) {
               name: String(data.name ?? "").trim(),
               price: firestoreNumber(data.price, 0),
               quantity: liveSessionItemQuantity(data),
+              discountPercent: clampDiscountPercent(firestoreNumber(data.discountPercent, 0)),
             } satisfies EditableLiveItem
           })
           .sort((a, b) => a.name.localeCompare(b.name))
@@ -68,8 +70,15 @@ export function usePosSession(sessionId: string | null) {
   const totals = useMemo(() => {
     const lines = items.length
     const qty = items.reduce((sum, i) => sum + i.quantity, 0)
-    const total = items.reduce((sum, i) => sum + i.quantity * i.price, 0)
-    return { lines, qty, total }
+    const total = items.reduce(
+      (sum, i) => sum + lineItemAmount(i.quantity, i.price, i.discountPercent),
+      0
+    )
+    const discountSaved = items.reduce(
+      (sum, i) => sum + i.quantity * i.price - lineItemAmount(i.quantity, i.price, i.discountPercent),
+      0
+    )
+    return { lines, qty, total, discountSaved }
   }, [items])
 
   return { items, loading, sessionStatus, totals }
