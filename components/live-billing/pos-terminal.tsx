@@ -87,6 +87,7 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
   const [customerPhone, setCustomerPhone] = useState("")
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
   const [printing, setPrinting] = useState(false)
+  const [manualDialogOpen, setManualDialogOpen] = useState(false)
   const customerInputRef = useRef<HTMLInputElement>(null)
 
   const cashierName = user?.name || user?.email || "Cashier"
@@ -103,8 +104,20 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
   const scanner = usePosScanner({
     sessionId,
     productCache,
-    enabled: isActive && view === "billing",
+    enabled: isActive && view === "billing" && !manualDialogOpen && !editingItemId,
   })
+
+  const scannerFocusPaused =
+    manualDialogOpen || editingItemId != null || view !== "billing" || itemsLoading || booting
+
+  const focusScanInput = useCallback(() => {
+    if (!scannerFocusPaused && isActive) {
+      scanner.focusInput()
+    }
+  }, [isActive, scanner, scannerFocusPaused])
+
+  const scannerFocusRef = useRef(scanner.focusInput)
+  scannerFocusRef.current = scanner.focusInput
 
   const matchedCustomer = customers.find((c) => c.phone.trim() === customerPhone.trim()) ?? null
   const selectedCustomer = customers.find((c) => c.id === selectedCustomerId) ?? matchedCustomer
@@ -183,10 +196,9 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
   }, [initialSessionId])
 
   useEffect(() => {
-    if (view === "billing" && isActive && !itemsLoading && !booting) {
-      scanner.focusInput()
-    }
-  }, [view, isActive, itemsLoading, booting, scanner])
+    if (scannerFocusPaused || !isActive) return
+    requestAnimationFrame(() => scannerFocusRef.current())
+  }, [isActive, scannerFocusPaused])
 
   useEffect(() => {
     if (matchedCustomer) setSelectedCustomerId(matchedCustomer.id)
@@ -205,7 +217,7 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
       try {
         await removeItemFromSession(sessionId, item.itemDocId)
         if (editingItemId === item.itemDocId) setEditingItemId(null)
-        scanner.focusInput()
+        focusScanInput()
       } catch (e) {
         console.error(e)
         toast.error("Failed to remove item")
@@ -213,7 +225,7 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
         setRemovingId(null)
       }
     },
-    [editingItemId, isActive, scanner, sessionId]
+    [editingItemId, focusScanInput, isActive, sessionId]
   )
 
   const handleQtyChange = useCallback(
@@ -285,7 +297,7 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
       if (editingItemId === item.itemDocId) {
         void handlePriceSave(item)
         setEditingItemId(null)
-        scanner.focusInput()
+        focusScanInput()
         return
       }
       if (editingItemId) {
@@ -295,7 +307,7 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
       setEditingItemId(item.itemDocId)
       setEditingPrice(String(item.price))
     },
-    [editingItemId, handlePriceSave, items, scanner]
+    [editingItemId, focusScanInput, handlePriceSave, items]
   )
 
   const handleCancel = useCallback(async () => {
@@ -358,17 +370,23 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName
+      const target = e.target as HTMLElement
+      if (target.closest('[role="dialog"]')) return
+
+      const tag = target.tagName
+      const inFormField =
+        tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable
       const inCustomerField = tag === "INPUT" && view === "finalize"
 
       if (e.key === "F2") {
         e.preventDefault()
         setView("billing")
-        scanner.focusInput()
+        focusScanInput()
         return
       }
 
       if (e.key === "F10") {
+        if (inFormField) return
         e.preventDefault()
         if (view === "billing") goFinalize()
         else void handleComplete()
@@ -376,17 +394,18 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
       }
 
       if (e.key === "Escape") {
+        if (inFormField || manualDialogOpen) return
         e.preventDefault()
         if (view === "finalize") {
           setView("billing")
-          scanner.focusInput()
+          focusScanInput()
         } else {
           void handleCancel()
         }
         return
       }
 
-      if (view === "billing" && !inCustomerField) {
+      if (view === "billing" && !inCustomerField && !inFormField) {
         if (e.key === "Delete" && items.length > 0) {
           e.preventDefault()
           const idx = selectedIndex >= 0 ? selectedIndex : items.length - 1
@@ -410,7 +429,7 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
 
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [goFinalize, handleCancel, handleComplete, handleRemove, items, scanner, selectedIndex, view])
+  }, [focusScanInput, goFinalize, handleCancel, handleComplete, handleRemove, items, manualDialogOpen, selectedIndex, view])
 
   if (booting || productsLoading || !sessionId) {
     return (
@@ -500,7 +519,8 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
                 <PosManualItemDialog
                   sessionId={sessionId}
                   disabled={!isActive}
-                  onAdded={() => scanner.focusInput()}
+                  onOpenChange={setManualDialogOpen}
+                  onAdded={focusScanInput}
                 />
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -882,7 +902,7 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
                   disabled={acting}
                   onClick={() => {
                     setView("billing")
-                    scanner.focusInput()
+                    focusScanInput()
                   }}
                 >
                   <ArrowLeft className="mr-2 h-4 w-4" />
