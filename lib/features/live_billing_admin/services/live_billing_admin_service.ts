@@ -472,6 +472,45 @@ export function toSessionItemDocId(barcode: string): string {
   return barcode.replace(/[/\\]/g, "_")
 }
 
+function newManualItemDocId(): string {
+  return `manual_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`.replace(/[/\\]/g, "_")
+}
+
+/** Add a custom line item (not from inventory scan) — e.g. misc / other products. */
+export async function addManualItemToSession(
+  sessionId: string,
+  input: { name: string; quantity: number; price: number; discountPercent?: number }
+): Promise<LiveBillingLineItem> {
+  const name = input.name.trim()
+  if (!name) throw new Error("Product name is required")
+
+  const quantity = Math.max(1, Math.floor(Number(input.quantity) || 0))
+  const price = Math.max(0, Number(input.price))
+  if (!Number.isFinite(price)) throw new Error("Enter a valid price")
+
+  const discountPercent = clampDiscountPercent(input.discountPercent ?? 0)
+  const barcode = `OTHER-${Date.now().toString(36).toUpperCase()}`
+  const itemRef = doc(db, "live_sessions", sessionId, "items", newManualItemDocId())
+
+  await setDoc(itemRef, {
+    barcode,
+    name,
+    price,
+    quantity,
+    qty: quantity,
+    discountPercent,
+    source: "manual",
+  })
+
+  return {
+    barcode,
+    name,
+    price,
+    quantity,
+    discountPercent,
+  }
+}
+
 /** Remove a product line entirely from an active live session. */
 export async function removeItemFromSession(sessionId: string, itemDocId: string): Promise<void> {
   await deleteDoc(doc(db, "live_sessions", sessionId, "items", itemDocId))

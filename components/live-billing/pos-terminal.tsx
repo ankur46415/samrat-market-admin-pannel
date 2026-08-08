@@ -42,6 +42,7 @@ import {
 } from "@/lib/features/live_billing_admin/services/live_billing_admin_service"
 import type { EditableLiveItem } from "@/components/live-billing/live-bill-items-editor"
 import { PosLineDiscountCell } from "@/components/live-billing/pos-line-discount-cell"
+import { PosManualItemDialog } from "@/components/live-billing/pos-manual-item-dialog"
 import {
   discountedUnitPrice,
   lineItemAmount,
@@ -470,31 +471,38 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {view === "billing" && (
             <div className="shrink-0 border-b border-border/60 bg-muted/15 px-4 py-4 md:px-6">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  scanner.submitScan()
-                }}
-                className="relative"
-              >
-                <ScanBarcode className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-primary" />
-                <input
-                  ref={scanner.inputRef}
-                  value={scanner.scanValue}
-                  onChange={(e) => scanner.setScanValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault()
-                      scanner.submitScan(e.currentTarget.value)
-                    }
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    scanner.submitScan()
                   }}
+                  className="relative min-w-0 flex-1"
+                >
+                  <ScanBarcode className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-primary" />
+                  <input
+                    ref={scanner.inputRef}
+                    value={scanner.scanValue}
+                    onChange={(e) => scanner.setScanValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault()
+                        scanner.submitScan(e.currentTarget.value)
+                      }
+                    }}
+                    disabled={!isActive}
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="Scan barcode — scanner gun auto-focuses here…"
+                    className="h-12 w-full rounded-lg border-2 border-primary/30 bg-background pl-12 pr-4 font-mono text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </form>
+                <PosManualItemDialog
+                  sessionId={sessionId}
                   disabled={!isActive}
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder="Scan barcode — scanner gun auto-focuses here…"
-                  className="h-12 w-full rounded-lg border-2 border-primary/30 bg-background pl-12 pr-4 font-mono text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  onAdded={() => scanner.focusInput()}
                 />
-              </form>
+              </div>
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <p className={cn("truncate text-sm font-medium transition-colors", statusColors[scanner.statusTone])}>
                   {scanner.isProcessing && <Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" />}
@@ -522,7 +530,7 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
               <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-3 text-muted-foreground">
                 <ScanBarcode className="h-12 w-12 opacity-40" />
                 <p className="text-lg font-medium text-foreground">No items scanned</p>
-                <p className="text-sm">Point scanner at barcode — items appear instantly</p>
+                <p className="text-sm">Scan barcode or use Add Other for manual items</p>
               </div>
             ) : (
               <table className="w-full text-left">
@@ -557,7 +565,14 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
                       >
                         <td className="py-3 pl-1 text-sm tabular-nums text-muted-foreground">{idx + 1}</td>
                         <td className="py-3 pr-2">
-                          <p className="font-medium leading-snug text-foreground">{item.name}</p>
+                          <p className="font-medium leading-snug text-foreground">
+                            {item.name}
+                            {item.barcode.startsWith("OTHER-") ? (
+                              <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
+                                Other
+                              </span>
+                            ) : null}
+                          </p>
                           <p className="mt-0.5 font-mono text-xs text-muted-foreground">{item.barcode}</p>
                         </td>
                         <td className="py-3 text-right">
