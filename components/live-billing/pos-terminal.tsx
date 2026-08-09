@@ -15,6 +15,7 @@ import {
   Plus,
   Printer,
   Receipt,
+  RotateCcw,
   ScanBarcode,
   Search,
   Trash2,
@@ -34,6 +35,7 @@ import { cn } from "@/lib/utils"
 import {
   cancelLiveBillingSession,
   completeLiveBillingSession,
+  forceNewScannerBillingSession,
   getOrCreateScannerBillingSession,
   removeItemFromSession,
   updateSessionItemDiscount,
@@ -88,6 +90,7 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
   const [printing, setPrinting] = useState(false)
   const [manualDialogOpen, setManualDialogOpen] = useState(false)
+  const [resettingScan, setResettingScan] = useState(false)
   const customerInputRef = useRef<HTMLInputElement>(null)
 
   const cashierName = user?.name || user?.email || "Cashier"
@@ -209,6 +212,30 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
       setEditingItemId(null)
     }
   }, [editingItemId, items])
+
+  const handleResetScan = useCallback(async () => {
+    setResettingScan(true)
+    try {
+      scanner.recoverScanner()
+      setEditingItemId(null)
+      setSelectedIndex(-1)
+
+      if (!isActive) {
+        const id = await forceNewScannerBillingSession(cashierName)
+        setSessionId(id)
+        toast.success("New scan session started — ready to scan")
+      } else {
+        toast.success("Scanner reset — ready to scan")
+      }
+
+      focusScanInput()
+    } catch (e) {
+      console.error(e)
+      toast.error("Failed to reset scanner")
+    } finally {
+      setResettingScan(false)
+    }
+  }, [cashierName, focusScanInput, isActive, scanner])
 
   const handleRemove = useCallback(
     async (item: EditableLiveItem) => {
@@ -378,6 +405,12 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
         tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable
       const inCustomerField = tag === "INPUT" && view === "finalize"
 
+      if (e.key === "F3") {
+        e.preventDefault()
+        void handleResetScan()
+        return
+      }
+
       if (e.key === "F2") {
         e.preventDefault()
         setView("billing")
@@ -429,7 +462,7 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
 
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [focusScanInput, goFinalize, handleCancel, handleComplete, handleRemove, items, manualDialogOpen, selectedIndex, view])
+  }, [focusScanInput, goFinalize, handleCancel, handleComplete, handleRemove, handleResetScan, items, manualDialogOpen, selectedIndex, view])
 
   if (booting || productsLoading || !sessionId) {
     return (
@@ -501,27 +534,46 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
                   <ScanBarcode className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-primary" />
                   <input
                     ref={scanner.inputRef}
-                    value={scanner.scanValue}
-                    onChange={(e) => scanner.setScanValue(e.target.value)}
+                    defaultValue=""
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault()
                         scanner.submitScan(e.currentTarget.value)
                       }
                     }}
+                    readOnly={scanner.isProcessing}
                     disabled={!isActive}
                     autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
                     spellCheck={false}
                     placeholder="Scan barcode — scanner gun auto-focuses here…"
                     className="h-12 w-full rounded-lg border-2 border-primary/30 bg-background pl-12 pr-4 font-mono text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
                 </form>
-                <PosManualItemDialog
-                  sessionId={sessionId}
-                  disabled={!isActive}
-                  onOpenChange={setManualDialogOpen}
-                  onAdded={focusScanInput}
-                />
+                <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={resettingScan || acting}
+                    className="gap-2"
+                    title="Use if barcode gun stops scanning (F3)"
+                    onClick={() => void handleResetScan()}
+                  >
+                    {resettingScan ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-4 w-4" />
+                    )}
+                    New Scan
+                  </Button>
+                  <PosManualItemDialog
+                    sessionId={sessionId}
+                    disabled={!isActive}
+                    onOpenChange={setManualDialogOpen}
+                    onAdded={focusScanInput}
+                  />
+                </div>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <p className={cn("truncate text-sm font-medium transition-colors", statusColors[scanner.statusTone])}>
@@ -733,6 +785,9 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
               <span className="inline-flex items-center gap-1">
                 <Keyboard className="h-3 w-3" /> Shortcuts:
+              </span>
+              <span>
+                <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 text-foreground">F3</kbd> New Scan
               </span>
               <span>
                 <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 text-foreground">F2</kbd> Scan

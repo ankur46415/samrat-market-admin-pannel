@@ -95,6 +95,12 @@ export async function getOrCreateScannerBillingSession(cashierLabel?: string): P
   return id
 }
 
+/** Start a fresh scanner session (clears tab session cache). */
+export async function forceNewScannerBillingSession(cashierLabel?: string): Promise<string> {
+  clearAdminScanSessionStorage()
+  return createScannerBillingSession(cashierLabel)
+}
+
 /**
  * Complete a live session by writing one consolidated invoice into `sales`
  * and updating live session `status` to "completed".
