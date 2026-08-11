@@ -21,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
 import { normalizeProductUnit, parseMinStockInput } from "@/lib/stock"
+import { discountedUnitPrice, parseDiscountInput } from "@/lib/billing/line-discount"
 import { cn } from "@/lib/utils"
 import { RACK_OPTIONS, RACK_OPTIONS_SET } from "@/lib/rack-options"
 import { STATUS_OPTIONS, STATUS_OPTIONS_SET } from "@/lib/status-options"
@@ -28,6 +29,13 @@ import { STATUS_OPTIONS, STATUS_OPTIONS_SET } from "@/lib/status-options"
 const labelClass = "text-sm font-medium text-foreground"
 const inputClass = "h-11 rounded-lg border-border/80 shadow-sm"
 const fieldGroup = "space-y-2"
+
+function sellingPriceFromMrp(mrp: string, discountPercent: string): string | null {
+  const m = parseFloat(mrp)
+  if (!Number.isFinite(m) || m <= 0) return null
+  const d = parseDiscountInput(discountPercent) ?? 0
+  return String(discountedUnitPrice(m, d))
+}
 
 export default function AddProductPage() {
   const router = useRouter()
@@ -44,6 +52,8 @@ export default function AddProductPage() {
     rack: "",
     tag: "",
     status: "active",
+    mrp: "",
+    discountPercent: "",
     price: "",
     costPrice: "",
     stock: "",
@@ -62,11 +72,29 @@ export default function AddProductPage() {
     }
   }, [])
 
+  const handleMrpChange = (mrp: string) => {
+    setFormData((prev) => {
+      const next = { ...prev, mrp }
+      const autoPrice = sellingPriceFromMrp(mrp, prev.discountPercent)
+      if (autoPrice != null) next.price = autoPrice
+      return next
+    })
+  }
+
+  const handleDiscountChange = (discountPercent: string) => {
+    setFormData((prev) => {
+      const next = { ...prev, discountPercent }
+      const autoPrice = sellingPriceFromMrp(prev.mrp, discountPercent)
+      if (autoPrice != null) next.price = autoPrice
+      return next
+    })
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (activeTab !== "batch") {
       setActiveTab("batch")
-      toast.info("Fill batch details and then save")
+      toast.info("Review batch details (optional) and save")
       return
     }
 
@@ -74,24 +102,25 @@ export default function AddProductPage() {
       toast.error("Barcode is required")
       return
     }
-    if (!formData.rack || !RACK_OPTIONS_SET.has(formData.rack as (typeof RACK_OPTIONS)[number])) {
-      toast.error("Select rack")
+    if (formData.rack && !RACK_OPTIONS_SET.has(formData.rack as (typeof RACK_OPTIONS)[number])) {
+      toast.error("Select a valid rack or leave empty")
       return
     }
     if (!formData.status || !STATUS_OPTIONS_SET.has(formData.status as (typeof STATUS_OPTIONS)[number])) {
       toast.error("Select status")
       return
     }
-    if (!formData.expiry) {
-      toast.error("Expiry date is required")
+    const stockNum = parseInt(formData.stock, 10)
+    if (formData.expiry && (!Number.isFinite(stockNum) || stockNum <= 0)) {
+      toast.error("Batch quantity must be greater than 0 when expiry is set")
       return
     }
-    if (!formData.stock || parseInt(formData.stock) <= 0) {
-      toast.error("Batch quantity must be greater than 0")
+    if (Number.isFinite(stockNum) && stockNum > 0 && !formData.expiry) {
+      toast.error("Batch expiry is required when quantity is set")
       return
     }
-    if (!formData.price || !formData.costPrice) {
-      toast.error("Please fill in selling and cost price")
+    if (!formData.price || parseFloat(formData.price) < 0) {
+      toast.error("Please fill in selling price")
       return
     }
 
@@ -113,8 +142,9 @@ export default function AddProductPage() {
         tag: formData.tag,
         status: formData.status,
         price: parseFloat(formData.price),
-        costPrice: parseFloat(formData.costPrice),
-        stock: parseInt(formData.stock) || 0,
+        costPrice: formData.costPrice.trim() ? parseFloat(formData.costPrice) : 0,
+        mrp: formData.mrp.trim() ? parseFloat(formData.mrp) : undefined,
+        stock: Number.isFinite(stockNum) && stockNum > 0 ? stockNum : 0,
         unit: normalizeProductUnit(formData.unit),
         barcode: formData.barcode || undefined,
         brand: formData.brand || undefined,
@@ -293,14 +323,14 @@ export default function AddProductPage() {
 
                   <div className={fieldGroup}>
                     <Label htmlFor="rack" className={labelClass}>
-                      Rack <span className="text-destructive">*</span>
+                      Rack <span className="font-normal text-muted-foreground">(optional)</span>
                     </Label>
                     <Select
-                      value={formData.rack}
+                      value={formData.rack || undefined}
                       onValueChange={(value) => setFormData({ ...formData, rack: value })}
                     >
                       <SelectTrigger className={cn(inputClass, "w-full")}>
-                        <SelectValue placeholder="Select rack" />
+                        <SelectValue placeholder="Select rack (optional)" />
                       </SelectTrigger>
                       <SelectContent>
                         {RACK_OPTIONS.map((opt) => (
@@ -378,6 +408,40 @@ export default function AddProductPage() {
                   <h3 className="mb-4 text-sm font-semibold text-foreground">Pricing</h3>
                   <div className="grid gap-6 sm:grid-cols-2">
                     <div className={fieldGroup}>
+                      <Label htmlFor="mrp" className={labelClass}>
+                        MRP (INR)
+                      </Label>
+                      <Input
+                        id="mrp"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={formData.mrp}
+                        onChange={(e) => handleMrpChange(e.target.value)}
+                        className={cn(inputClass, "tabular-nums")}
+                      />
+                    </div>
+                    <div className={fieldGroup}>
+                      <Label htmlFor="discountPercent" className={labelClass}>
+                        Discount (%)
+                      </Label>
+                      <Input
+                        id="discountPercent"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        placeholder="e.g. 10"
+                        value={formData.discountPercent}
+                        onChange={(e) => handleDiscountChange(e.target.value)}
+                        className={cn(inputClass, "tabular-nums")}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        MRP par % discount ke baad selling price auto fill hoti hai
+                      </p>
+                    </div>
+                    <div className={fieldGroup}>
                       <Label htmlFor="price" className={labelClass}>
                         Selling price (INR) <span className="text-destructive">*</span>
                       </Label>
@@ -395,7 +459,7 @@ export default function AddProductPage() {
                     </div>
                     <div className={fieldGroup}>
                       <Label htmlFor="costPrice" className={labelClass}>
-                        Cost price (INR) <span className="text-destructive">*</span>
+                        Cost price (INR) <span className="font-normal text-muted-foreground">(optional)</span>
                       </Label>
                       <Input
                         id="costPrice"
@@ -406,7 +470,6 @@ export default function AddProductPage() {
                         value={formData.costPrice}
                         onChange={(e) => setFormData({ ...formData, costPrice: e.target.value })}
                         className={cn(inputClass, "tabular-nums")}
-                        required
                       />
                     </div>
                   </div>
@@ -428,10 +491,13 @@ export default function AddProductPage() {
               </TabsContent>
 
               <TabsContent value="batch" className="mt-0 space-y-6 px-4 py-6 sm:px-6 focus-visible:outline-none">
+                <p className="text-sm text-muted-foreground">
+                  Batch expiry aur quantity optional hain — dono khali chhod sakte hain ya dono bharen.
+                </p>
                 <div className="grid max-w-xl gap-6 sm:grid-cols-2">
                   <div className={fieldGroup}>
                     <Label htmlFor="expiry" className={labelClass}>
-                      Batch expiry <span className="text-destructive">*</span>
+                      Batch expiry <span className="font-normal text-muted-foreground">(optional)</span>
                     </Label>
                     <Input
                       id="expiry"
@@ -439,23 +505,21 @@ export default function AddProductPage() {
                       value={formData.expiry}
                       onChange={(e) => setFormData({ ...formData, expiry: e.target.value })}
                       className={inputClass}
-                      required
                     />
                   </div>
 
                   <div className={fieldGroup}>
                     <Label htmlFor="stock" className={labelClass}>
-                      Quantity in this batch <span className="text-destructive">*</span>
+                      Quantity in this batch <span className="font-normal text-muted-foreground">(optional)</span>
                     </Label>
                     <Input
                       id="stock"
                       type="number"
-                      min="1"
+                      min="0"
                       placeholder="0"
                       value={formData.stock}
                       onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
                       className={cn(inputClass, "tabular-nums")}
-                      required
                     />
                   </div>
                 </div>
@@ -471,7 +535,7 @@ export default function AddProductPage() {
                     Back
                   </Button>
                   <Button type="submit" disabled={loading} size="lg" className="rounded-lg px-8 shadow-sm">
-                    {loading ? "Saving…" : "Save product & batch"}
+                    {loading ? "Saving…" : "Save product"}
                   </Button>
                 </div>
               </TabsContent>

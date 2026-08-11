@@ -111,6 +111,10 @@ function productFromData(id: string, data: Record<string, unknown>): Product {
     brand: brand.length > 0 ? brand : undefined,
     price: firestoreNumber(data.price, 0),
     costPrice: firestoreNumber(data.costPrice, 0),
+    mrp: (() => {
+      const n = firestoreNumber((data as any).mrp, NaN)
+      return Number.isFinite(n) && n > 0 ? n : undefined
+    })(),
     stock: Number.isFinite(totalStock) ? totalStock : coerceProductStockFromFirestore(data),
     batches,
     minStock: (() => {
@@ -194,26 +198,51 @@ export function useProducts() {
     if (!barcode) {
       throw new Error("Barcode is required for batch inventory")
     }
-    const rack = String(product.rack ?? "").trim()
-    if (!rack || !RACK_OPTIONS_SET.has(rack as (typeof RACK_OPTIONS)[number])) {
-      throw new Error("Rack must be one of predefined options")
-    }
     const status = String(product.status ?? "").trim()
     if (!status || !STATUS_OPTIONS_SET.has(status as (typeof STATUS_OPTIONS)[number])) {
       throw new Error("Status must be active or deactive")
     }
+    const rack = String(product.rack ?? "").trim()
+    if (rack && !RACK_OPTIONS_SET.has(rack as (typeof RACK_OPTIONS)[number])) {
+      throw new Error("Rack must be one of predefined options")
+    }
+
     const expiryRaw = (product.expiry || "").trim()
-    if (!expiryRaw) {
-      throw new Error("Expiry Date is required for batch creation")
+    let expiryDate: Date | undefined
+    if (expiryRaw) {
+      expiryDate = new Date(expiryRaw)
+      if (Number.isNaN(expiryDate.getTime())) {
+        throw new Error("Invalid Expiry Date")
+      }
     }
-    const expiryDate = new Date(expiryRaw)
-    if (Number.isNaN(expiryDate.getTime())) {
-      throw new Error("Invalid Expiry Date")
-    }
+
     const quantity = Number(product.stock ?? 0)
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      throw new Error("Quantity must be greater than 0")
+    if (expiryRaw && (!Number.isFinite(quantity) || quantity <= 0)) {
+      throw new Error("Batch quantity must be greater than 0 when expiry is set")
     }
+    if (Number.isFinite(quantity) && quantity > 0 && !expiryRaw) {
+      throw new Error("Expiry date is required when batch quantity is set")
+    }
+
+    const price = Number(product.price ?? 0)
+    if (!Number.isFinite(price) || price < 0) {
+      throw new Error("Selling price is required")
+    }
+
+    const costRaw = product.costPrice
+    const costPrice =
+      costRaw === undefined || costRaw === null || costRaw === ("" as unknown as number)
+        ? 0
+        : Number(costRaw)
+    if (!Number.isFinite(costPrice) || costPrice < 0) {
+      throw new Error("Invalid cost price")
+    }
+
+    const mrpRaw = product.mrp
+    const mrp =
+      mrpRaw != null && Number.isFinite(Number(mrpRaw)) && Number(mrpRaw) > 0
+        ? Number(mrpRaw)
+        : undefined
 
     const result = await batchService.addOrUpdateProductWithBatch({
       name: product.name || "Unnamed Product",
@@ -222,13 +251,14 @@ export function useProducts() {
       rack,
       tag: String(product.tag ?? "").trim(),
       status,
-      price: Number(product.price ?? 0),
-      costPrice: Number(product.costPrice ?? 0),
+      price,
+      costPrice,
       unit: normalizeProductUnit(product.unit),
       minStock: Number.isFinite(Number(product.minStock)) ? Number(product.minStock) : 10,
       brand: product.brand?.trim() ? product.brand.trim() : undefined,
-      expiryDate,
-      quantity: Math.floor(quantity),
+      expiryDate: expiryDate ?? null,
+      quantity: Number.isFinite(quantity) && quantity > 0 ? Math.floor(quantity) : undefined,
+      mrp,
     })
 
     return result.productId

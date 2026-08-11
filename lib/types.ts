@@ -29,6 +29,8 @@ export interface Product {
   unit: string
   barcode?: string
   brand?: string
+  /** Maximum retail price (MRP) when set at product creation */
+  mrp?: number
   minStock: number
   expiry?: string
   /** Derived from subcollection; may be empty for legacy docs without batches. */
