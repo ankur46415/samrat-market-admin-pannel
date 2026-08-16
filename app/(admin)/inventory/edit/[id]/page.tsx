@@ -31,6 +31,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
 import { normalizeProductUnit, parseMinStockInput } from "@/lib/stock"
+import { discountedUnitPrice, parseDiscountInput, clampDiscountPercent } from "@/lib/billing/line-discount"
 import type { Product } from "@/lib/types"
 import { RACK_OPTIONS, RACK_OPTIONS_SET } from "@/lib/rack-options"
 import { STATUS_OPTIONS, STATUS_OPTIONS_SET } from "@/lib/status-options"
@@ -44,6 +45,18 @@ import { cn } from "@/lib/utils"
 
 const labelClass = "text-sm font-medium text-foreground"
 const inputClass = "h-11 rounded-lg border-border/80 shadow-sm"
+
+function sellingPriceFromMrp(mrp: string, discountPercent: string): string | null {
+  const m = parseFloat(mrp)
+  if (!Number.isFinite(m) || m <= 0) return null
+  const d = parseDiscountInput(discountPercent) ?? 0
+  return String(discountedUnitPrice(m, d))
+}
+
+function discountPercentFromMrpPrice(mrp: number, price: number): string {
+  if (!Number.isFinite(mrp) || mrp <= 0 || !Number.isFinite(price)) return ""
+  return String(clampDiscountPercent(((mrp - price) / mrp) * 100))
+}
 
 function batchExpiryPill(expiry: Date) {
   const d = differenceInCalendarDays(startOfDay(expiry), startOfDay(new Date()))
@@ -71,6 +84,8 @@ export default function EditProductPage({
     rack: "",
     tag: "",
     status: "active",
+    mrp: "",
+    discountPercent: "",
     price: "",
     costPrice: "",
     unit: "pcs",
@@ -84,12 +99,18 @@ export default function EditProductPage({
 
   useEffect(() => {
     if (product) {
+      const mrpStr = product.mrp != null && product.mrp > 0 ? String(product.mrp) : ""
       setFormData({
         name: product.name || "",
         category: product.category || "",
         rack: product.rack || "",
         tag: product.tag || "",
         status: product.status || "",
+        mrp: mrpStr,
+        discountPercent:
+          product.mrp != null && product.mrp > 0
+            ? discountPercentFromMrpPrice(product.mrp, product.price)
+            : "",
         price: product.price?.toString() || "0",
         costPrice: product.costPrice?.toString() || "0",
         unit: product.unit || "pcs",
@@ -100,6 +121,24 @@ export default function EditProductPage({
       })
     }
   }, [product])
+
+  const handleMrpChange = (mrp: string) => {
+    setFormData((prev) => {
+      const next = { ...prev, mrp }
+      const autoPrice = sellingPriceFromMrp(mrp, prev.discountPercent)
+      if (autoPrice != null) next.price = autoPrice
+      return next
+    })
+  }
+
+  const handleDiscountChange = (discountPercent: string) => {
+    setFormData((prev) => {
+      const next = { ...prev, discountPercent }
+      const autoPrice = sellingPriceFromMrp(prev.mrp, discountPercent)
+      if (autoPrice != null) next.price = autoPrice
+      return next
+    })
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -148,6 +187,10 @@ export default function EditProductPage({
       }
       if (formData.expiry) {
         updatePayload.expiry = formData.expiry
+      }
+      const mrpVal = formData.mrp.trim() ? parseFloat(formData.mrp) : undefined
+      if (mrpVal != null && Number.isFinite(mrpVal) && mrpVal > 0) {
+        updatePayload.mrp = mrpVal
       }
 
       await updateProduct(id, updatePayload as Partial<Product>)
@@ -427,61 +470,100 @@ export default function EditProductPage({
                   </div>
                 </div>
 
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="price" className={labelClass}>
-                      Selling price (INR) *
-                    </Label>
-                    <Input
-                      id="price"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={formData.price}
-                      onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                      className={cn(inputClass, "tabular-nums")}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="costPrice" className={labelClass}>
-                      Cost price (INR) *
-                    </Label>
-                    <Input
-                      id="costPrice"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={formData.costPrice}
-                      onChange={(e) => setFormData({ ...formData, costPrice: e.target.value })}
-                      className={cn(inputClass, "tabular-nums")}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label className={labelClass}>Total stock</Label>
-                    <div className="rounded-lg border border-border/80 bg-muted/30 px-4 py-3 text-sm">
-                      <span className="font-semibold tabular-nums">{product.stock}</span> {product.unit}
-                      {batchCount > 0 ? (
-                        <>
-                          {" "}
-                          · <span className="font-semibold">{batchCount}</span> batch{batchCount === 1 ? "" : "es"}
-                        </>
-                      ) : null}
+                <Separator />
+
+                <div>
+                  <h3 className="mb-4 text-sm font-semibold text-foreground">Pricing</h3>
+                  <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="mrp" className={labelClass}>
+                        MRP (INR)
+                      </Label>
+                      <Input
+                        id="mrp"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={formData.mrp}
+                        onChange={(e) => handleMrpChange(e.target.value)}
+                        className={cn(inputClass, "tabular-nums")}
+                      />
                     </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="minStock" className={labelClass}>
-                      Minimum stock alert
-                    </Label>
-                    <Input
-                      id="minStock"
-                      type="number"
-                      min="0"
-                      value={formData.minStock}
-                      onChange={(e) => setFormData({ ...formData, minStock: e.target.value })}
-                      className={cn(inputClass, "tabular-nums")}
-                    />
+                    <div className="space-y-2">
+                      <Label htmlFor="discountPercent" className={labelClass}>
+                        Discount (%)
+                      </Label>
+                      <Input
+                        id="discountPercent"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        placeholder="0"
+                        value={formData.discountPercent}
+                        onChange={(e) => handleDiscountChange(e.target.value)}
+                        className={cn(inputClass, "tabular-nums")}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        0% discount par selling price = MRP
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="price" className={labelClass}>
+                        Selling price (INR) *
+                      </Label>
+                      <Input
+                        id="price"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={formData.price}
+                        onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                        className={cn(inputClass, "tabular-nums")}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="costPrice" className={labelClass}>
+                        Cost price (INR) *
+                      </Label>
+                      <Input
+                        id="costPrice"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={formData.costPrice}
+                        onChange={(e) => setFormData({ ...formData, costPrice: e.target.value })}
+                        className={cn(inputClass, "tabular-nums")}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2 sm:col-span-2 lg:col-span-2">
+                      <Label className={labelClass}>Total stock</Label>
+                      <div className="rounded-lg border border-border/80 bg-muted/30 px-4 py-3 text-sm">
+                        <span className="font-semibold tabular-nums">{product.stock}</span> {product.unit}
+                        {batchCount > 0 ? (
+                          <>
+                            {" "}
+                            · <span className="font-semibold">{batchCount}</span> batch{batchCount === 1 ? "" : "es"}
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="minStock" className={labelClass}>
+                        Minimum stock alert
+                      </Label>
+                      <Input
+                        id="minStock"
+                        type="number"
+                        min="0"
+                        value={formData.minStock}
+                        onChange={(e) => setFormData({ ...formData, minStock: e.target.value })}
+                        className={cn(inputClass, "tabular-nums")}
+                      />
+                    </div>
                   </div>
                 </div>
 
