@@ -170,9 +170,9 @@ export function SaleDetailDialog({ open, onOpenChange, sale }: SaleDetailDialogP
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
+      <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-lg">
+        <DialogHeader className="shrink-0">
+          <div className="flex items-center justify-between pr-8">
             <div>
               <DialogTitle>Invoice {sale.billNo}</DialogTitle>
               <DialogDescription>
@@ -185,22 +185,22 @@ export function SaleDetailDialog({ open, onOpenChange, sale }: SaleDetailDialogP
           </div>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="flex justify-between text-sm">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+          <div className="flex shrink-0 justify-between text-sm">
             <span className="text-muted-foreground">Customer</span>
             <span className="font-medium">{sale.customerName || "Walk-in Customer"}</span>
           </div>
 
-          <Separator />
+          <Separator className="shrink-0" />
 
-          <div className="rounded-md border">
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Item</TableHead>
-                  <TableHead className="text-right">Qty</TableHead>
-                  <TableHead className="text-right">Price</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="sticky top-0 z-10 bg-background">Item</TableHead>
+                  <TableHead className="sticky top-0 z-10 bg-background text-right">Qty</TableHead>
+                  <TableHead className="sticky top-0 z-10 bg-background text-right">Price</TableHead>
+                  <TableHead className="sticky top-0 z-10 bg-background text-right">Total</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -216,7 +216,7 @@ export function SaleDetailDialog({ open, onOpenChange, sale }: SaleDetailDialogP
             </Table>
           </div>
 
-          <div className="space-y-2 rounded-lg bg-muted p-4">
+          <div className="shrink-0 space-y-2 rounded-lg bg-muted p-4">
             <div className="flex justify-between text-sm">
               <span>Subtotal</span>
               <span>{formatCurrency(sale.subtotal)}</span>
@@ -234,7 +234,7 @@ export function SaleDetailDialog({ open, onOpenChange, sale }: SaleDetailDialogP
               </div>
             )}
             <Separator />
-            <div className="flex justify-between font-semibold text-lg">
+            <div className="flex justify-between text-lg font-semibold">
               <span>Total</span>
               <span>{formatCurrency(sale.total)}</span>
             </div>
@@ -252,7 +252,7 @@ export function SaleDetailDialog({ open, onOpenChange, sale }: SaleDetailDialogP
             )}
           </div>
 
-          <div className="flex justify-end gap-2">
+          <div className="flex shrink-0 justify-end gap-2">
             <Button variant="outline" onClick={handlePrint}>
               <Printer className="mr-2 h-4 w-4" />
               Print
