@@ -29,6 +29,7 @@ export type EditableLiveItem = {
   price: number
   quantity: number
   discountPercent: number
+  mrp?: number
 }
 
 function formatCurrency(amount: number) {
@@ -62,6 +63,7 @@ export function LiveBillItemsEditor({
     name: p.name,
     price: p.price,
     barcode: p.barcode,
+    mrp: p.mrp,
   }))
 
   const focusScanInput = useCallback(() => {

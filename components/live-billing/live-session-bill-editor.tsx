@@ -30,6 +30,7 @@ export function LiveSessionBillEditor({
         const next = snapshot.docs
           .map((d) => {
             const data = d.data() as Record<string, unknown>
+            const mrpRaw = firestoreNumber(data.mrp, 0)
             return {
               itemDocId: d.id,
               barcode: String(data.barcode ?? d.id),
@@ -37,6 +38,7 @@ export function LiveSessionBillEditor({
               price: firestoreNumber(data.price, 0),
               quantity: liveSessionItemQuantity(data),
               discountPercent: clampDiscountPercent(firestoreNumber(data.discountPercent, 0)),
+              ...(mrpRaw > 0 ? { mrp: mrpRaw } : {}),
             } satisfies EditableLiveItem
           })
           .sort((a, b) => a.name.localeCompare(b.name))

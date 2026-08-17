@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import type { Sale } from "@/lib/types"
+import { mrpDiscountPercent } from "@/lib/billing/line-discount"
 
 interface SaleDetailDialogProps {
   open: boolean
@@ -30,6 +31,11 @@ interface SaleDetailDialogProps {
 
 export function SaleDetailDialog({ open, onOpenChange, sale }: SaleDetailDialogProps) {
   if (!sale) return null
+
+  const mrpSavingsTotal = sale.items.reduce((sum, item) => {
+    if (!item.mrp || item.mrp <= item.price) return sum
+    return sum + item.quantity * (item.mrp - item.price)
+  }, 0)
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
@@ -121,21 +127,36 @@ export function SaleDetailDialog({ open, onOpenChange, sale }: SaleDetailDialogP
               </tr>
             </thead>
             <tbody>
-              ${sale.items.map(item => `
+              ${sale.items.map(item => {
+                const mrpNote =
+                  item.mrp && item.mrp > item.price
+                    ? `<br /><small>MRP ${formatCurrency(item.mrp)} (−${mrpDiscountPercent(item.mrp, item.price)}%)</small>`
+                    : ""
+                const priceCell =
+                  item.mrp && item.mrp > item.price
+                    ? `<s>${formatCurrency(item.mrp)}</s> ${formatCurrency(item.price)}`
+                    : formatCurrency(item.price)
+                return `
                 <tr>
-                  <td>${item.productName}</td>
+                  <td>${item.productName}${mrpNote}</td>
                   <td class="amount">${item.quantity}</td>
-                  <td class="amount">${formatCurrency(item.price)}</td>
+                  <td class="amount">${priceCell}</td>
                   <td class="amount">${formatCurrency(item.total)}</td>
-                </tr>
-              `).join("")}
+                </tr>`
+              }).join("")}
               <tr>
                 <td colspan="3">Subtotal</td>
                 <td class="amount">${formatCurrency(sale.subtotal)}</td>
               </tr>
+              ${mrpSavingsTotal > 0 ? `
+                <tr>
+                  <td colspan="3">MRP Savings</td>
+                  <td class="amount">-${formatCurrency(mrpSavingsTotal)}</td>
+                </tr>
+              ` : ""}
               ${sale.discount > 0 ? `
                 <tr>
-                  <td colspan="3">Discount</td>
+                  <td colspan="3">Bill Discount</td>
                   <td class="amount">-${formatCurrency(sale.discount)}</td>
                 </tr>
               ` : ""}
@@ -206,9 +227,27 @@ export function SaleDetailDialog({ open, onOpenChange, sale }: SaleDetailDialogP
               <TableBody>
                 {sale.items.map((item, index) => (
                   <TableRow key={index}>
-                    <TableCell className="font-medium">{item.productName}</TableCell>
+                    <TableCell className="font-medium">
+                      {item.productName}
+                      {item.mrp && item.mrp > item.price ? (
+                        <p className="mt-0.5 text-[11px] font-semibold text-primary">
+                          MRP {formatCurrency(item.mrp)} · −{mrpDiscountPercent(item.mrp, item.price)}% off
+                        </p>
+                      ) : null}
+                    </TableCell>
                     <TableCell className="text-right">{item.quantity}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(item.price)}</TableCell>
+                    <TableCell className="text-right">
+                      {item.mrp && item.mrp > item.price ? (
+                        <div>
+                          <span className="text-xs text-muted-foreground line-through">
+                            {formatCurrency(item.mrp)}
+                          </span>
+                          <p>{formatCurrency(item.price)}</p>
+                        </div>
+                      ) : (
+                        formatCurrency(item.price)
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">{formatCurrency(item.total)}</TableCell>
                   </TableRow>
                 ))}
@@ -221,9 +260,15 @@ export function SaleDetailDialog({ open, onOpenChange, sale }: SaleDetailDialogP
               <span>Subtotal</span>
               <span>{formatCurrency(sale.subtotal)}</span>
             </div>
+            {mrpSavingsTotal > 0 && (
+              <div className="flex justify-between text-sm font-medium text-green-700 dark:text-green-400">
+                <span>MRP savings</span>
+                <span>-{formatCurrency(mrpSavingsTotal)}</span>
+              </div>
+            )}
             {sale.discount > 0 && (
               <div className="flex justify-between text-sm text-green-600">
-                <span>Discount</span>
+                <span>Bill discount</span>
                 <span>-{formatCurrency(sale.discount)}</span>
               </div>
             )}

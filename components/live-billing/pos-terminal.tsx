@@ -48,6 +48,8 @@ import { PosManualItemDialog } from "@/components/live-billing/pos-manual-item-d
 import {
   discountedUnitPrice,
   lineItemAmount,
+  mrpDiscountPercent,
+  mrpLineSaved,
 } from "@/lib/billing/line-discount"
 import type { ReceiptData } from "@/lib/printing/receipt-data"
 import { printReceiptInBrowser } from "@/lib/printing/receipt-html"
@@ -99,6 +101,7 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
     name: p.name,
     price: p.price,
     barcode: p.barcode,
+    mrp: p.mrp,
   }))
 
   const { items, loading: itemsLoading, sessionStatus, totals } = usePosSession(sessionId)
@@ -138,16 +141,18 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
         price: discountedUnitPrice(i.price, i.discountPercent),
         basePrice: i.price,
         discountPercent: i.discountPercent,
+        mrp: i.mrp,
         total: lineItemAmount(i.quantity, i.price, i.discountPercent),
       })),
       subtotal: items.reduce((sum, i) => sum + i.quantity * i.price, 0),
       discount: totals.discountSaved,
+      mrpSavings: totals.mrpSaved,
       total: totals.total,
       paymentMethod: "cash",
       amountPaid: totals.total,
       change: 0,
     }
-  }, [items, selectedCustomer, sessionId, totals.discountSaved, totals.total])
+  }, [items, selectedCustomer, sessionId, totals.discountSaved, totals.mrpSaved, totals.total])
 
   const handlePrintBill = useCallback(() => {
     const receipt = buildCurrentReceipt()
@@ -646,6 +651,17 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
                             ) : null}
                           </p>
                           <p className="mt-0.5 font-mono text-xs text-muted-foreground">{item.barcode}</p>
+                          {item.mrp &&
+                          item.mrp > discountedUnitPrice(item.price, item.discountPercent) ? (
+                            <p className="mt-1 text-[11px] font-semibold text-primary">
+                              MRP {formatCurrency(item.mrp)} · −
+                              {mrpDiscountPercent(
+                                item.mrp,
+                                discountedUnitPrice(item.price, item.discountPercent)
+                              )}
+                              % off MRP
+                            </p>
+                          ) : null}
                         </td>
                         <td className="py-3 text-right">
                           {isEditing ? (
@@ -825,9 +841,14 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
                 <p className="text-xl font-bold tabular-nums">{totals.qty}</p>
               </div>
             </div>
+            {totals.mrpSaved > 0 ? (
+              <p className="mt-3 text-sm font-semibold text-green-700 dark:text-green-400">
+                MRP savings: −{formatCurrency(totals.mrpSaved)}
+              </p>
+            ) : null}
             {totals.discountSaved > 0 ? (
-              <p className="mt-3 text-sm text-primary">
-                Discount saved: −{formatCurrency(totals.discountSaved)}
+              <p className={cn("text-sm text-primary", totals.mrpSaved > 0 ? "mt-1" : "mt-3")}>
+                Bill discount: −{formatCurrency(totals.discountSaved)}
               </p>
             ) : null}
           </div>

@@ -15,6 +15,7 @@ import {
   Box,
   Layers,
   Inbox,
+  ScanBarcode,
 } from "lucide-react"
 import { format, differenceInCalendarDays, startOfDay } from "date-fns"
 import { useProducts } from "@/hooks/use-firestore"
@@ -49,8 +50,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DeleteProductDialog } from "@/components/inventory/delete-product-dialog"
 import { BarcodeDialog } from "@/components/inventory/barcode-dialog"
 import { CsvUploadDialog } from "@/components/inventory/csv-upload-dialog"
+import { BarcodeScannerInput } from "@/components/inventory/barcode-scanner-input"
 import type { Product, ProductBatch } from "@/lib/types"
-import { isLowStockProduct } from "@/lib/stock"
+import { barcodesMatch, isLowStockProduct } from "@/lib/stock"
 import {
   inventoryTableFrameClassName,
   invTableHeadClass,
@@ -88,6 +90,7 @@ function ExpiryCell({ date }: { date: Date }) {
 export default function InventoryPage() {
   const { products, loading, deleteProduct } = useProducts()
   const [search, setSearch] = useState("")
+  const [searchMode, setSearchMode] = useState<"text" | "scan">("text")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [productToDelete, setProductToDelete] = useState<Product | null>(null)
@@ -101,10 +104,14 @@ export default function InventoryPage() {
   }, [products])
 
   const filteredProducts = useMemo(() => {
+    const q = search.trim()
+    const qLower = q.toLowerCase()
     return products.filter((product) => {
       const matchesSearch =
-        product.name.toLowerCase().includes(search.toLowerCase()) ||
-        product.barcode?.toLowerCase().includes(search.toLowerCase())
+        !q ||
+        product.name.toLowerCase().includes(qLower) ||
+        (product.barcode != null &&
+          (barcodesMatch(product.barcode, q) || product.barcode.toLowerCase().includes(qLower)))
       const matchesCategory =
         categoryFilter === "all" || product.category === categoryFilter
       return matchesSearch && matchesCategory
@@ -223,30 +230,77 @@ export default function InventoryPage() {
           <CardTitle className="text-lg">Search & filter</CardTitle>
         </CardHeader>
         <CardContent className="pt-6">
-          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search by product name or barcode…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="h-11 rounded-lg border-border/80 pl-10 shadow-sm"
-              />
+          <div className="mb-6 flex flex-col gap-3">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant={searchMode === "text" ? "default" : "outline"}
+                size="sm"
+                className="gap-2 rounded-lg"
+                onClick={() => setSearchMode("text")}
+              >
+                <Search className="h-4 w-4" />
+                Search by name
+              </Button>
+              <Button
+                type="button"
+                variant={searchMode === "scan" ? "default" : "outline"}
+                size="sm"
+                className="gap-2 rounded-lg"
+                onClick={() => setSearchMode("scan")}
+              >
+                <ScanBarcode className="h-4 w-4" />
+                Scan barcode
+              </Button>
+              {search ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="rounded-lg text-muted-foreground"
+                  onClick={() => setSearch("")}
+                >
+                  Clear
+                </Button>
+              ) : null}
             </div>
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="h-11 w-full rounded-lg border-border/80 shadow-sm sm:w-[220px]">
-                <Filter className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All categories</SelectItem>
-                {categories.map((cat) => (
-                  <SelectItem key={cat} value={cat}>
-                    {cat}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+              <div className="flex-1">
+                {searchMode === "text" ? (
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by product name or barcode…"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      className="h-11 rounded-lg border-border/80 pl-10 shadow-sm"
+                    />
+                  </div>
+                ) : (
+                  <BarcodeScannerInput
+                    value={search}
+                    onChange={setSearch}
+                    placeholder="Scan barcode with gun or type and press Enter…"
+                    className="h-11 rounded-lg border-border/80 shadow-sm"
+                  />
+                )}
+              </div>
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger className="h-11 w-full rounded-lg border-border/80 shadow-sm sm:w-[220px]">
+                  <Filter className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All categories</SelectItem>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <Tabs defaultValue="products" className="w-full">

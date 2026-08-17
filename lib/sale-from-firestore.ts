@@ -35,13 +35,19 @@ function isLineItemSale(data: Record<string, unknown>): boolean {
 
 function mapSaleItems(raw: unknown): SaleItem[] {
   if (!Array.isArray(raw)) return []
-  return raw.map((it: Record<string, unknown>) => ({
-    productId: String(it.productId ?? ""),
-    productName: String(it.productName ?? ""),
-    quantity: firestoreNumber(it.quantity, 0),
-    price: firestoreNumber(it.price, 0),
-    total: firestoreNumber(it.total, 0),
-  }))
+  return raw.map((it: Record<string, unknown>) => {
+    const mrpRaw = firestoreNumber(it.mrp, 0)
+    const discountRaw = firestoreNumber(it.discountPercent, 0)
+    return {
+      productId: String(it.productId ?? ""),
+      productName: String(it.productName ?? ""),
+      quantity: firestoreNumber(it.quantity, 0),
+      price: firestoreNumber(it.price, 0),
+      total: firestoreNumber(it.total, 0),
+      ...(mrpRaw > 0 ? { mrp: mrpRaw } : {}),
+      ...(discountRaw > 0 ? { discountPercent: discountRaw } : {}),
+    }
+  })
 }
 
 /**

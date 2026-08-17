@@ -37,6 +37,7 @@ export interface LiveBillingLineItem {
   price: number
   quantity: number
   discountPercent?: number
+  mrp?: number
 }
 
 export interface CheckoutCustomerInfo {
@@ -128,6 +129,7 @@ export async function completeLiveBillingSession(
 
     const basePrice = firestoreNumber(itemData.price, 0)
     const discountPercent = clampDiscountPercent(firestoreNumber(itemData.discountPercent, 0))
+    const mrpRaw = firestoreNumber(itemData.mrp, 0)
 
     const itemPayload: LiveBillingLineItem = {
       barcode,
@@ -135,6 +137,7 @@ export async function completeLiveBillingSession(
       price: basePrice,
       quantity: liveSessionItemQuantity(itemData),
       discountPercent,
+      ...(mrpRaw > 0 ? { mrp: mrpRaw } : {}),
     }
     lineItems.push(itemPayload)
 
@@ -254,6 +257,7 @@ export async function completeLiveBillingSession(
           price: unitPrice,
           total: lineItemAmount(item.quantity, item.price, item.discountPercent ?? 0),
           ...(item.discountPercent ? { discountPercent: item.discountPercent } : {}),
+          ...(item.mrp && item.mrp > 0 ? { mrp: item.mrp } : {}),
         }
       }),
       subtotal,
@@ -319,23 +323,25 @@ function toBillingProduct(
   docId: string,
   data: Record<string, unknown>,
   fallbackBarcode: string
-): { barcode: string; name: string; price: number } {
+): { barcode: string; name: string; price: number; mrp?: number } {
   const resolvedBarcode =
     barcodeValuesFromFirestore(data, docId).find((value) => /^\d+$/.test(value)) ||
     String(data.barcode ?? fallbackBarcode).trim() ||
     fallbackBarcode
 
+  const mrpRaw = firestoreNumber(data.mrp, 0)
   return {
     barcode: resolvedBarcode,
     name: String(data.name ?? "").trim() || resolvedBarcode,
     price: firestoreNumber(data.price, 0),
+    ...(mrpRaw > 0 ? { mrp: mrpRaw } : {}),
   }
 }
 
 export async function lookupProductForBilling(
   barcode: string,
   cachedProducts?: BarcodeProductRef[]
-): Promise<{ barcode: string; name: string; price: number } | null> {
+): Promise<{ barcode: string; name: string; price: number; mrp?: number } | null> {
   const cleaned = normalizeScannedBarcode(barcode)
   if (!cleaned) return null
 
@@ -345,6 +351,7 @@ export async function lookupProductForBilling(
       barcode: cached.barcode?.trim() || cleaned,
       name: cached.name,
       price: cached.price,
+      ...(cached.mrp && cached.mrp > 0 ? { mrp: cached.mrp } : {}),
     }
   }
 
@@ -451,6 +458,7 @@ export async function scanItemIntoSession(
       barcode: product.barcode,
       name: product.name,
       price: product.price,
+      ...(product.mrp && product.mrp > 0 ? { mrp: product.mrp } : {}),
       quantity: increment(1),
       qty: increment(1),
     },
@@ -471,6 +479,7 @@ export async function scanItemIntoSession(
     name: product.name,
     price: product.price,
     quantity: qty > 0 ? qty : 1,
+    ...(product.mrp && product.mrp > 0 ? { mrp: product.mrp } : {}),
   }
 }
 

@@ -32,3 +32,22 @@ export function lineItemAmount(quantity: number, basePrice: number, discountPerc
 export function lineDiscountSaved(quantity: number, basePrice: number, discountPercent = 0): number {
   return quantity * basePrice - lineItemAmount(quantity, basePrice, discountPercent)
 }
+
+/** Discount % between MRP and a unit price (inventory or final POS price). */
+export function mrpDiscountPercent(mrp: number, unitPrice: number): number {
+  if (!Number.isFinite(mrp) || mrp <= 0 || !Number.isFinite(unitPrice) || unitPrice >= mrp) return 0
+  return clampDiscountPercent(((mrp - unitPrice) / mrp) * 100)
+}
+
+/** Customer savings vs MRP for one line (includes optional POS line discount). */
+export function mrpLineSaved(
+  quantity: number,
+  mrp: number,
+  sellingPrice: number,
+  posDiscountPercent = 0
+): number {
+  if (!Number.isFinite(mrp) || mrp <= 0) return 0
+  const finalUnit = discountedUnitPrice(sellingPrice, posDiscountPercent)
+  if (finalUnit >= mrp) return 0
+  return quantity * (mrp - finalUnit)
+}

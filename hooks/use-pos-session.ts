@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { collection, doc, onSnapshot } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { firestoreNumber, liveSessionItemQuantity } from "@/lib/stock"
-import { clampDiscountPercent, lineItemAmount } from "@/lib/billing/line-discount"
+import { clampDiscountPercent, lineItemAmount, mrpLineSaved } from "@/lib/billing/line-discount"
 import type { EditableLiveItem } from "@/components/live-billing/live-bill-items-editor"
 
 export function usePosSession(sessionId: string | null) {
@@ -42,6 +42,7 @@ export function usePosSession(sessionId: string | null) {
         const next = snapshot.docs
           .map((d) => {
             const data = d.data() as Record<string, unknown>
+            const mrpRaw = firestoreNumber(data.mrp, 0)
             return {
               itemDocId: d.id,
               barcode: String(data.barcode ?? d.id),
@@ -49,6 +50,7 @@ export function usePosSession(sessionId: string | null) {
               price: firestoreNumber(data.price, 0),
               quantity: liveSessionItemQuantity(data),
               discountPercent: clampDiscountPercent(firestoreNumber(data.discountPercent, 0)),
+              ...(mrpRaw > 0 ? { mrp: mrpRaw } : {}),
             } satisfies EditableLiveItem
           })
           .sort((a, b) => a.name.localeCompare(b.name))
@@ -78,7 +80,11 @@ export function usePosSession(sessionId: string | null) {
       (sum, i) => sum + i.quantity * i.price - lineItemAmount(i.quantity, i.price, i.discountPercent),
       0
     )
-    return { lines, qty, total, discountSaved }
+    const mrpSaved = items.reduce(
+      (sum, i) => sum + mrpLineSaved(i.quantity, i.mrp ?? 0, i.price, i.discountPercent),
+      0
+    )
+    return { lines, qty, total, discountSaved, mrpSaved }
   }, [items])
 
   return { items, loading, sessionStatus, totals }

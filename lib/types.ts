@@ -59,6 +59,8 @@ export interface SaleItem {
   quantity: number
   price: number
   total: number
+  mrp?: number
+  discountPercent?: number
 }
 
 export interface Sale {

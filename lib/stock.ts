@@ -194,6 +194,7 @@ export type BarcodeProductRef = {
   name: string
   price: number
   barcode?: string
+  mrp?: number
 }
 
 /** Match a scanned barcode against an in-memory product list (from useProducts). */

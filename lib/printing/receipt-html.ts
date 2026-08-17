@@ -1,4 +1,5 @@
 import type { ReceiptData } from "@/lib/printing/receipt-data"
+import { mrpDiscountPercent } from "@/lib/billing/line-discount"
 
 function formatInr(amount: number): string {
   return new Intl.NumberFormat("en-IN", {
@@ -20,14 +21,31 @@ function escapeHtml(value: string): string {
 export function buildReceiptPrintHtml(receipt: ReceiptData, paperWidthMm: 58 | 80 = 80): string {
   const itemRows = receipt.items
     .map((item) => {
+      const finalUnit = item.price
+      const mrp = item.mrp
+      const mrpOff =
+        mrp && mrp > finalUnit ? mrpDiscountPercent(mrp, finalUnit) : 0
+      const posOff = item.discountPercent && item.discountPercent > 0 ? item.discountPercent : 0
+
+      const discountParts: string[] = []
+      if (mrpOff > 0) {
+        discountParts.push(`MRP ${formatInr(mrp!)} (−${mrpOff}%)`)
+      }
+      if (posOff > 0) {
+        discountParts.push(`Bill −${posOff}%`)
+      }
       const discountNote =
-        item.discountPercent && item.discountPercent > 0
-          ? ` <span class="muted">(−${item.discountPercent}%)</span>`
+        discountParts.length > 0
+          ? ` <span class="muted">${discountParts.join(" · ")}</span>`
           : ""
+
       const rateNote =
-        item.basePrice && item.basePrice !== item.price
-          ? `<span class="muted"><s>${formatInr(item.basePrice)}</s> ${formatInr(item.price)}</span>`
-          : formatInr(item.price)
+        mrp && mrp > finalUnit
+          ? `<span class="muted"><s>${formatInr(mrp)}</s> ${formatInr(finalUnit)}</span>`
+          : item.basePrice && item.basePrice !== finalUnit
+            ? `<span class="muted"><s>${formatInr(item.basePrice)}</s> ${formatInr(finalUnit)}</span>`
+            : formatInr(finalUnit)
+
       return `
       <tr>
         <td>${escapeHtml(item.name)}${discountNote}<br /><span class="muted">x${item.quantity} @ ${rateNote}</span></td>
@@ -103,8 +121,13 @@ export function buildReceiptPrintHtml(receipt: ReceiptData, paperWidthMm: 58 | 8
     <table>
       <tbody>
         ${
+          receipt.mrpSavings && receipt.mrpSavings > 0
+            ? `<tr><td>MRP Savings</td><td class="right">-${formatInr(receipt.mrpSavings)}</td></tr>`
+            : ""
+        }
+        ${
           receipt.discount && receipt.discount > 0
-            ? `<tr><td>Discount</td><td class="right">-${formatInr(receipt.discount)}</td></tr>`
+            ? `<tr><td>Bill Discount</td><td class="right">-${formatInr(receipt.discount)}</td></tr>`
             : ""
         }
         <tr>
