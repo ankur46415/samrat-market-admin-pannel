@@ -12,6 +12,7 @@ import {
   Loader2,
   Minus,
   Pencil,
+  Phone,
   Plus,
   Printer,
   Receipt,
@@ -31,6 +32,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import {
   cancelLiveBillingSession,
@@ -88,10 +96,12 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
   const [editingPrice, setEditingPrice] = useState("")
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null)
   const [clock, setClock] = useState(() => new Date())
-  const [customerPhone, setCustomerPhone] = useState("")
+  const [customerPhone, setCustomerPhone] = useState("NA")
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
   const [printing, setPrinting] = useState(false)
   const [manualDialogOpen, setManualDialogOpen] = useState(false)
+  const [phoneDialogOpen, setPhoneDialogOpen] = useState(false)
+  const [phoneDraft, setPhoneDraft] = useState("NA")
   const [resettingScan, setResettingScan] = useState(false)
   const customerInputRef = useRef<HTMLInputElement>(null)
 
@@ -125,16 +135,54 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
   const scannerFocusRef = useRef(scanner.focusInput)
   scannerFocusRef.current = scanner.focusInput
 
-  const matchedCustomer = customers.find((c) => c.phone.trim() === customerPhone.trim()) ?? null
+  const normalizedCustomerPhone = customerPhone.trim() || "NA"
+  const isWalkInPhone = normalizedCustomerPhone.toUpperCase() === "NA"
+
+  const matchedCustomer =
+    !isWalkInPhone
+      ? customers.find((c) => c.phone.replace(/\D/g, "") === normalizedCustomerPhone.replace(/\D/g, "")) ??
+        null
+      : null
   const selectedCustomer = customers.find((c) => c.id === selectedCustomerId) ?? matchedCustomer
+
+  const openPhoneDialog = () => {
+    setPhoneDraft(isWalkInPhone ? "" : normalizedCustomerPhone)
+    setPhoneDialogOpen(true)
+  }
+
+  const saveCustomerPhone = () => {
+    const digits = phoneDraft.replace(/\D/g, "")
+    if (digits.length === 0) {
+      setCustomerPhone("NA")
+      setSelectedCustomerId(null)
+      setPhoneDialogOpen(false)
+      toast.success("Phone set to NA (walk-in)")
+      return
+    }
+    if (digits.length !== 10) {
+      toast.error("Enter a valid 10-digit phone number")
+      return
+    }
+    setCustomerPhone(digits)
+    setPhoneDialogOpen(false)
+    const found = customers.find((c) => c.phone.replace(/\D/g, "") === digits)
+    if (found) {
+      setSelectedCustomerId(found.id)
+      toast.success(`Customer linked: ${found.name}`)
+    } else {
+      setSelectedCustomerId(null)
+      toast.success("Phone saved — customer not in database")
+    }
+  }
 
   const buildCurrentReceipt = useCallback((): ReceiptData | null => {
     if (items.length === 0) return null
+    const phone = selectedCustomer?.phone ?? normalizedCustomerPhone
     return {
       billNo: sessionId ? `BILL-${sessionId.slice(-6).toUpperCase()}` : `BILL-${Date.now()}`,
       date: new Date(),
       customerName: selectedCustomer?.name,
-      customerPhone: selectedCustomer?.phone,
+      customerPhone: phone,
       items: items.map((i) => ({
         name: i.name,
         quantity: i.quantity,
@@ -152,7 +200,7 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
       amountPaid: totals.total,
       change: 0,
     }
-  }, [items, selectedCustomer, sessionId, totals.discountSaved, totals.mrpSaved, totals.total])
+  }, [items, normalizedCustomerPhone, selectedCustomer, sessionId, totals.discountSaved, totals.mrpSaved, totals.total])
 
   const handlePrintBill = useCallback(() => {
     const receipt = buildCurrentReceipt()
@@ -371,16 +419,16 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
     }
     try {
       setActing(true)
-      const result = await completeLiveBillingSession(
-        sessionId,
-        selectedCustomer
+      const result = await completeLiveBillingSession(sessionId, {
+        customerPhone: normalizedCustomerPhone,
+        ...(selectedCustomer && !isWalkInPhone
           ? {
               customerId: selectedCustomer.id,
               customerName: selectedCustomer.name,
               customerPhone: selectedCustomer.phone,
             }
-          : undefined
-      )
+          : {}),
+      })
       toast.success(result.billNo ? `Bill ${result.billNo} completed` : "Bill completed")
       onExit?.()
       router.push("/generate-bill")
@@ -390,7 +438,7 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
     } finally {
       setActing(false)
     }
-  }, [onExit, router, selectedCustomer, sessionId, totals.lines])
+  }, [isWalkInPhone, normalizedCustomerPhone, onExit, router, selectedCustomer, sessionId, totals.lines])
 
   const goFinalize = useCallback(() => {
     if (totals.lines === 0) {
@@ -509,6 +557,22 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-primary/30 bg-primary/5 text-primary hover:bg-primary/10"
+            onClick={openPhoneDialog}
+          >
+            <Phone className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Customer Phone</span>
+            <span className="sm:hidden">Phone</span>
+            {!isWalkInPhone ? (
+              <Badge variant="secondary" className="ml-0.5 hidden font-mono text-[10px] md:inline-flex">
+                {normalizedCustomerPhone}
+              </Badge>
+            ) : null}
+          </Button>
           <Badge variant="outline" className="hidden gap-1.5 border-primary/30 bg-primary/10 text-primary lg:inline-flex">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
@@ -522,6 +586,44 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
           </div>
         </div>
       </header>
+
+      <Dialog open={phoneDialogOpen} onOpenChange={setPhoneDialogOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Customer Phone</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label htmlFor="pos-header-phone">10-digit mobile number</Label>
+            <Input
+              id="pos-header-phone"
+              type="tel"
+              inputMode="numeric"
+              maxLength={10}
+              placeholder="9876543210"
+              value={phoneDraft}
+              onChange={(e) => setPhoneDraft(e.target.value.replace(/\D/g, "").slice(0, 10))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  saveCustomerPhone()
+                }
+              }}
+              autoFocus
+            />
+            <p className="text-xs text-muted-foreground">
+              Leave empty and save to use <span className="font-mono">NA</span> for walk-in customers.
+            </p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={() => setPhoneDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={saveCustomerPhone}>
+              Save Phone
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* Main cart area */}
@@ -857,27 +959,31 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
             <div className="flex-1 space-y-4 overflow-auto p-5">
               <div>
                 <Label htmlFor="pos-customer-phone" className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Customer Phone (Optional)
+                  Customer Phone
                 </Label>
                 <div className="mt-2 flex gap-2">
                   <Input
                     ref={customerInputRef}
                     id="pos-customer-phone"
                     type="tel"
-                    placeholder="9876543210"
+                    placeholder="NA or 9876543210"
                     value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    onChange={(e) => {
+                      setCustomerPhone(e.target.value)
+                      setSelectedCustomerId(null)
+                    }}
                   />
                   <Button
                     type="button"
                     variant="outline"
                     size="icon"
                     className="shrink-0"
+                    disabled={isWalkInPhone}
                     onClick={() => {
                       if (matchedCustomer) {
                         setSelectedCustomerId(matchedCustomer.id)
                         toast.success("Customer attached")
-                      } else if (customerPhone.trim()) {
+                      } else if (!isWalkInPhone) {
                         toast.error("Customer not found")
                       }
                     }}
@@ -885,23 +991,26 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
                     <Search className="h-4 w-4" />
                   </Button>
                 </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Default is <span className="font-mono">NA</span> for walk-in. Enter a phone number to link a customer.
+                </p>
               </div>
 
               {customersLoading ? (
                 <div className="h-16 animate-pulse rounded-lg bg-muted" />
-              ) : selectedCustomer ? (
+              ) : selectedCustomer && !isWalkInPhone ? (
                 <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
                   <p className="text-xs uppercase tracking-wide text-primary">Customer</p>
                   <p className="mt-1 font-semibold text-foreground">{selectedCustomer.name}</p>
                   <p className="text-sm text-muted-foreground">{selectedCustomer.phone}</p>
                 </div>
-              ) : customerPhone.trim() ? (
+              ) : !isWalkInPhone ? (
                 <Button
                   variant="outline"
                   className="w-full"
                   onClick={() =>
                     router.push(
-                      `/customers/add?phone=${encodeURIComponent(customerPhone)}&returnTo=${encodeURIComponent(`/generate-bill/checkout?sessionId=${sessionId}`)}`
+                      `/customers/add?phone=${encodeURIComponent(normalizedCustomerPhone)}&returnTo=${encodeURIComponent(`/generate-bill/checkout?sessionId=${sessionId}`)}`
                     )
                   }
                 >
@@ -909,7 +1018,7 @@ export function PosTerminal({ sessionId: initialSessionId, mode = "scan", onExit
                   Add New Customer
                 </Button>
               ) : (
-                <p className="text-xs text-muted-foreground">Walk-in customer — skip phone to complete faster</p>
+                <p className="text-xs text-muted-foreground">Walk-in bill — phone saved as NA in sales history</p>
               )}
             </div>
           ) : (

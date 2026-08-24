@@ -112,6 +112,10 @@ export function SaleDetailDialog({ open, onOpenChange, sale }: SaleDetailDialogP
               <span>${sale.customerName || "Walk-in Customer"}</span>
             </div>
             <div class="info-row">
+              <span>Phone:</span>
+              <span>${sale.customerPhone || "NA"}</span>
+            </div>
+            <div class="info-row">
               <span>Payment:</span>
               <span>${sale.paymentMethod.toUpperCase()}</span>
             </div>
@@ -210,6 +214,10 @@ export function SaleDetailDialog({ open, onOpenChange, sale }: SaleDetailDialogP
           <div className="flex shrink-0 justify-between text-sm">
             <span className="text-muted-foreground">Customer</span>
             <span className="font-medium">{sale.customerName || "Walk-in Customer"}</span>
+          </div>
+          <div className="flex shrink-0 justify-between text-sm">
+            <span className="text-muted-foreground">Phone</span>
+            <span className="font-medium font-mono">{sale.customerPhone || "NA"}</span>
           </div>
 
           <Separator className="shrink-0" />

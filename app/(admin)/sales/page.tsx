@@ -32,6 +32,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { SaleDetailDialog } from "@/components/sales/sale-detail-dialog"
 import type { Sale } from "@/lib/types"
+import { saleMatchesPhoneFilter, saleMatchesSearch, salePhone } from "@/lib/sales-filter"
 import { cn } from "@/lib/utils"
 
 import { DateRange } from "react-day-picker"
@@ -39,6 +40,7 @@ import { DateRange } from "react-day-picker"
 export default function SalesHistoryPage() {
   const { sales, loading } = useSales()
   const [search, setSearch] = useState("")
+  const [phoneFilter, setPhoneFilter] = useState("")
   const [paymentFilter, setPaymentFilter] = useState<string>("all")
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
@@ -49,13 +51,10 @@ export default function SalesHistoryPage() {
 
   const filteredSales = useMemo(() => {
     return sales.filter((sale) => {
-      const matchesSearch =
-        (sale.billNo || "").toLowerCase().includes(search.toLowerCase()) ||
-        (sale.customerName || "").toLowerCase().includes(search.toLowerCase())
-      
+      const matchesSearch = saleMatchesSearch(sale, search)
+      const matchesPhone = saleMatchesPhoneFilter(sale, phoneFilter)
       const matchesPayment =
         paymentFilter === "all" || sale.paymentMethod === paymentFilter
-      
       const matchesDate =
         dateRange.from && dateRange.to
           ? isWithinInterval(sale.createdAt, {
@@ -64,9 +63,9 @@ export default function SalesHistoryPage() {
             })
           : true
 
-      return matchesSearch && matchesPayment && matchesDate
+      return matchesSearch && matchesPhone && matchesPayment && matchesDate
     })
-  }, [sales, search, paymentFilter, dateRange])
+  }, [sales, search, phoneFilter, paymentFilter, dateRange])
 
   const totalAmount = filteredSales.reduce((sum, s) => sum + s.total, 0)
 
@@ -155,16 +154,25 @@ export default function SalesHistoryPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center mb-6">
-            <div className="relative flex-1">
+          <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center mb-6">
+            <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by bill no or customer..."
+                placeholder="Search bill no or customer..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-8"
               />
             </div>
+
+            <Input
+              type="tel"
+              inputMode="numeric"
+              placeholder="Filter by phone (10 digits)"
+              value={phoneFilter}
+              onChange={(e) => setPhoneFilter(e.target.value.replace(/\D/g, "").slice(0, 10))}
+              className="w-full sm:w-52 font-mono"
+            />
 
             <Select value={paymentFilter} onValueChange={setPaymentFilter}>
               <SelectTrigger className="w-full sm:w-40">
@@ -214,6 +222,7 @@ export default function SalesHistoryPage() {
                   <TableHead>Bill No</TableHead>
                   <TableHead>Date & Time</TableHead>
                   <TableHead>Customer</TableHead>
+                  <TableHead>Phone</TableHead>
                   <TableHead>Items</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                   <TableHead>Payment</TableHead>
@@ -223,7 +232,7 @@ export default function SalesHistoryPage() {
               <TableBody>
                 {filteredSales.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center">
+                    <TableCell colSpan={8} className="h-24 text-center">
                       No sales found.
                     </TableCell>
                   </TableRow>
@@ -240,6 +249,7 @@ export default function SalesHistoryPage() {
                         </div>
                       </TableCell>
                       <TableCell>{sale.customerName || "Walk-in"}</TableCell>
+                      <TableCell className="font-mono text-sm">{salePhone(sale)}</TableCell>
                       <TableCell>{sale.items.length} items</TableCell>
                       <TableCell className="text-right font-medium">
                         {formatCurrency(sale.total)}

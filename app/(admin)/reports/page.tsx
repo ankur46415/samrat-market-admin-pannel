@@ -2,10 +2,11 @@
 
 import { useState, useMemo } from "react"
 import { format, subDays, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval, startOfDay, endOfDay } from "date-fns"
-import { FileText, Download, CalendarIcon, TrendingUp, Package, Users } from "lucide-react"
+import { FileText, Download, CalendarIcon, TrendingUp, Package, Users, Search } from "lucide-react"
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { useSales, useProducts, useCustomers } from "@/hooks/use-firestore"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Calendar } from "@/components/ui/calendar"
 import {
   Popover,
@@ -24,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { generatePdfReport } from "@/lib/pdf-generator"
+import { saleMatchesPhoneFilter, salePhone } from "@/lib/sales-filter"
 import { isLowStockProduct } from "@/lib/stock"
 import { chartFillAt } from "@/lib/chart-colors"
 
@@ -38,18 +40,25 @@ export default function ReportsPage() {
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date()),
   })
+  const [phoneFilter, setPhoneFilter] = useState("")
 
   const loading = salesLoading || productsLoading || customersLoading
 
   const filteredSales = useMemo(() => {
-    if (!dateRange.from || !dateRange.to) return sales
-    return sales.filter((sale) =>
-      isWithinInterval(sale.createdAt, {
-        start: startOfDay(dateRange.from!),
-        end: endOfDay(dateRange.to!),
-      })
-    )
-  }, [sales, dateRange])
+    let rows = sales
+    if (dateRange.from && dateRange.to) {
+      rows = rows.filter((sale) =>
+        isWithinInterval(sale.createdAt, {
+          start: startOfDay(dateRange.from!),
+          end: endOfDay(dateRange.to!),
+        })
+      )
+    }
+    if (phoneFilter.trim()) {
+      rows = rows.filter((sale) => saleMatchesPhoneFilter(sale, phoneFilter))
+    }
+    return rows
+  }, [sales, dateRange, phoneFilter])
 
   const stats = useMemo(() => {
     const totalRevenue = filteredSales.reduce((sum, s) => sum + s.total, 0)
@@ -118,9 +127,18 @@ export default function ReportsPage() {
   const handleDownloadReport = () => {
     generatePdfReport({
       dateRange,
+      phoneFilter: phoneFilter.trim() || undefined,
       stats,
       topProducts,
       dailyData,
+      transactions: filteredSales.slice(0, 100).map((sale) => ({
+        billNo: sale.billNo,
+        date: format(sale.createdAt, "MMM dd, yyyy h:mm a"),
+        customer: sale.customerName || "Walk-in",
+        phone: salePhone(sale),
+        total: sale.total,
+        payment: sale.paymentMethod.toUpperCase(),
+      })),
     })
   }
 
@@ -138,9 +156,23 @@ export default function ReportsPage() {
           </h1>
           <p className="text-muted-foreground">
             Analyze your business performance
+            {phoneFilter.trim() ? (
+              <span className="ml-1 text-primary">· Phone filter: {phoneFilter}</span>
+            ) : null}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="relative w-full sm:w-48">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="tel"
+              inputMode="numeric"
+              placeholder="Filter by phone"
+              value={phoneFilter}
+              onChange={(e) => setPhoneFilter(e.target.value.replace(/\D/g, "").slice(0, 10))}
+              className="pl-8 font-mono"
+            />
+          </div>
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline">
@@ -241,6 +273,7 @@ export default function ReportsPage() {
           <TabsTrigger value="sales">Sales Chart</TabsTrigger>
           <TabsTrigger value="products">Top Products</TabsTrigger>
           <TabsTrigger value="payments">Payment Methods</TabsTrigger>
+          <TabsTrigger value="transactions">Transactions</TabsTrigger>
         </TabsList>
 
         <TabsContent value="sales">
@@ -375,6 +408,54 @@ export default function ReportsPage() {
                   ))
                 )}
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="transactions">
+          <Card>
+            <CardHeader>
+              <CardTitle>Sales Transactions</CardTitle>
+              <CardDescription>
+                {filteredSales.length} transaction{filteredSales.length === 1 ? "" : "s"}
+                {phoneFilter.trim() ? ` for phone ${phoneFilter}` : ""}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {filteredSales.length === 0 ? (
+                <p className="py-12 text-center text-muted-foreground">No transactions for this filter.</p>
+              ) : (
+                <div className="max-h-[420px] overflow-auto rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Bill No</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Phone</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead>Payment</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredSales.map((sale) => (
+                        <TableRow key={sale.id}>
+                          <TableCell className="whitespace-nowrap text-sm">
+                            {format(sale.createdAt, "MMM dd, h:mm a")}
+                          </TableCell>
+                          <TableCell className="font-medium">{sale.billNo}</TableCell>
+                          <TableCell>{sale.customerName || "Walk-in"}</TableCell>
+                          <TableCell className="font-mono text-sm">{salePhone(sale)}</TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency(sale.total)}
+                          </TableCell>
+                          <TableCell className="capitalize">{sale.paymentMethod}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

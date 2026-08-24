@@ -122,6 +122,7 @@ export async function completeLiveBillingSession(
 
   const soldAt = new Date().toISOString()
   const lineItems: LiveBillingLineItem[] = []
+  const customerPhone = customer?.customerPhone?.trim() || "NA"
 
   for (const itemDoc of itemsSnap.docs) {
     const itemData = itemDoc.data() as Record<string, unknown>
@@ -223,9 +224,9 @@ export async function completeLiveBillingSession(
   await updateDoc(liveSessionRef, {
     status: "completed",
     sessionId: (liveData.sessionId as string) || sessionId,
+    customerPhone,
     ...(customer?.customerId ? { customerId: customer.customerId } : {}),
     ...(customer?.customerName ? { customerName: customer.customerName } : {}),
-    ...(customer?.customerPhone ? { customerPhone: customer.customerPhone } : {}),
   })
 
   clearAdminScanSessionStorage()
@@ -270,9 +271,9 @@ export async function completeLiveBillingSession(
       soldAt,
       createdAt: Timestamp.now(),
       source: "admin_billing",
+      customerPhone,
       ...(customer?.customerId ? { customerId: customer.customerId } : {}),
       ...(customer?.customerName ? { customerName: customer.customerName } : {}),
-      ...(customer?.customerPhone ? { customerPhone: customer.customerPhone } : {}),
     }
 
     try {

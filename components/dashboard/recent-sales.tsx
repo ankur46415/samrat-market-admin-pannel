@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { Sale } from "@/lib/types"
+import { salePhone } from "@/lib/sales-filter"
 import { cn } from "@/lib/utils"
 
 interface RecentSalesProps {
@@ -66,7 +67,7 @@ export function RecentSales({ sales, className }: RecentSalesProps) {
                     {sale.billNo}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {sale.customerName || "Walk-in Customer"}
+                    {sale.customerName || "Walk-in Customer"} · {salePhone(sale)}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {format(sale.createdAt, "MMM dd, h:mm a")}

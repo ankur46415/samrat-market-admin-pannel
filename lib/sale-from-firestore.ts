@@ -50,6 +50,11 @@ function mapSaleItems(raw: unknown): SaleItem[] {
   })
 }
 
+function saleCustomerPhone(data: Record<string, unknown>): string {
+  const raw = typeof data.customerPhone === "string" ? data.customerPhone.trim() : ""
+  return raw || "NA"
+}
+
 /**
  * Normalize web invoice docs or mobile line-item docs into `Sale`.
  */
@@ -65,6 +70,7 @@ export function saleFromFirestoreDoc(doc: QueryDocumentSnapshot): Sale {
       billNo: String(data.billNo ?? doc.id),
       customerId: typeof data.customerId === "string" ? data.customerId : undefined,
       customerName: typeof data.customerName === "string" ? data.customerName.trim() : undefined,
+      customerPhone: saleCustomerPhone(data),
       items,
       subtotal: firestoreNumber(data.subtotal, total),
       discount: firestoreNumber(data.discount, 0),
@@ -94,6 +100,7 @@ export function saleFromFirestoreDoc(doc: QueryDocumentSnapshot): Sale {
     billNo: String(data.billNo ?? data.id ?? `LINE-${doc.id.slice(0, 8)}`),
     customerId: typeof data.customerId === "string" ? data.customerId : undefined,
     customerName: typeof data.customerName === "string" ? data.customerName.trim() : undefined,
+    customerPhone: saleCustomerPhone(data),
     items: [item],
     subtotal: lineTotal,
     discount: 0,

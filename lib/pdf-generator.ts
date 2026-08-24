@@ -7,6 +7,7 @@ interface ReportData {
     from?: Date | undefined
     to?: Date | undefined
   }
+  phoneFilter?: string
   stats: {
     totalRevenue: number
     totalProfit: number
@@ -23,10 +24,18 @@ interface ReportData {
     revenue: number
     count: number
   }[]
+  transactions?: {
+    billNo: string
+    date: string
+    customer: string
+    phone: string
+    total: number
+    payment: string
+  }[]
 }
 
 export function generatePdfReport(data: ReportData) {
-  const { dateRange, stats, topProducts, dailyData } = data
+  const { dateRange, phoneFilter, stats, topProducts, dailyData, transactions } = data
   
   const doc = new jsPDF()
   
@@ -55,13 +64,16 @@ export function generatePdfReport(data: ReportData) {
     ? `${format(dateRange.from, "MMM dd, yyyy")} - ${format(dateRange.to, "MMM dd, yyyy")}`
     : "All Time"
   doc.text(dateText, 105, 38, { align: "center" })
+  if (phoneFilter) {
+    doc.text(`Phone filter: ${phoneFilter}`, 105, 44, { align: "center" })
+  }
   
   doc.setTextColor(0)
   
   // Summary section
   doc.setFontSize(12)
   doc.setFont("helvetica", "bold")
-  doc.text("Summary", 14, 52)
+  doc.text("Summary", 14, phoneFilter ? 58 : 52)
   
   doc.setFont("helvetica", "normal")
   doc.setFontSize(10)
@@ -70,13 +82,14 @@ export function generatePdfReport(data: ReportData) {
     ["Total Revenue", formatCurrency(stats.totalRevenue)],
     ["Estimated Profit", formatCurrency(stats.totalProfit)],
     ["Total Transactions", stats.salesCount.toString()],
+    ...(phoneFilter ? [["Phone Filter", phoneFilter] as [string, string]] : []),
     ["Profit Margin", stats.totalRevenue > 0 
       ? `${((stats.totalProfit / stats.totalRevenue) * 100).toFixed(1)}%` 
       : "0%"],
   ]
   
   autoTable(doc, {
-    startY: 56,
+    startY: phoneFilter ? 62 : 56,
     head: [],
     body: summaryData,
     theme: "plain",
@@ -171,6 +184,37 @@ export function generatePdfReport(data: ReportData) {
       headStyles: { fillColor: [100, 80, 200] },
       columnStyles: {
         2: { halign: "right" },
+      },
+      margin: { left: 14, right: 14 },
+    })
+  }
+
+  if (transactions && transactions.length > 0) {
+    let txY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10
+    if (txY > 240) {
+      doc.addPage()
+      txY = 20
+    }
+    doc.setFontSize(12)
+    doc.setFont("helvetica", "bold")
+    doc.text("Filtered Transactions", 14, txY)
+
+    autoTable(doc, {
+      startY: txY + 4,
+      head: [["Date", "Bill", "Customer", "Phone", "Amount", "Pay"]],
+      body: transactions.map((t) => [
+        t.date,
+        t.billNo,
+        t.customer,
+        t.phone,
+        formatCurrency(t.total),
+        t.payment,
+      ]),
+      theme: "striped",
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [100, 80, 200] },
+      columnStyles: {
+        4: { halign: "right" },
       },
       margin: { left: 14, right: 14 },
     })

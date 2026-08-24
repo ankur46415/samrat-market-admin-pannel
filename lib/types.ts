@@ -68,6 +68,8 @@ export interface Sale {
   billNo: string
   customerId?: string
   customerName?: string
+  /** Customer phone on bill; defaults to "NA" for walk-in */
+  customerPhone?: string
   items: SaleItem[]
   subtotal: number
   discount: number

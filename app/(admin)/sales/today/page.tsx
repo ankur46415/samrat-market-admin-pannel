@@ -1,10 +1,11 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { format, isToday } from "date-fns"
-import { TrendingUp, Receipt, CreditCard, Banknote, Smartphone } from "lucide-react"
+import { TrendingUp, Receipt, CreditCard, Banknote, Smartphone, Search } from "lucide-react"
 import { useSales } from "@/hooks/use-firestore"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Table,
@@ -15,31 +16,40 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
+import { saleMatchesPhoneFilter, saleMatchesSearch, salePhone } from "@/lib/sales-filter"
 
 export default function TodaySalesPage() {
   const { sales, loading } = useSales()
+  const [search, setSearch] = useState("")
+  const [phoneFilter, setPhoneFilter] = useState("")
 
   const todaySales = useMemo(() => {
     return sales.filter((sale) => isToday(sale.createdAt))
   }, [sales])
 
+  const filteredTodaySales = useMemo(() => {
+    return todaySales.filter(
+      (sale) => saleMatchesSearch(sale, search) && saleMatchesPhoneFilter(sale, phoneFilter)
+    )
+  }, [todaySales, search, phoneFilter])
+
   const stats = useMemo(() => {
-    const total = todaySales.reduce((sum, s) => sum + s.total, 0)
-    const cash = todaySales
+    const total = filteredTodaySales.reduce((sum, s) => sum + s.total, 0)
+    const cash = filteredTodaySales
       .filter((s) => s.paymentMethod === "cash")
       .reduce((sum, s) => sum + s.total, 0)
-    const upi = todaySales
+    const upi = filteredTodaySales
       .filter((s) => s.paymentMethod === "upi")
       .reduce((sum, s) => sum + s.total, 0)
-    const card = todaySales
+    const card = filteredTodaySales
       .filter((s) => s.paymentMethod === "card")
       .reduce((sum, s) => sum + s.total, 0)
-    const credit = todaySales
+    const credit = filteredTodaySales
       .filter((s) => s.paymentMethod === "credit")
       .reduce((sum, s) => sum + s.total, 0)
 
-    return { total, cash, upi, card, credit, count: todaySales.length }
-  }, [todaySales])
+    return { total, cash, upi, card, credit, count: filteredTodaySales.length }
+  }, [filteredTodaySales])
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
@@ -156,18 +166,41 @@ export default function TodaySalesPage() {
         <CardHeader>
           <CardTitle>Today&apos;s Transactions</CardTitle>
           <CardDescription>
-            {todaySales.length === 0
-              ? "No sales recorded yet today"
-              : `${todaySales.length} sales so far`}
+            {filteredTodaySales.length === 0
+              ? "No sales match your filters today"
+              : `${filteredTodaySales.length} of ${todaySales.length} sales today`}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {todaySales.length === 0 ? (
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+            <div className="relative min-w-[200px] flex-1">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search bill or customer..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-8"
+              />
+            </div>
+            <Input
+              type="tel"
+              inputMode="numeric"
+              placeholder="Filter by phone"
+              value={phoneFilter}
+              onChange={(e) => setPhoneFilter(e.target.value.replace(/\D/g, "").slice(0, 10))}
+              className="w-full font-mono sm:w-52"
+            />
+          </div>
+          {filteredTodaySales.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12">
               <Receipt className="h-16 w-16 text-muted-foreground mb-4" />
-              <p className="text-lg font-medium">No sales today</p>
+              <p className="text-lg font-medium">
+                {todaySales.length === 0 ? "No sales today" : "No matching sales"}
+              </p>
               <p className="text-muted-foreground">
-                Sales will appear here as they are recorded
+                {todaySales.length === 0
+                  ? "Sales will appear here as they are recorded"
+                  : "Try clearing the phone or search filter"}
               </p>
             </div>
           ) : (
@@ -178,19 +211,21 @@ export default function TodaySalesPage() {
                     <TableHead>Time</TableHead>
                     <TableHead>Bill No</TableHead>
                     <TableHead>Customer</TableHead>
+                    <TableHead>Phone</TableHead>
                     <TableHead>Items</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                     <TableHead>Payment</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {todaySales.map((sale) => (
+                  {filteredTodaySales.map((sale) => (
                     <TableRow key={sale.id}>
                       <TableCell className="font-medium">
                         {format(sale.createdAt, "h:mm a")}
                       </TableCell>
                       <TableCell>{sale.billNo}</TableCell>
                       <TableCell>{sale.customerName || "Walk-in"}</TableCell>
+                      <TableCell className="font-mono text-sm">{salePhone(sale)}</TableCell>
                       <TableCell>
                         <span className="text-muted-foreground">
                           {sale.items.length} item{sale.items.length > 1 ? "s" : ""}
