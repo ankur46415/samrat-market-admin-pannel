@@ -86,10 +86,11 @@ export async function downloadCatalogGroupPdf(catalog: PurchaseCatalog): Promise
 
   autoTable(doc, {
     startY: 49,
-    head: [["#", "Product Name", "Brand", "Price", "MOQ", "Unit", "MOQ Value"]],
+    head: [["#", "Product Name", "Order Tag", "Brand", "Price", "MOQ", "Unit", "MOQ Value"]],
     body: catalog.products.map((p, idx) => [
       idx + 1,
       pdfSafe(p.product_name),
+      pdfSafe(String(p.order_tag ?? "").trim() || "NA"),
       pdfSafe(p.brand ?? "-"),
       formatPdfPrice(p.price),
       String(p.moq),

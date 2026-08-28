@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import {
   ShoppingBag,
   Plus,
@@ -21,11 +21,13 @@ import {
   FileJson,
   Search,
   Download,
+  Tags,
 } from "lucide-react"
 import { downloadCatalogGroupPdf } from "@/lib/features/purchase-catalog/pdf-export"
 import { cn } from "@/lib/utils"
 import { usePurchaseCatalog } from "@/hooks/use-purchase-catalog"
 import type { CatalogProduct, PurchaseCatalog } from "@/lib/features/purchase-catalog/models"
+import { catalogProductOrderTag } from "@/lib/features/purchase-catalog/models"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -39,8 +41,55 @@ import {
   DialogClose,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import type { CatalogSyncStatus } from "@/hooks/use-purchase-catalog"
+
+function jsonPickString(rec: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const v = rec[key]
+    if (typeof v === "string" && v.trim()) return v.trim()
+    if (typeof v === "number" && Number.isFinite(v)) return String(v)
+  }
+  return ""
+}
+
+function jsonPickNumber(rec: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const v = rec[key]
+    if (typeof v === "number" && Number.isFinite(v)) return v
+    if (typeof v === "string" && v.trim()) {
+      const n = Number(v.replace(/₹/g, "").replace(/Rs\.?/gi, "").replace(/,/g, "").trim())
+      if (Number.isFinite(n)) return n
+    }
+  }
+  return null
+}
+
+type BulkEditFields = {
+  order_tag: boolean
+  brand: boolean
+  unit: boolean
+  notes: boolean
+  price: boolean
+  moq: boolean
+}
+
+const EMPTY_BULK_FIELDS: BulkEditFields = {
+  order_tag: true,
+  brand: false,
+  unit: false,
+  notes: false,
+  price: false,
+  moq: false,
+}
 
 // ─── Color palette for catalog cards ─────────────────────────────────────────
 const CARD_COLORS = [
@@ -191,18 +240,35 @@ function CatalogCard({
 function ProductRow({
   product,
   index,
+  selected,
+  onSelectChange,
   onEdit,
   onDelete,
 }: {
   product: CatalogProduct
   index: number
+  selected: boolean
+  onSelectChange: (checked: boolean) => void
   onEdit: () => void
   onDelete: () => void
 }) {
+  const tag = catalogProductOrderTag(product)
   return (
-    <tr className="group border-b border-slate-100 hover:bg-indigo-50/40 transition-colors">
-      <td className="py-3 pl-4 pr-2 text-sm font-medium text-slate-400 w-10">{index + 1}</td>
+    <tr className={cn("group border-b border-slate-100 hover:bg-indigo-50/40 transition-colors", selected && "bg-indigo-50/70")}>
+      <td className="py-3 pl-4 pr-2 w-10">
+        <Checkbox
+          checked={selected}
+          onCheckedChange={(checked) => onSelectChange(checked === true)}
+          aria-label={`Select ${product.product_name}`}
+        />
+      </td>
+      <td className="py-3 pr-2 text-sm font-medium text-slate-400 w-10">{index + 1}</td>
       <td className="py-3 px-3 text-sm font-semibold text-slate-800">{product.product_name}</td>
+      <td className="py-3 px-3">
+        <span className="inline-flex rounded-md bg-indigo-50 px-2 py-0.5 font-mono text-xs font-semibold text-indigo-700">
+          {tag}
+        </span>
+      </td>
       <td className="py-3 px-3 text-sm text-slate-600">{product.brand ?? "—"}</td>
       <td className="py-3 px-3 text-sm font-bold text-emerald-700">
         ₹{product.price.toLocaleString("en-IN")}
@@ -339,6 +405,7 @@ function ProductDialog({
   initial?: CatalogProduct | null
 }) {
   const [productName, setProductName] = useState(initial?.product_name ?? "")
+  const [orderTag, setOrderTag] = useState(initial?.order_tag ?? "NA")
   const [price, setPrice] = useState(initial?.price?.toString() ?? "")
   const [moq, setMoq] = useState(initial?.moq?.toString() ?? "")
   const [brand, setBrand] = useState(initial?.brand ?? "")
@@ -347,15 +414,20 @@ function ProductDialog({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
 
+  useEffect(() => {
+    if (!open) return
+    setProductName(initial?.product_name ?? "")
+    setOrderTag(initial ? catalogProductOrderTag(initial) : "NA")
+    setPrice(initial?.price?.toString() ?? "")
+    setMoq(initial?.moq?.toString() ?? "")
+    setBrand(initial?.brand ?? "")
+    setUnit(initial?.unit ?? "")
+    setNotes(initial?.notes ?? "")
+    setError("")
+  }, [open, initial])
+
   const handleOpenChange = (o: boolean) => {
     if (!o) {
-      setProductName(initial?.product_name ?? "")
-      setPrice(initial?.price?.toString() ?? "")
-      setMoq(initial?.moq?.toString() ?? "")
-      setBrand(initial?.brand ?? "")
-      setUnit(initial?.unit ?? "")
-      setNotes(initial?.notes ?? "")
-      setError("")
       onClose()
     }
   }
@@ -374,6 +446,7 @@ function ProductDialog({
         brand: brand.trim() || undefined,
         unit: unit.trim() || undefined,
         notes: notes.trim() || undefined,
+        order_tag: orderTag.trim() || "NA",
       })
       onClose()
     } catch {
@@ -399,6 +472,16 @@ function ProductDialog({
           <div className="space-y-1.5">
             <Label htmlFor="prod-name">Product Name *</Label>
             <Input id="prod-name" placeholder="e.g. Cup Shape Pencil Sharpener" value={productName} onChange={(e) => setProductName(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="prod-order-tag">Order Tag / No</Label>
+            <Input
+              id="prod-order-tag"
+              placeholder="e.g. 123456 or TATA"
+              value={orderTag}
+              onChange={(e) => setOrderTag(e.target.value)}
+            />
+            <p className="text-[11px] text-slate-400">Use the same tag for all products from one order so you can filter them later.</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -464,22 +547,55 @@ function JsonImportDialog({
     setError("")
     setPreview(null)
     try {
-      // Allow trailing commas by removing them before last ] or }
       const cleaned = raw.replace(/,\s*([\]}])/g, "$1")
-      const parsed = JSON.parse(cleaned)
-      const arr: CatalogProduct[] = Array.isArray(parsed) ? parsed : [parsed]
-      // Validate each entry
-      const valid = arr.every(
-        (item) =>
-          typeof item.product_name === "string" &&
-          typeof item.price === "number" &&
-          typeof item.moq === "number"
-      )
-      if (!valid) {
-        setError("Each item must have: product_name (string), price (number), moq (number)")
+      const parsed = JSON.parse(cleaned) as unknown
+
+      let wrapperTag = ""
+      let wrapperBrand = ""
+      let wrapperUnit = ""
+      let arr: unknown[] = []
+      if (Array.isArray(parsed)) {
+        arr = parsed
+      } else if (parsed && typeof parsed === "object") {
+        const root = parsed as Record<string, unknown>
+        wrapperTag = jsonPickString(root, ["order_tag", "orderTag", "order_no", "orderNo"])
+        wrapperBrand = jsonPickString(root, ["brand", "manufacturer"])
+        wrapperUnit = jsonPickString(root, ["unit", "units"])
+        const nested = root.items ?? root.products
+        arr = Array.isArray(nested) ? nested : [parsed]
+      }
+
+      const mapped: CatalogProduct[] = []
+      for (const item of arr) {
+        if (!item || typeof item !== "object") continue
+        const rec = item as Record<string, unknown>
+        const productName = jsonPickString(rec, ["product_name", "productName", "name", "product", "item"])
+        const price = jsonPickNumber(rec, ["price", "buy_rate", "buyRate", "rate"])
+        const moq = jsonPickNumber(rec, ["moq", "MOQ", "qty", "quantity", "min_qty"])
+        if (!productName || price === null || moq === null) {
+          setError("Each item must have: product_name, price, and moq (brand/unit/order_tag optional)")
+          return
+        }
+        const tag = jsonPickString(rec, ["order_tag", "orderTag", "order_no", "orderNo"]) || wrapperTag
+        const brand = jsonPickString(rec, ["brand", "manufacturer", "Brand"]) || wrapperBrand
+        const unit = jsonPickString(rec, ["unit", "units", "Unit"]) || wrapperUnit
+        const notes = jsonPickString(rec, ["notes", "note", "remark", "remarks"])
+        mapped.push({
+          product_name: productName,
+          price,
+          moq,
+          brand: brand || undefined,
+          unit: unit || undefined,
+          notes: notes || undefined,
+          order_tag: tag || "NA",
+        })
+      }
+
+      if (mapped.length === 0) {
+        setError("No valid products found in JSON")
         return
       }
-      setPreview(arr)
+      setPreview(mapped)
     } catch {
       setError("Invalid JSON — please check the format")
     }
@@ -516,7 +632,7 @@ function JsonImportDialog({
         <div className="flex-1 overflow-y-auto space-y-4 py-2 pr-1">
           {/* Format hint */}
           <div className="rounded-xl bg-indigo-50 border border-indigo-100 px-4 py-3 text-xs text-indigo-700 font-mono leading-relaxed">
-            {`[ { "product_name": "Cup Shape Pencil Sharpener", "price": 18, "moq": 24 }, ... ]`}
+            {`[ { "product_name": "Cup Shape Pencil Sharpener", "brand": "Apsara", "price": 18, "moq": 24, "unit": "pcs", "order_tag": "TATA" }, ... ]`}
           </div>
 
           <div className="flex items-center gap-2">
@@ -566,7 +682,11 @@ function JsonImportDialog({
               <div className="max-h-32 overflow-y-auto space-y-0.5">
                 {preview.map((p, i) => (
                   <div key={i} className="text-xs text-emerald-700 font-medium">
-                    {i + 1}. {p.product_name} — ₹{p.price} × MOQ {p.moq}
+                    {i + 1}. {p.product_name}
+                    {p.brand ? ` · ${p.brand}` : ""}
+                    {` — ₹${p.price} × MOQ ${p.moq}`}
+                    {p.unit ? ` · ${p.unit}` : ""}
+                    {` · ${p.order_tag || "NA"}`}
                   </div>
                 ))}
               </div>
@@ -659,6 +779,18 @@ function CatalogDetailView({
   const [editingProduct, setEditingProduct] = useState<{ product: CatalogProduct; index: number } | null>(null)
   const [deletingIndex, setDeletingIndex] = useState<number | null>(null)
   const [search, setSearch] = useState("")
+  const [orderTagFilter, setOrderTagFilter] = useState("all")
+  const [selectedIndexes, setSelectedIndexes] = useState<Set<number>>(new Set())
+  const [bulkEditDialogOpen, setBulkEditDialogOpen] = useState(false)
+  const [bulkFields, setBulkFields] = useState<BulkEditFields>(EMPTY_BULK_FIELDS)
+  const [bulkValues, setBulkValues] = useState({
+    order_tag: "NA",
+    brand: "",
+    unit: "",
+    notes: "",
+    price: "",
+    moq: "",
+  })
   const [saving, setSaving] = useState(false)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
 
@@ -698,6 +830,14 @@ function CatalogDetailView({
   const handleDeleteProduct = async (index: number) => {
     const updated = products.filter((_, i) => i !== index)
     await syncProducts(updated)
+    setSelectedIndexes((prev) => {
+      const next = new Set<number>()
+      prev.forEach((i) => {
+        if (i < index) next.add(i)
+        else if (i > index) next.add(i - 1)
+      })
+      return next
+    })
     setDeletingIndex(null)
   }
 
@@ -709,10 +849,84 @@ function CatalogDetailView({
     await syncProducts(merged)
   }
 
-  const filtered = products.filter((p) =>
-    p.product_name.toLowerCase().includes(search.toLowerCase()) ||
-    (p.brand ?? "").toLowerCase().includes(search.toLowerCase())
-  )
+  const availableOrderTags = useMemo(() => {
+    const tags = new Set<string>()
+    products.forEach((p) => tags.add(catalogProductOrderTag(p)))
+    return [...tags].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+  }, [products])
+
+  const filtered = products
+    .map((product, index) => ({ product, index }))
+    .filter(({ product }) => {
+      const q = search.toLowerCase()
+      const tag = catalogProductOrderTag(product)
+      const matchesSearch =
+        product.product_name.toLowerCase().includes(q) ||
+        (product.brand ?? "").toLowerCase().includes(q) ||
+        tag.toLowerCase().includes(q)
+      if (!matchesSearch) return false
+      if (orderTagFilter === "all") return true
+      return tag === orderTagFilter
+    })
+
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every(({ index }) => selectedIndexes.has(index))
+  const someFilteredSelected =
+    filtered.some(({ index }) => selectedIndexes.has(index)) && !allFilteredSelected
+
+  const toggleSelect = (index: number, checked: boolean) => {
+    setSelectedIndexes((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(index)
+      else next.delete(index)
+      return next
+    })
+  }
+
+  const toggleSelectAllFiltered = (checked: boolean) => {
+    setSelectedIndexes((prev) => {
+      const next = new Set(prev)
+      filtered.forEach(({ index }) => {
+        if (checked) next.add(index)
+        else next.delete(index)
+      })
+      return next
+    })
+  }
+
+  const handleBulkEdit = async () => {
+    if (!Object.values(bulkFields).some(Boolean)) return
+    if (bulkFields.price && (bulkValues.price === "" || Number.isNaN(Number(bulkValues.price)))) return
+    if (bulkFields.moq && (bulkValues.moq === "" || Number.isNaN(Number(bulkValues.moq)))) return
+
+    const updated = products.map((p, i) => {
+      if (!selectedIndexes.has(i)) return p
+      const next: CatalogProduct = { ...p }
+      if (bulkFields.order_tag) next.order_tag = bulkValues.order_tag.trim() || "NA"
+      if (bulkFields.brand) next.brand = bulkValues.brand.trim() || undefined
+      if (bulkFields.unit) next.unit = bulkValues.unit.trim() || undefined
+      if (bulkFields.notes) next.notes = bulkValues.notes.trim() || undefined
+      if (bulkFields.price) next.price = Number(bulkValues.price)
+      if (bulkFields.moq) next.moq = Number(bulkValues.moq)
+      return next
+    })
+    await syncProducts(updated)
+    setSelectedIndexes(new Set())
+    setBulkEditDialogOpen(false)
+  }
+
+  const openBulkEdit = () => {
+    setBulkFields({ ...EMPTY_BULK_FIELDS })
+    setBulkValues({
+      order_tag: "NA",
+      brand: "",
+      unit: "",
+      notes: "",
+      price: "",
+      moq: "",
+    })
+    setBulkEditDialogOpen(true)
+  }
 
   const totalMOQValue = products.reduce((sum, p) => sum + p.price * p.moq, 0)
 
@@ -800,15 +1014,30 @@ function CatalogDetailView({
         })}
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-        <Input
-          placeholder="Search products…"
-          className="pl-9"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+      {/* Search + order tag filter */}
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Input
+            placeholder="Search products, brand, or order tag…"
+            className="pl-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <Select value={orderTagFilter} onValueChange={setOrderTagFilter}>
+          <SelectTrigger className="w-full sm:w-[220px]">
+            <SelectValue placeholder="All order tags" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All order tags</SelectItem>
+            {availableOrderTags.map((tag) => (
+              <SelectItem key={tag} value={tag}>
+                {tag}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Products table */}
@@ -838,11 +1067,43 @@ function CatalogDetailView({
           </div>
         ) : (
           <div className="overflow-x-auto">
+            {selectedIndexes.size > 0 && (
+              <div className="flex flex-wrap items-center gap-3 border-b border-indigo-100 bg-indigo-50/80 px-4 py-3">
+                <span className="text-sm font-semibold text-indigo-900">
+                  {selectedIndexes.size} item{selectedIndexes.size === 1 ? "" : "s"} selected
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 border-indigo-200 bg-white"
+                  onClick={openBulkEdit}
+                >
+                  <Tags className="h-3.5 w-3.5" />
+                  Bulk edit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setSelectedIndexes(new Set())}
+                >
+                  Clear
+                </Button>
+              </div>
+            )}
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="py-3 pl-4 pr-2 text-xs font-bold uppercase tracking-wider text-slate-400 w-10">#</th>
+                  <th className="py-3 pl-4 pr-2 w-10">
+                    <Checkbox
+                      checked={allFilteredSelected ? true : someFilteredSelected ? "indeterminate" : false}
+                      onCheckedChange={(checked) => toggleSelectAllFiltered(checked === true)}
+                      aria-label="Select all visible products"
+                      disabled={filtered.length === 0}
+                    />
+                  </th>
+                  <th className="py-3 pr-2 text-xs font-bold uppercase tracking-wider text-slate-400 w-10">#</th>
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Product Name</th>
+                  <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Order Tag / No</th>
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Brand</th>
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Price</th>
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">MOQ</th>
@@ -851,21 +1112,20 @@ function CatalogDetailView({
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((product, i) => {
-                  const realIndex = products.indexOf(product)
-                  return (
+                {filtered.map(({ product, index }, i) => (
                     <ProductRow
-                      key={i}
+                      key={`${product.product_name}-${index}`}
                       product={product}
                       index={i}
+                      selected={selectedIndexes.has(index)}
+                      onSelectChange={(checked) => toggleSelect(index, checked)}
                       onEdit={() => {
-                        setEditingProduct({ product, index: realIndex })
+                        setEditingProduct({ product, index })
                         setProductDialogOpen(true)
                       }}
-                      onDelete={() => setDeletingIndex(realIndex)}
+                      onDelete={() => setDeletingIndex(index)}
                     />
-                  )
-                })}
+                ))}
               </tbody>
             </table>
             {filtered.length === 0 && (
@@ -888,6 +1148,66 @@ function CatalogDetailView({
         onClose={() => setJsonImportOpen(false)}
         onImport={handleJsonImport}
       />
+
+      <Dialog open={bulkEditDialogOpen} onOpenChange={setBulkEditDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Bulk edit {selectedIndexes.size} items</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-slate-500">
+            Tick the fields you want to change. Unticked fields stay as they are.
+          </p>
+          <div className="space-y-3 py-1">
+            {(
+              [
+                { key: "order_tag", label: "Order Tag / No", placeholder: "e.g. 123456 or TATA" },
+                { key: "brand", label: "Brand", placeholder: "e.g. Apsara" },
+                { key: "unit", label: "Unit", placeholder: "e.g. pcs, box" },
+                { key: "notes", label: "Notes", placeholder: "Any extra info" },
+                { key: "price", label: "Price (₹)", placeholder: "18" },
+                { key: "moq", label: "MOQ", placeholder: "24" },
+              ] as const
+            ).map((field) => (
+              <div key={field.key} className="flex items-start gap-3">
+                <Checkbox
+                  id={`bulk-${field.key}`}
+                  className="mt-2.5"
+                  checked={bulkFields[field.key]}
+                  onCheckedChange={(checked) =>
+                    setBulkFields((prev) => ({ ...prev, [field.key]: checked === true }))
+                  }
+                />
+                <div className="min-w-0 flex-1 space-y-1">
+                  <Label htmlFor={`bulk-${field.key}-value`}>{field.label}</Label>
+                  <Input
+                    id={`bulk-${field.key}-value`}
+                    type={field.key === "price" || field.key === "moq" ? "number" : "text"}
+                    min={field.key === "moq" ? 1 : field.key === "price" ? 0 : undefined}
+                    placeholder={field.placeholder}
+                    value={bulkValues[field.key]}
+                    disabled={!bulkFields[field.key]}
+                    onChange={(e) =>
+                      setBulkValues((prev) => ({ ...prev, [field.key]: e.target.value }))
+                    }
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void handleBulkEdit()}
+              disabled={saving || !Object.values(bulkFields).some(Boolean)}
+            >
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Apply to selected
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {deletingIndex !== null && (
         <ConfirmDeleteDialog

@@ -18,6 +18,13 @@ import {
 import { db } from "@/lib/firebase"
 import type { PurchaseCatalog, CatalogProduct } from "./models"
 
+function normalizeCatalogProduct(p: CatalogProduct): CatalogProduct {
+  const raw = p as CatalogProduct & { orderTag?: string; order_no?: string; orderNo?: string }
+  const order_tag =
+    String(p.order_tag ?? raw.orderTag ?? raw.order_no ?? raw.orderNo ?? "").trim() || "NA"
+  return { ...p, order_tag }
+}
+
 const COL = "purchase_catalogs"
 
 function toDate(v: unknown): Date {
@@ -32,7 +39,7 @@ function fromFirestore(id: string, data: Record<string, unknown>): PurchaseCatal
     name: (data.name as string) ?? "Unnamed",
     source: (data.source as string) ?? "",
     color: (data.color as string) ?? "#6366f1",
-    products: (data.products as CatalogProduct[]) ?? [],
+    products: ((data.products as CatalogProduct[]) ?? []).map(normalizeCatalogProduct),
     createdAt: toDate(data.createdAt),
     updatedAt: toDate(data.updatedAt),
   }

@@ -12,6 +12,13 @@ export interface CatalogProduct {
   brand?: string
   unit?: string
   notes?: string
+  /** Order tag / order no — e.g. "123456" or "TATA" — used to filter products */
+  order_tag?: string
+}
+
+export function catalogProductOrderTag(product: CatalogProduct): string {
+  const tag = String(product.order_tag ?? "").trim()
+  return tag || "NA"
 }
 
 /** Ek catalog group — jaise "Sharpeners", "Erasers", "Drawing Boxes" etc. */
