@@ -48,7 +48,7 @@ export default function AddCustomerPage() {
     setLoading(true)
 
     try {
-      await addCustomer({
+      const newCustomerId = await addCustomer({
         name: formData.name,
         phone: formData.phone,
         email: formData.email || undefined,
@@ -60,7 +60,11 @@ export default function AddCustomerPage() {
       toast.success("Customer added successfully")
       if (returnTo && returnTo.startsWith("/")) {
         const joiner = returnTo.includes("?") ? "&" : "?"
-        router.push(`${returnTo}${joiner}customerPhone=${encodeURIComponent(formData.phone)}`)
+        const phone = encodeURIComponent(formData.phone.replace(/\D/g, "").slice(-10))
+        const name = encodeURIComponent(formData.name.trim())
+        router.push(
+          `${returnTo}${joiner}customerPhone=${phone}&customerName=${name}&customerId=${encodeURIComponent(newCustomerId)}`
+        )
       } else {
         router.push("/customers")
       }

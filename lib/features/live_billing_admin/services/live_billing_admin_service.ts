@@ -68,6 +68,61 @@ function generateBillNo(sessionId: string): string {
   return `SM-${datePart}-${shortId}`
 }
 
+function normalizeBillingPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "")
+  if (digits.length >= 10) return digits.slice(-10)
+  return ""
+}
+
+/** Find or create a customers/{id} doc with name + phone only. */
+async function ensureCustomerForBilling(
+  customer?: CheckoutCustomerInfo
+): Promise<CheckoutCustomerInfo | undefined> {
+  const phone = normalizeBillingPhone(customer?.customerPhone || "")
+  if (!phone) return customer
+
+  if (customer?.customerId) {
+    const existing = await getDoc(doc(db, "customers", customer.customerId))
+    if (existing.exists()) {
+      const data = existing.data() as Record<string, unknown>
+      return {
+        customerId: existing.id,
+        customerName: String(data.name ?? customer.customerName ?? "").trim() || customer.customerName,
+        customerPhone: String(data.phone ?? phone),
+      }
+    }
+  }
+
+  const byPhone = await getDocs(query(collection(db, "customers"), where("phone", "==", phone), limit(1)))
+  if (!byPhone.empty) {
+    const found = byPhone.docs[0]
+    const data = found.data() as Record<string, unknown>
+    return {
+      customerId: found.id,
+      customerName: String(data.name ?? customer?.customerName ?? "").trim() || customer?.customerName,
+      customerPhone: String(data.phone ?? phone),
+    }
+  }
+
+  const name = (customer?.customerName || "").trim()
+  if (!name) return { ...customer, customerPhone: phone }
+
+  const docRef = await addDoc(collection(db, "customers"), {
+    name,
+    phone,
+    balance: 0,
+    totalPurchases: 0,
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  })
+
+  return {
+    customerId: docRef.id,
+    customerName: name,
+    customerPhone: phone,
+  }
+}
+
 /** Reuse one active scanner session per browser tab — avoids duplicate sessions on re-open / Strict Mode. */
 export async function getOrCreateScannerBillingSession(cashierLabel?: string): Promise<string> {
   if (typeof window !== "undefined") {
@@ -122,7 +177,8 @@ export async function completeLiveBillingSession(
 
   const soldAt = new Date().toISOString()
   const lineItems: LiveBillingLineItem[] = []
-  const customerPhone = customer?.customerPhone?.trim() || "NA"
+  const resolvedCustomer = await ensureCustomerForBilling(customer)
+  const customerPhone = resolvedCustomer?.customerPhone?.trim() || customer?.customerPhone?.trim() || "NA"
 
   for (const itemDoc of itemsSnap.docs) {
     const itemData = itemDoc.data() as Record<string, unknown>
@@ -225,8 +281,8 @@ export async function completeLiveBillingSession(
     status: "completed",
     sessionId: (liveData.sessionId as string) || sessionId,
     customerPhone,
-    ...(customer?.customerId ? { customerId: customer.customerId } : {}),
-    ...(customer?.customerName ? { customerName: customer.customerName } : {}),
+    ...(resolvedCustomer?.customerId ? { customerId: resolvedCustomer.customerId } : {}),
+    ...(resolvedCustomer?.customerName ? { customerName: resolvedCustomer.customerName } : {}),
   })
 
   clearAdminScanSessionStorage()
@@ -272,8 +328,8 @@ export async function completeLiveBillingSession(
       createdAt: Timestamp.now(),
       source: "admin_billing",
       customerPhone,
-      ...(customer?.customerId ? { customerId: customer.customerId } : {}),
-      ...(customer?.customerName ? { customerName: customer.customerName } : {}),
+      ...(resolvedCustomer?.customerId ? { customerId: resolvedCustomer.customerId } : {}),
+      ...(resolvedCustomer?.customerName ? { customerName: resolvedCustomer.customerName } : {}),
     }
 
     try {
