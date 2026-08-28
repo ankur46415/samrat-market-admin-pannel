@@ -28,6 +28,25 @@ export function catalogProductSalePrice(product: CatalogProduct): number | undef
   return Number.isFinite(n) && n >= 0 ? n : undefined
 }
 
+/** Firestore rejects `undefined` in nested product objects — only write defined fields. */
+export function sanitizeCatalogProduct(product: CatalogProduct): CatalogProduct {
+  const sale = catalogProductSalePrice(product)
+  const next: CatalogProduct = {
+    product_name: String(product.product_name ?? "").trim(),
+    price: Number.isFinite(Number(product.price)) ? Number(product.price) : 0,
+    moq: Number.isFinite(Number(product.moq)) ? Number(product.moq) : 0,
+    order_tag: catalogProductOrderTag(product),
+  }
+  const brand = String(product.brand ?? "").trim()
+  const unit = String(product.unit ?? "").trim()
+  const notes = String(product.notes ?? "").trim()
+  if (brand) next.brand = brand
+  if (unit) next.unit = unit
+  if (notes) next.notes = notes
+  if (sale != null) next.sale_price = sale
+  return next
+}
+
 export const DEFAULT_SALE_MARGIN_PERCENTS = [5, 10, 15, 20, 25, 30, 40]
 
 export function normalizeSaleMarginPercents(raw: unknown): number[] {

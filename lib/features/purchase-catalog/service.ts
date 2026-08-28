@@ -18,7 +18,7 @@ import {
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import type { PurchaseCatalog, CatalogProduct } from "./models"
-import { DEFAULT_SALE_MARGIN_PERCENTS, normalizeSaleMarginPercents } from "./models"
+import { DEFAULT_SALE_MARGIN_PERCENTS, normalizeSaleMarginPercents, sanitizeCatalogProduct } from "./models"
 
 function normalizeCatalogProduct(p: CatalogProduct): CatalogProduct {
   const raw = p as CatalogProduct & {
@@ -84,6 +84,7 @@ export async function addPurchaseCatalog(
 ): Promise<string> {
   const ref = await addDoc(collection(db, COL), {
     ...data,
+    products: (data.products ?? []).map(sanitizeCatalogProduct),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })
@@ -94,10 +95,14 @@ export async function updatePurchaseCatalog(
   id: string,
   data: Partial<Omit<PurchaseCatalog, "id" | "createdAt">>
 ): Promise<void> {
-  await updateDoc(doc(db, COL, id), {
+  const payload: Record<string, unknown> = {
     ...data,
     updatedAt: serverTimestamp(),
-  })
+  }
+  if (data.products) {
+    payload.products = data.products.map(sanitizeCatalogProduct)
+  }
+  await updateDoc(doc(db, COL, id), payload)
 }
 
 export async function deletePurchaseCatalog(id: string): Promise<void> {

@@ -24,7 +24,7 @@ import {
   Tags,
   Percent,
 } from "lucide-react"
-import { downloadCatalogGroupPdf } from "@/lib/features/purchase-catalog/pdf-export"
+import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { usePurchaseCatalog } from "@/hooks/use-purchase-catalog"
 import type { CatalogProduct, PurchaseCatalog } from "@/lib/features/purchase-catalog/models"
@@ -794,10 +794,10 @@ function JsonImportDialog({
           product_name: productName,
           price,
           moq,
-          brand: brand || undefined,
-          unit: unit || undefined,
-          notes: notes || undefined,
           order_tag: tag || "NA",
+          ...(brand ? { brand } : {}),
+          ...(unit ? { unit } : {}),
+          ...(notes ? { notes } : {}),
           ...(salePrice !== null ? { sale_price: salePrice } : {}),
         })
       }
@@ -1027,10 +1027,15 @@ function CatalogDetailView({
 
   // Keep local products in sync if catalog prop changes
   const syncProducts = async (updated: CatalogProduct[]) => {
+    const previous = products
     setProducts(updated)
     setSaving(true)
     try {
       await onUpdateProducts(updated)
+    } catch (e) {
+      console.error(e)
+      setProducts(previous)
+      toast.error(e instanceof Error ? e.message : "Failed to save products")
     } finally {
       setSaving(false)
     }
