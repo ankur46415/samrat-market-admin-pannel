@@ -14,11 +14,59 @@ export interface CatalogProduct {
   notes?: string
   /** Order tag / order no — e.g. "123456" or "TATA" — used to filter products */
   order_tag?: string
+  /** Selling / sale price shown to customers */
+  sale_price?: number
 }
 
 export function catalogProductOrderTag(product: CatalogProduct): string {
   const tag = String(product.order_tag ?? "").trim()
   return tag || "NA"
+}
+
+export function catalogProductSalePrice(product: CatalogProduct): number | undefined {
+  const n = Number(product.sale_price)
+  return Number.isFinite(n) && n >= 0 ? n : undefined
+}
+
+export const DEFAULT_SALE_MARGIN_PERCENTS = [5, 10, 15, 20, 25, 30, 40]
+
+export function normalizeSaleMarginPercents(raw: unknown): number[] {
+  const source = Array.isArray(raw) ? raw : DEFAULT_SALE_MARGIN_PERCENTS
+  const nums = source
+    .map((v) => Number(v))
+    .filter((n) => Number.isFinite(n) && n > 0 && n <= 500)
+    .map((n) => Math.round(n * 10) / 10)
+  const unique = [...new Set(nums)].sort((a, b) => a - b)
+  return unique.length > 0 ? unique : [...DEFAULT_SALE_MARGIN_PERCENTS]
+}
+
+export function marginPercentFromPrices(buyPrice: number, salePrice: number): number | null {
+  if (!Number.isFinite(buyPrice) || buyPrice <= 0) return null
+  if (!Number.isFinite(salePrice)) return null
+  return ((salePrice - buyPrice) / buyPrice) * 100
+}
+
+export function formatMarginPercent(percent: number | null | undefined): string {
+  if (percent == null || !Number.isFinite(percent)) return "—"
+  const rounded = Math.round(percent * 10) / 10
+  const label = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
+  return `${label}%`
+}
+
+export function salePriceFromMarginPercent(buyPrice: number, percent: number): number {
+  return Math.round(buyPrice * (1 + percent / 100) * 100) / 100
+}
+
+export function matchingSaleMarginPercent(
+  buyPrice: number,
+  salePrice: number | undefined,
+  options: number[]
+): number | "" {
+  if (salePrice == null) return ""
+  const pct = marginPercentFromPrices(buyPrice, salePrice)
+  if (pct == null) return ""
+  const match = options.find((option) => Math.abs(option - pct) < 0.51)
+  return match ?? ""
 }
 
 /** Ek catalog group — jaise "Sharpeners", "Erasers", "Drawing Boxes" etc. */

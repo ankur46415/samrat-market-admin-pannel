@@ -86,18 +86,19 @@ export async function downloadCatalogGroupPdf(catalog: PurchaseCatalog): Promise
 
   autoTable(doc, {
     startY: 49,
-    head: [["#", "Product Name", "Order Tag", "Brand", "Price", "MOQ", "Unit", "MOQ Value"]],
+    head: [["#", "Product Name", "Order Tag", "Brand", "Price", "Sale Price", "MOQ", "Unit", "MOQ Value"]],
     body: catalog.products.map((p, idx) => [
       idx + 1,
       pdfSafe(p.product_name),
       pdfSafe(String(p.order_tag ?? "").trim() || "NA"),
       pdfSafe(p.brand ?? "-"),
       formatPdfPrice(p.price),
+      Number.isFinite(Number(p.sale_price)) ? formatPdfPrice(Number(p.sale_price)) : "-",
       String(p.moq),
       pdfSafe(p.unit ?? "-"),
       formatPdfPrice(p.price * p.moq),
     ]),
-    styles: { fontSize: 9, cellPadding: 3, lineColor: [220, 220, 220], lineWidth: 0.2 },
+    styles: { fontSize: 8, cellPadding: 2, lineColor: [220, 220, 220], lineWidth: 0.2 },
     headStyles: {
       fillColor: [99, 102, 241],
       textColor: 255,
@@ -105,11 +106,10 @@ export async function downloadCatalogGroupPdf(catalog: PurchaseCatalog): Promise
       fontSize: 9,
     },
     columnStyles: {
-      0: { halign: "center", cellWidth: 10 },
-      1: { cellWidth: 55 },
-      3: { halign: "right", cellWidth: 22 },
-      4: { halign: "center", cellWidth: 14 },
-      6: { halign: "right", cellWidth: 24 },
+      0: { halign: "center", cellWidth: 8 },
+      4: { halign: "right" },
+      5: { halign: "right" },
+      8: { halign: "right" },
     },
     alternateRowStyles: { fillColor: [248, 248, 250] },
     margin: { left: 14, right: 14 },

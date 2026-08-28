@@ -2,11 +2,14 @@
 
 import { useEffect, useState, useCallback } from "react"
 import type { PurchaseCatalog, CatalogProduct } from "@/lib/features/purchase-catalog/models"
+import { DEFAULT_SALE_MARGIN_PERCENTS } from "@/lib/features/purchase-catalog/models"
 import {
   subscribePurchaseCatalogs,
   addPurchaseCatalog,
   updatePurchaseCatalog,
   deletePurchaseCatalog,
+  subscribeSaleMarginPercents,
+  saveSaleMarginPercents,
 } from "@/lib/features/purchase-catalog/service"
 
 export type CatalogSyncStatus = "connecting" | "synced" | "error" | "offline"
@@ -15,6 +18,8 @@ export function usePurchaseCatalog() {
   const [catalogs, setCatalogs] = useState<PurchaseCatalog[]>([])
   const [loading, setLoading] = useState(true)
   const [syncStatus, setSyncStatus] = useState<CatalogSyncStatus>("connecting")
+
+  const [percents, setPercents] = useState<number[]>([...DEFAULT_SALE_MARGIN_PERCENTS])
 
   useEffect(() => {
     setSyncStatus("connecting")
@@ -30,6 +35,15 @@ export function usePurchaseCatalog() {
       }
     )
     return () => unsub()
+  }, [])
+
+  useEffect(() => {
+    const unsub = subscribeSaleMarginPercents(setPercents)
+    return () => unsub()
+  }, [])
+
+  const updateSaleMarginPercents = useCallback(async (next: number[]) => {
+    await saveSaleMarginPercents(next)
   }, [])
 
   const createCatalog = useCallback(
@@ -65,5 +79,7 @@ export function usePurchaseCatalog() {
     updateCatalogMeta,
     updateCatalogProducts,
     removeCatalog,
+    saleMarginPercents: percents,
+    updateSaleMarginPercents,
   }
 }

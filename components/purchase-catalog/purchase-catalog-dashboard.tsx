@@ -22,12 +22,21 @@ import {
   Search,
   Download,
   Tags,
+  Percent,
 } from "lucide-react"
 import { downloadCatalogGroupPdf } from "@/lib/features/purchase-catalog/pdf-export"
 import { cn } from "@/lib/utils"
 import { usePurchaseCatalog } from "@/hooks/use-purchase-catalog"
 import type { CatalogProduct, PurchaseCatalog } from "@/lib/features/purchase-catalog/models"
-import { catalogProductOrderTag } from "@/lib/features/purchase-catalog/models"
+import {
+  catalogProductOrderTag,
+  catalogProductSalePrice,
+  formatMarginPercent,
+  matchingSaleMarginPercent,
+  marginPercentFromPrices,
+  normalizeSaleMarginPercents,
+  salePriceFromMarginPercent,
+} from "@/lib/features/purchase-catalog/models"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -73,12 +82,72 @@ function jsonPickNumber(rec: Record<string, unknown>, keys: string[]): number | 
   return null
 }
 
+function SalePriceEditFields({
+  buyPrice,
+  salePrice,
+  percents,
+  onSalePriceChange,
+  inputClassName,
+}: {
+  buyPrice: number
+  salePrice: number | undefined
+  percents: number[]
+  onSalePriceChange: (salePrice: number | undefined) => void
+  inputClassName?: string
+}) {
+  const computedPercent = salePrice == null ? null : marginPercentFromPrices(buyPrice, salePrice)
+  const selectedPercent = matchingSaleMarginPercent(buyPrice, salePrice, percents)
+  const liveLabel = formatMarginPercent(computedPercent)
+  return (
+    <div className="flex min-w-[12.5rem] items-center gap-1">
+      <Input
+        className={inputClassName}
+        type="number"
+        min={0}
+        placeholder="—"
+        value={salePrice ?? ""}
+        onChange={(e) => {
+          const raw = e.target.value
+          if (raw === "") onSalePriceChange(undefined)
+          else onSalePriceChange(Number(raw))
+        }}
+      />
+      <Select
+        value={selectedPercent === "" ? "live" : String(selectedPercent)}
+        onValueChange={(value) => {
+          if (value === "live") return
+          const percent = Number(value)
+          if (!Number.isFinite(buyPrice) || buyPrice <= 0) return
+          onSalePriceChange(salePriceFromMarginPercent(buyPrice, percent))
+        }}
+      >
+        <SelectTrigger className="h-8 w-[4.85rem] shrink-0 px-2 text-xs font-semibold">
+          <span>{liveLabel}</span>
+        </SelectTrigger>
+        <SelectContent>
+          {selectedPercent === "" ? (
+            <SelectItem value="live" disabled>
+              {liveLabel}
+            </SelectItem>
+          ) : null}
+          {percents.map((percent) => (
+            <SelectItem key={percent} value={String(percent)}>
+              {formatMarginPercent(percent)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
 type BulkEditFields = {
   order_tag: boolean
   brand: boolean
   unit: boolean
   notes: boolean
   price: boolean
+  sale_price: boolean
   moq: boolean
 }
 
@@ -88,6 +157,7 @@ const EMPTY_BULK_FIELDS: BulkEditFields = {
   unit: false,
   notes: false,
   price: false,
+  sale_price: false,
   moq: false,
 }
 
@@ -241,57 +311,159 @@ function ProductRow({
   product,
   index,
   selected,
+  editing,
+  percents,
   onSelectChange,
+  onChange,
   onEdit,
   onDelete,
 }: {
   product: CatalogProduct
   index: number
   selected: boolean
+  editing: boolean
+  percents: number[]
   onSelectChange: (checked: boolean) => void
+  onChange: (patch: Partial<CatalogProduct>) => void
   onEdit: () => void
   onDelete: () => void
 }) {
   const tag = catalogProductOrderTag(product)
+  const salePrice = catalogProductSalePrice(product)
+  const livePercent = salePrice == null ? null : marginPercentFromPrices(product.price, salePrice)
+  const cellInput = "h-8 min-w-[4.5rem] text-sm"
   return (
     <tr className={cn("group border-b border-slate-100 hover:bg-indigo-50/40 transition-colors", selected && "bg-indigo-50/70")}>
       <td className="py-3 pl-4 pr-2 w-10">
         <Checkbox
           checked={selected}
+          disabled={editing}
           onCheckedChange={(checked) => onSelectChange(checked === true)}
           aria-label={`Select ${product.product_name}`}
         />
       </td>
       <td className="py-3 pr-2 text-sm font-medium text-slate-400 w-10">{index + 1}</td>
-      <td className="py-3 px-3 text-sm font-semibold text-slate-800">{product.product_name}</td>
+      <td className="py-3 px-3 text-sm font-semibold text-slate-800">
+        {editing ? (
+          <Input
+            className={cn(cellInput, "min-w-[10rem]")}
+            value={product.product_name}
+            onChange={(e) => onChange({ product_name: e.target.value })}
+          />
+        ) : (
+          product.product_name
+        )}
+      </td>
       <td className="py-3 px-3">
-        <span className="inline-flex rounded-md bg-indigo-50 px-2 py-0.5 font-mono text-xs font-semibold text-indigo-700">
-          {tag}
+        {editing ? (
+          <Input
+            className={cn(cellInput, "font-mono")}
+            value={product.order_tag ?? "NA"}
+            onChange={(e) => onChange({ order_tag: e.target.value })}
+          />
+        ) : (
+          <span className="inline-flex rounded-md bg-indigo-50 px-2 py-0.5 font-mono text-xs font-semibold text-indigo-700">
+            {tag}
+          </span>
+        )}
+      </td>
+      <td className="py-3 px-3 text-sm text-slate-600">
+        {editing ? (
+          <Input
+            className={cellInput}
+            value={product.brand ?? ""}
+            onChange={(e) => onChange({ brand: e.target.value })}
+          />
+        ) : (
+          product.brand ?? "—"
+        )}
+      </td>
+      <td className="py-3 px-3 text-sm font-bold text-emerald-700">
+        {editing ? (
+          <Input
+            className={cellInput}
+            type="number"
+            min={0}
+            value={product.price}
+            onChange={(e) => {
+              const price = Number(e.target.value)
+              if (livePercent != null && Number.isFinite(price) && price > 0) {
+                onChange({
+                  price,
+                  sale_price: salePriceFromMarginPercent(price, livePercent),
+                })
+              } else {
+                onChange({ price })
+              }
+            }}
+          />
+        ) : (
+          `₹${product.price.toLocaleString("en-IN")}`
+        )}
+      </td>
+      <td className="py-3 px-3 text-sm font-bold text-sky-700">
+        {editing ? (
+          <SalePriceEditFields
+            buyPrice={product.price}
+            salePrice={salePrice}
+            percents={percents}
+            inputClassName={cellInput}
+            onSalePriceChange={(next) => onChange({ sale_price: next })}
+          />
+        ) : salePrice != null ? (
+          `₹${salePrice.toLocaleString("en-IN")}`
+        ) : (
+          "—"
+        )}
+      </td>
+      <td className="py-3 px-3">
+        <span className="inline-flex rounded-md bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-800">
+          {formatMarginPercent(livePercent)}
         </span>
       </td>
-      <td className="py-3 px-3 text-sm text-slate-600">{product.brand ?? "—"}</td>
-      <td className="py-3 px-3 text-sm font-bold text-emerald-700">
-        ₹{product.price.toLocaleString("en-IN")}
+      <td className="py-3 px-3 text-sm text-slate-600">
+        {editing ? (
+          <Input
+            className={cellInput}
+            type="number"
+            min={1}
+            value={product.moq}
+            onChange={(e) => onChange({ moq: Number(e.target.value) })}
+          />
+        ) : (
+          `×${product.moq}`
+        )}
       </td>
-      <td className="py-3 px-3 text-sm text-slate-600">×{product.moq}</td>
-      <td className="py-3 px-3 text-sm text-slate-500">{product.unit ?? "—"}</td>
+      <td className="py-3 px-3 text-sm text-slate-500">
+        {editing ? (
+          <Input
+            className={cellInput}
+            value={product.unit ?? ""}
+            onChange={(e) => onChange({ unit: e.target.value })}
+          />
+        ) : (
+          product.unit ?? "—"
+        )}
+      </td>
       <td className="py-3 pl-3 pr-4 text-right">
-        <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            className="rounded p-1 text-slate-400 hover:bg-white hover:text-slate-700 hover:shadow-sm transition-all"
-            onClick={onEdit}
-            title="Edit product"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
-          <button
-            className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-500 hover:shadow-sm transition-all"
-            onClick={onDelete}
-            title="Delete product"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        {!editing ? (
+          <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              className="rounded p-1 text-slate-400 hover:bg-white hover:text-slate-700 hover:shadow-sm transition-all"
+              onClick={onEdit}
+              title="Edit product"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-500 hover:shadow-sm transition-all"
+              onClick={onDelete}
+              title="Delete product"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : null}
       </td>
     </tr>
   )
@@ -398,15 +570,18 @@ function ProductDialog({
   onClose,
   onSave,
   initial,
+  percents,
 }: {
   open: boolean
   onClose: () => void
   onSave: (product: CatalogProduct) => Promise<void>
   initial?: CatalogProduct | null
+  percents: number[]
 }) {
   const [productName, setProductName] = useState(initial?.product_name ?? "")
   const [orderTag, setOrderTag] = useState(initial?.order_tag ?? "NA")
   const [price, setPrice] = useState(initial?.price?.toString() ?? "")
+  const [salePrice, setSalePrice] = useState(initial?.sale_price?.toString() ?? "")
   const [moq, setMoq] = useState(initial?.moq?.toString() ?? "")
   const [brand, setBrand] = useState(initial?.brand ?? "")
   const [unit, setUnit] = useState(initial?.unit ?? "")
@@ -419,6 +594,7 @@ function ProductDialog({
     setProductName(initial?.product_name ?? "")
     setOrderTag(initial ? catalogProductOrderTag(initial) : "NA")
     setPrice(initial?.price?.toString() ?? "")
+    setSalePrice(initial?.sale_price != null ? String(initial.sale_price) : "")
     setMoq(initial?.moq?.toString() ?? "")
     setBrand(initial?.brand ?? "")
     setUnit(initial?.unit ?? "")
@@ -447,6 +623,9 @@ function ProductDialog({
         unit: unit.trim() || undefined,
         notes: notes.trim() || undefined,
         order_tag: orderTag.trim() || "NA",
+        ...(salePrice !== "" && !Number.isNaN(Number(salePrice))
+          ? { sale_price: Number(salePrice) }
+          : {}),
       })
       onClose()
     } catch {
@@ -486,22 +665,48 @@ function ProductDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="prod-price">Price (₹) *</Label>
-              <Input id="prod-price" type="number" min={0} placeholder="18" value={price} onChange={(e) => setPrice(e.target.value)} />
+              <Input
+                id="prod-price"
+                type="number"
+                min={0}
+                placeholder="18"
+                value={price}
+                onChange={(e) => {
+                  const next = e.target.value
+                  setPrice(next)
+                  const buy = Number(next)
+                  const sale = salePrice === "" ? undefined : Number(salePrice)
+                  const livePct =
+                    sale == null ? null : marginPercentFromPrices(Number(price) || 0, sale)
+                  if (livePct != null && Number.isFinite(buy) && buy > 0) {
+                    setSalePrice(String(salePriceFromMarginPercent(buy, livePct)))
+                  }
+                }}
+              />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="prod-moq">MOQ *</Label>
-              <Input id="prod-moq" type="number" min={1} placeholder="24" value={moq} onChange={(e) => setMoq(e.target.value)} />
+              <Label htmlFor="prod-sale-price">Sale Price (₹)</Label>
+              <SalePriceEditFields
+                buyPrice={Number(price) || 0}
+                salePrice={salePrice === "" ? undefined : Number(salePrice)}
+                percents={percents}
+                onSalePriceChange={(next) => setSalePrice(next == null || Number.isNaN(next) ? "" : String(next))}
+              />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="prod-brand">Brand</Label>
-              <Input id="prod-brand" placeholder="e.g. Apsara" value={brand} onChange={(e) => setBrand(e.target.value)} />
+              <Label htmlFor="prod-moq">MOQ *</Label>
+              <Input id="prod-moq" type="number" min={1} placeholder="24" value={moq} onChange={(e) => setMoq(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="prod-unit">Unit</Label>
               <Input id="prod-unit" placeholder="e.g. pcs, box" value={unit} onChange={(e) => setUnit(e.target.value)} />
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="prod-brand">Brand</Label>
+            <Input id="prod-brand" placeholder="e.g. Apsara" value={brand} onChange={(e) => setBrand(e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="prod-notes">Notes</Label>
@@ -580,6 +785,7 @@ function JsonImportDialog({
         const brand = jsonPickString(rec, ["brand", "manufacturer", "Brand"]) || wrapperBrand
         const unit = jsonPickString(rec, ["unit", "units", "Unit"]) || wrapperUnit
         const notes = jsonPickString(rec, ["notes", "note", "remark", "remarks"])
+        const salePrice = jsonPickNumber(rec, ["sale_price", "salePrice", "selling_price", "sellingPrice"])
         mapped.push({
           product_name: productName,
           price,
@@ -588,6 +794,7 @@ function JsonImportDialog({
           unit: unit || undefined,
           notes: notes || undefined,
           order_tag: tag || "NA",
+          ...(salePrice !== null ? { sale_price: salePrice } : {}),
         })
       }
 
@@ -632,7 +839,7 @@ function JsonImportDialog({
         <div className="flex-1 overflow-y-auto space-y-4 py-2 pr-1">
           {/* Format hint */}
           <div className="rounded-xl bg-indigo-50 border border-indigo-100 px-4 py-3 text-xs text-indigo-700 font-mono leading-relaxed">
-            {`[ { "product_name": "Cup Shape Pencil Sharpener", "brand": "Apsara", "price": 18, "moq": 24, "unit": "pcs", "order_tag": "TATA" }, ... ]`}
+            {`[ { "product_name": "Cup Shape Pencil Sharpener", "brand": "Apsara", "price": 18, "sale_price": 22, "moq": 24, "unit": "pcs", "order_tag": "TATA" }, ... ]`}
           </div>
 
           <div className="flex items-center gap-2">
@@ -685,6 +892,7 @@ function JsonImportDialog({
                     {i + 1}. {p.product_name}
                     {p.brand ? ` · ${p.brand}` : ""}
                     {` — ₹${p.price} × MOQ ${p.moq}`}
+                    {p.sale_price != null ? ` · sale ₹${p.sale_price}` : ""}
                     {p.unit ? ` · ${p.unit}` : ""}
                     {` · ${p.order_tag || "NA"}`}
                   </div>
@@ -768,10 +976,12 @@ function CatalogDetailView({
   catalog,
   onBack,
   onUpdateProducts,
+  percents,
 }: {
   catalog: PurchaseCatalog
   onBack: () => void
   onUpdateProducts: (products: CatalogProduct[]) => Promise<void>
+  percents: number[]
 }) {
   const [products, setProducts] = useState<CatalogProduct[]>(catalog.products)
   const [productDialogOpen, setProductDialogOpen] = useState(false)
@@ -789,12 +999,18 @@ function CatalogDetailView({
     unit: "",
     notes: "",
     price: "",
+    sale_price: "",
     moq: "",
   })
   const [saving, setSaving] = useState(false)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const [tableEditing, setTableEditing] = useState(false)
 
   const color = catalog.color ?? "#6366f1"
+
+  useEffect(() => {
+    if (!tableEditing) setProducts(catalog.products)
+  }, [catalog.products, tableEditing])
 
   const handleDownloadPdf = async () => {
     setDownloadingPdf(true)
@@ -897,6 +1113,7 @@ function CatalogDetailView({
   const handleBulkEdit = async () => {
     if (!Object.values(bulkFields).some(Boolean)) return
     if (bulkFields.price && (bulkValues.price === "" || Number.isNaN(Number(bulkValues.price)))) return
+    if (bulkFields.sale_price && bulkValues.sale_price !== "" && Number.isNaN(Number(bulkValues.sale_price))) return
     if (bulkFields.moq && (bulkValues.moq === "" || Number.isNaN(Number(bulkValues.moq)))) return
 
     const updated = products.map((p, i) => {
@@ -907,6 +1124,10 @@ function CatalogDetailView({
       if (bulkFields.unit) next.unit = bulkValues.unit.trim() || undefined
       if (bulkFields.notes) next.notes = bulkValues.notes.trim() || undefined
       if (bulkFields.price) next.price = Number(bulkValues.price)
+      if (bulkFields.sale_price) {
+        if (bulkValues.sale_price.trim() === "") delete next.sale_price
+        else next.sale_price = Number(bulkValues.sale_price)
+      }
       if (bulkFields.moq) next.moq = Number(bulkValues.moq)
       return next
     })
@@ -923,9 +1144,54 @@ function CatalogDetailView({
       unit: "",
       notes: "",
       price: "",
+      sale_price: "",
       moq: "",
     })
     setBulkEditDialogOpen(true)
+  }
+
+  const startTableEdit = () => {
+    setTableEditing(true)
+    setSelectedIndexes(new Set())
+  }
+
+  const cancelTableEdit = () => {
+    setProducts(catalog.products)
+    setTableEditing(false)
+  }
+
+  const saveTableEdit = async () => {
+    const cleaned = products.map((p) => {
+      const next: CatalogProduct = {
+        product_name: p.product_name.trim() || p.product_name,
+        price: Number.isFinite(Number(p.price)) ? Number(p.price) : 0,
+        moq: Number.isFinite(Number(p.moq)) && Number(p.moq) > 0 ? Number(p.moq) : 1,
+        order_tag: catalogProductOrderTag(p),
+      }
+      if (p.brand?.trim()) next.brand = p.brand.trim()
+      if (p.unit?.trim()) next.unit = p.unit.trim()
+      if (p.notes?.trim()) next.notes = p.notes.trim()
+      const sale = catalogProductSalePrice(p)
+      if (sale != null) next.sale_price = sale
+      return next
+    })
+    await syncProducts(cleaned)
+    setTableEditing(false)
+  }
+
+  const patchProductAt = (index: number, patch: Partial<CatalogProduct>) => {
+    setProducts((prev) =>
+      prev.map((p, i) => {
+        if (i !== index) return p
+        const next: CatalogProduct = { ...p, ...patch }
+        if ("sale_price" in patch && (patch.sale_price === undefined || Number.isNaN(Number(patch.sale_price)))) {
+          delete next.sale_price
+        }
+        if ("brand" in patch && !String(patch.brand ?? "").trim()) delete next.brand
+        if ("unit" in patch && !String(patch.unit ?? "").trim()) delete next.unit
+        return next
+      })
+    )
   }
 
   const totalMOQValue = products.reduce((sum, p) => sum + p.price * p.moq, 0)
@@ -1038,6 +1304,28 @@ function CatalogDetailView({
             ))}
           </SelectContent>
         </Select>
+        {tableEditing ? (
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={cancelTableEdit} disabled={saving}>
+              Cancel
+            </Button>
+            <Button size="sm" className="gap-2" onClick={() => void saveTableEdit()} disabled={saving}>
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+              Save Items
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            disabled={products.length === 0}
+            onClick={startTableEdit}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            Edit Items
+          </Button>
+        )}
       </div>
 
       {/* Products table */}
@@ -1067,7 +1355,12 @@ function CatalogDetailView({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            {selectedIndexes.size > 0 && (
+            {tableEditing && (
+              <div className="border-b border-amber-100 bg-amber-50/80 px-4 py-2 text-sm font-medium text-amber-900">
+                Editing table — change any item including sale price, then click Save Items.
+              </div>
+            )}
+            {selectedIndexes.size > 0 && !tableEditing && (
               <div className="flex flex-wrap items-center gap-3 border-b border-indigo-100 bg-indigo-50/80 px-4 py-3">
                 <span className="text-sm font-semibold text-indigo-900">
                   {selectedIndexes.size} item{selectedIndexes.size === 1 ? "" : "s"} selected
@@ -1098,7 +1391,7 @@ function CatalogDetailView({
                       checked={allFilteredSelected ? true : someFilteredSelected ? "indeterminate" : false}
                       onCheckedChange={(checked) => toggleSelectAllFiltered(checked === true)}
                       aria-label="Select all visible products"
-                      disabled={filtered.length === 0}
+                      disabled={filtered.length === 0 || tableEditing}
                     />
                   </th>
                   <th className="py-3 pr-2 text-xs font-bold uppercase tracking-wider text-slate-400 w-10">#</th>
@@ -1106,6 +1399,8 @@ function CatalogDetailView({
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Order Tag / No</th>
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Brand</th>
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Price</th>
+                  <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Sale Price</th>
+                  <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">%</th>
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">MOQ</th>
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Unit</th>
                   <th className="py-3 pl-3 pr-4 text-xs font-bold uppercase tracking-wider text-slate-400 text-right">Actions</th>
@@ -1118,7 +1413,10 @@ function CatalogDetailView({
                       product={product}
                       index={i}
                       selected={selectedIndexes.has(index)}
+                      editing={tableEditing}
+                      percents={percents}
                       onSelectChange={(checked) => toggleSelect(index, checked)}
+                      onChange={(patch) => patchProductAt(index, patch)}
                       onEdit={() => {
                         setEditingProduct({ product, index })
                         setProductDialogOpen(true)
@@ -1141,6 +1439,7 @@ function CatalogDetailView({
         onClose={() => { setProductDialogOpen(false); setEditingProduct(null) }}
         onSave={editingProduct ? handleEditProduct : handleAddProduct}
         initial={editingProduct?.product ?? null}
+        percents={percents}
       />
 
       <JsonImportDialog
@@ -1165,6 +1464,7 @@ function CatalogDetailView({
                 { key: "unit", label: "Unit", placeholder: "e.g. pcs, box" },
                 { key: "notes", label: "Notes", placeholder: "Any extra info" },
                 { key: "price", label: "Price (₹)", placeholder: "18" },
+                { key: "sale_price", label: "Sale Price (₹)", placeholder: "22" },
                 { key: "moq", label: "MOQ", placeholder: "24" },
               ] as const
             ).map((field) => (
@@ -1181,8 +1481,8 @@ function CatalogDetailView({
                   <Label htmlFor={`bulk-${field.key}-value`}>{field.label}</Label>
                   <Input
                     id={`bulk-${field.key}-value`}
-                    type={field.key === "price" || field.key === "moq" ? "number" : "text"}
-                    min={field.key === "moq" ? 1 : field.key === "price" ? 0 : undefined}
+                    type={field.key === "price" || field.key === "sale_price" || field.key === "moq" ? "number" : "text"}
+                    min={field.key === "moq" ? 1 : field.key === "price" || field.key === "sale_price" ? 0 : undefined}
                     placeholder={field.placeholder}
                     value={bulkValues[field.key]}
                     disabled={!bulkFields[field.key]}
@@ -1222,10 +1522,108 @@ function CatalogDetailView({
   )
 }
 
+function SaleMarginPercentsCard({
+  percents,
+  onSave,
+}: {
+  percents: number[]
+  onSave: (next: number[]) => Promise<void>
+}) {
+  const [draft, setDraft] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  const addPercent = async () => {
+    const n = Number(draft)
+    if (!Number.isFinite(n) || n <= 0 || n > 500) return
+    const next = normalizeSaleMarginPercents([...percents, n])
+    setSaving(true)
+    try {
+      await onSave(next)
+      setDraft("")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const removePercent = async (percent: number) => {
+    const next = percents.filter((p) => p !== percent)
+    setSaving(true)
+    try {
+      await onSave(next)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card className="border-indigo-100 shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Percent className="h-4 w-4 text-indigo-600" />
+          Sale price % options
+        </CardTitle>
+        <CardDescription>
+          These percentages appear in the sale price dropdown. Sale price = buy price + this %.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          {percents.map((percent) => (
+            <span
+              key={percent}
+              className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-800"
+            >
+              {formatMarginPercent(percent)}
+              <button
+                type="button"
+                className="rounded-full p-0.5 text-indigo-400 hover:bg-white hover:text-red-500"
+                onClick={() => void removePercent(percent)}
+                disabled={saving}
+                title={`Remove ${formatMarginPercent(percent)}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+        <div className="flex max-w-xs items-center gap-2">
+          <Input
+            type="number"
+            min={1}
+            max={500}
+            placeholder="e.g. 12"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                void addPercent()
+              }
+            }}
+          />
+          <Button type="button" size="sm" className="gap-1.5 shrink-0" disabled={saving || !draft} onClick={() => void addPercent()}>
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+            Add %
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 export function PurchaseCatalogDashboard() {
-  const { catalogs, loading, syncStatus, createCatalog, updateCatalogMeta, updateCatalogProducts, removeCatalog } =
-    usePurchaseCatalog()
+  const {
+    catalogs,
+    loading,
+    syncStatus,
+    createCatalog,
+    updateCatalogMeta,
+    updateCatalogProducts,
+    removeCatalog,
+    saleMarginPercents,
+    updateSaleMarginPercents,
+  } = usePurchaseCatalog()
 
   const [selectedCatalog, setSelectedCatalog] = useState<PurchaseCatalog | null>(null)
   const [catalogDialogOpen, setCatalogDialogOpen] = useState(false)
@@ -1260,6 +1658,7 @@ export function PurchaseCatalogDashboard() {
       <div className="mx-auto w-full max-w-[1400px] space-y-8 pb-10">
         <CatalogDetailView
           catalog={liveCatalog}
+          percents={saleMarginPercents}
           onBack={() => setSelectedCatalog(null)}
           onUpdateProducts={(products) => updateCatalogProducts(liveCatalog.id, products)}
         />
@@ -1299,6 +1698,8 @@ export function PurchaseCatalogDashboard() {
           New Catalog Group
         </Button>
       </div>
+
+      <SaleMarginPercentsCard percents={saleMarginPercents} onSave={updateSaleMarginPercents} />
 
       {/* Search */}
       {catalogs.length > 0 && (

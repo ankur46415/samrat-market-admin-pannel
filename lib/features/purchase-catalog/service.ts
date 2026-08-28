@@ -14,15 +14,29 @@ import {
   query,
   orderBy,
   Timestamp,
+  setDoc,
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import type { PurchaseCatalog, CatalogProduct } from "./models"
+import { DEFAULT_SALE_MARGIN_PERCENTS, normalizeSaleMarginPercents } from "./models"
 
 function normalizeCatalogProduct(p: CatalogProduct): CatalogProduct {
-  const raw = p as CatalogProduct & { orderTag?: string; order_no?: string; orderNo?: string }
+  const raw = p as CatalogProduct & {
+    orderTag?: string
+    order_no?: string
+    orderNo?: string
+    salePrice?: number
+    selling_price?: number
+  }
   const order_tag =
     String(p.order_tag ?? raw.orderTag ?? raw.order_no ?? raw.orderNo ?? "").trim() || "NA"
-  return { ...p, order_tag }
+  const saleRaw = p.sale_price ?? raw.salePrice ?? raw.selling_price
+  const saleNum = Number(saleRaw)
+  return {
+    ...p,
+    order_tag,
+    ...(Number.isFinite(saleNum) && saleNum >= 0 ? { sale_price: saleNum } : {}),
+  }
 }
 
 const COL = "purchase_catalogs"
@@ -88,4 +102,38 @@ export async function updatePurchaseCatalog(
 
 export async function deletePurchaseCatalog(id: string): Promise<void> {
   await deleteDoc(doc(db, COL, id))
+}
+
+const SETTINGS_COL = "purchase_catalog_settings"
+const MARGIN_DOC = "sale_margins"
+
+export function subscribeSaleMarginPercents(
+  onData: (percents: number[]) => void,
+  onError?: (error: Error) => void
+) {
+  return onSnapshot(
+    doc(db, SETTINGS_COL, MARGIN_DOC),
+    (snap) => {
+      if (!snap.exists()) {
+        onData([...DEFAULT_SALE_MARGIN_PERCENTS])
+        return
+      }
+      onData(normalizeSaleMarginPercents(snap.data()?.percents))
+    },
+    (err) => {
+      console.error("Sale margin percents subscribe error:", err)
+      onError?.(err)
+    }
+  )
+}
+
+export async function saveSaleMarginPercents(percents: number[]): Promise<void> {
+  await setDoc(
+    doc(db, SETTINGS_COL, MARGIN_DOC),
+    {
+      percents: normalizeSaleMarginPercents(percents),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  )
 }
