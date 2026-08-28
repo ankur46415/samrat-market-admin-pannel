@@ -13,7 +13,6 @@ import {
   LogOut,
   Map,
   ShoppingBag,
-  Truck,
 } from "lucide-react"
 import Image from "next/image"
 import {
@@ -99,11 +98,6 @@ const mainNavItems = [
     title: "Purchase Catalog",
     url: "/purchase-catalog",
     icon: ShoppingBag,
-  },
-  {
-    title: "Product Suppliers",
-    url: "/product-suppliers",
-    icon: Truck,
   },
 ]
 
