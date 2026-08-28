@@ -331,6 +331,7 @@ function ProductRow({
   const tag = catalogProductOrderTag(product)
   const salePrice = catalogProductSalePrice(product)
   const livePercent = salePrice == null ? null : marginPercentFromPrices(product.price, salePrice)
+  const lineTotal = (Number(product.price) || 0) * (Number(product.moq) || 0)
   const cellInput = "h-8 min-w-[4.5rem] text-sm"
   return (
     <tr className={cn("group border-b border-slate-100 hover:bg-indigo-50/40 transition-colors", selected && "bg-indigo-50/70")}>
@@ -433,6 +434,9 @@ function ProductRow({
         ) : (
           `×${product.moq}`
         )}
+      </td>
+      <td className="py-3 px-3 text-sm font-bold tabular-nums text-slate-800">
+        ₹{lineTotal.toLocaleString("en-IN")}
       </td>
       <td className="py-3 px-3 text-sm text-slate-500">
         {editing ? (
@@ -1402,6 +1406,7 @@ function CatalogDetailView({
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Sale Price</th>
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">%</th>
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">MOQ</th>
+                  <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Total</th>
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Unit</th>
                   <th className="py-3 pl-3 pr-4 text-xs font-bold uppercase tracking-wider text-slate-400 text-right">Actions</th>
                 </tr>

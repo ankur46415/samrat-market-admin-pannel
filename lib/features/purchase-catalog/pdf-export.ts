@@ -86,7 +86,7 @@ export async function downloadCatalogGroupPdf(catalog: PurchaseCatalog): Promise
 
   autoTable(doc, {
     startY: 49,
-    head: [["#", "Product Name", "Order Tag", "Brand", "Price", "Sale Price", "MOQ", "Unit", "MOQ Value"]],
+    head: [["#", "Product Name", "Order Tag", "Brand", "Price", "Sale Price", "MOQ", "Total", "Unit"]],
     body: catalog.products.map((p, idx) => [
       idx + 1,
       pdfSafe(p.product_name),
@@ -95,8 +95,8 @@ export async function downloadCatalogGroupPdf(catalog: PurchaseCatalog): Promise
       formatPdfPrice(p.price),
       Number.isFinite(Number(p.sale_price)) ? formatPdfPrice(Number(p.sale_price)) : "-",
       String(p.moq),
-      pdfSafe(p.unit ?? "-"),
       formatPdfPrice(p.price * p.moq),
+      pdfSafe(p.unit ?? "-"),
     ]),
     styles: { fontSize: 8, cellPadding: 2, lineColor: [220, 220, 220], lineWidth: 0.2 },
     headStyles: {
@@ -109,7 +109,8 @@ export async function downloadCatalogGroupPdf(catalog: PurchaseCatalog): Promise
       0: { halign: "center", cellWidth: 8 },
       4: { halign: "right" },
       5: { halign: "right" },
-      8: { halign: "right" },
+      6: { halign: "center" },
+      7: { halign: "right" },
     },
     alternateRowStyles: { fillColor: [248, 248, 250] },
     margin: { left: 14, right: 14 },
