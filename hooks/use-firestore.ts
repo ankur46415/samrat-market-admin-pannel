@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useMemo } from "react"
 import {
   collection,
   query,
@@ -290,6 +290,23 @@ export function useProducts() {
     })
   }, [])
 
+  const bulkUpdateProductCategory = useCallback(async (ids: string[], category: string) => {
+    const nextCategory = category.trim()
+    if (!nextCategory || ids.length === 0) return
+    const chunks: string[][] = []
+    for (let i = 0; i < ids.length; i += 450) {
+      chunks.push(ids.slice(i, i + 450))
+    }
+    for (const chunk of chunks) {
+      const batch = writeBatch(db)
+      const now = Timestamp.now()
+      for (const id of chunk) {
+        batch.update(doc(db, "products", id), { category: nextCategory, updatedAt: now })
+      }
+      await batch.commit()
+    }
+  }, [])
+
   const deleteProduct = useCallback(async (id: string) => {
     await deleteDoc(doc(db, "products", id))
   }, [])
@@ -310,7 +327,7 @@ export function useProducts() {
     await batch.commit()
   }, [])
 
-  return { products, loading, error, addProduct, updateProduct, deleteProduct, bulkAddProducts, getProductByBarcode }
+  return { products, loading, error, addProduct, updateProduct, bulkUpdateProductCategory, deleteProduct, bulkAddProducts, getProductByBarcode }
 }
 
 // Customers Hook
@@ -511,21 +528,123 @@ export function useDashboardStats() {
   return { stats, loading }
 }
 
-// Categories derived from products
+// Categories from `product_categories` plus names already used on products
 export function useCategories() {
-  const { products, loading } = useProducts()
-  
-  const categories = products.reduce((acc, product) => {
-    const existing = acc.find((c) => c.name === product.category)
-    if (existing) {
-      existing.productCount++
-    } else {
-      acc.push({ id: product.category, name: product.category, productCount: 1 })
-    }
-    return acc
-  }, [] as { id: string; name: string; productCount: number }[])
+  const { products, loading: productsLoading, bulkUpdateProductCategory } = useProducts()
+  const [stored, setStored] = useState<{ id: string; name: string }[]>([])
+  const [storedLoading, setStoredLoading] = useState(true)
 
-  return { categories, loading }
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, "product_categories"),
+      (snapshot) => {
+        setStored(
+          snapshot.docs
+            .map((d) => ({
+              id: d.id,
+              name: String((d.data() as { name?: unknown }).name ?? "").trim(),
+            }))
+            .filter((c) => c.name.length > 0)
+        )
+        setStoredLoading(false)
+      },
+      (err) => {
+        console.error("Categories error:", err)
+        setStoredLoading(false)
+      }
+    )
+    return () => unsub()
+  }, [])
+
+  const categories = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const product of products) {
+      const name = (product.category ?? "").trim()
+      if (!name) continue
+      counts.set(name, (counts.get(name) ?? 0) + 1)
+    }
+
+    const byName = new Map<string, { id: string; name: string; productCount: number }>()
+    for (const row of stored) {
+      byName.set(row.name, {
+        id: row.id,
+        name: row.name,
+        productCount: counts.get(row.name) ?? 0,
+      })
+    }
+    for (const [name, productCount] of counts) {
+      if (!byName.has(name)) {
+        byName.set(name, { id: name, name, productCount })
+      }
+    }
+
+    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
+  }, [products, stored])
+
+  const hasCategoryName = useCallback(
+    (name: string, except?: string) => {
+      const n = name.trim().toLowerCase()
+      const skip = (except ?? "").trim().toLowerCase()
+      return categories.some((c) => c.name.toLowerCase() === n && c.name.toLowerCase() !== skip)
+    },
+    [categories]
+  )
+
+  const addCategory = useCallback(
+    async (name: string) => {
+      const next = name.trim()
+      if (!next) throw new Error("Category name is required")
+      if (hasCategoryName(next)) throw new Error("That category already exists")
+      await addDoc(collection(db, "product_categories"), {
+        name: next,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      })
+    },
+    [hasCategoryName]
+  )
+
+  const renameCategory = useCallback(
+    async (oldName: string, newName: string) => {
+      const from = oldName.trim()
+      const to = newName.trim()
+      if (!from) throw new Error("Category not found")
+      if (!to) throw new Error("Category name is required")
+      if (from.toLowerCase() !== to.toLowerCase() && hasCategoryName(to, from)) {
+        throw new Error("That category already exists")
+      }
+      if (from === to) return
+
+      const productIds = products.filter((p) => (p.category ?? "").trim() === from).map((p) => p.id)
+      if (productIds.length > 0) {
+        await bulkUpdateProductCategory(productIds, to)
+      }
+
+      const matchingDocs = stored.filter((c) => c.name === from)
+      if (matchingDocs.length > 0) {
+        const now = Timestamp.now()
+        await Promise.all(
+          matchingDocs.map((c) =>
+            updateDoc(doc(db, "product_categories", c.id), { name: to, updatedAt: now })
+          )
+        )
+      } else {
+        await addDoc(collection(db, "product_categories"), {
+          name: to,
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        })
+      }
+    },
+    [bulkUpdateProductCategory, hasCategoryName, products, stored]
+  )
+
+  return {
+    categories,
+    loading: productsLoading || storedLoading,
+    addCategory,
+    renameCategory,
+  }
 }
 
 // Orders Hook

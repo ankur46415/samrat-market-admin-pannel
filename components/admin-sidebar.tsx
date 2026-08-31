@@ -62,6 +62,7 @@ const mainNavItems = [
       { title: "All Products", url: "/inventory" },
       { title: "Add product & batch", url: "/inventory/add" },
       { title: "Categories", url: "/inventory/categories" },
+      { title: "New Category", url: "/inventory/categories?new=1" },
       { title: "Low Stock", url: "/inventory/low-stock" },
     ],
   },

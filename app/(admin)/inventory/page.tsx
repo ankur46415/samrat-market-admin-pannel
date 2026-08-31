@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react"
 import Link from "next/link"
+import { toast } from "sonner"
 import {
   Plus,
   Upload,
@@ -16,6 +17,8 @@ import {
   Layers,
   Inbox,
   ScanBarcode,
+  Tags,
+  Loader2,
 } from "lucide-react"
 import { format, differenceInCalendarDays, startOfDay } from "date-fns"
 import { useProducts } from "@/hooks/use-firestore"
@@ -47,6 +50,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { DeleteProductDialog } from "@/components/inventory/delete-product-dialog"
 import { BarcodeDialog } from "@/components/inventory/barcode-dialog"
 import { CsvUploadDialog } from "@/components/inventory/csv-upload-dialog"
@@ -88,7 +100,7 @@ function ExpiryCell({ date }: { date: Date }) {
 }
 
 export default function InventoryPage() {
-  const { products, loading, deleteProduct } = useProducts()
+  const { products, loading, deleteProduct, bulkUpdateProductCategory } = useProducts()
   const [search, setSearch] = useState("")
   const [searchMode, setSearchMode] = useState<"text" | "scan">("text")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
@@ -97,6 +109,11 @@ export default function InventoryPage() {
   const [barcodeDialogOpen, setBarcodeDialogOpen] = useState(false)
   const [productForBarcode, setProductForBarcode] = useState<Product | null>(null)
   const [csvDialogOpen, setCsvDialogOpen] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkCategoryOpen, setBulkCategoryOpen] = useState(false)
+  const [bulkCategory, setBulkCategory] = useState("")
+  const [bulkNewCategory, setBulkNewCategory] = useState("")
+  const [bulkSaving, setBulkSaving] = useState(false)
 
   const categories = useMemo(() => {
     const cats = [...new Set(products.map((p) => p.category))]
@@ -117,6 +134,59 @@ export default function InventoryPage() {
       return matchesSearch && matchesCategory
     })
   }, [products, search, categoryFilter])
+
+  const allFilteredSelected =
+    filteredProducts.length > 0 && filteredProducts.every((p) => selectedIds.has(p.id))
+  const someFilteredSelected =
+    filteredProducts.some((p) => selectedIds.has(p.id)) && !allFilteredSelected
+
+  const toggleSelect = (id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  const toggleSelectAllFiltered = (checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      filteredProducts.forEach((p) => {
+        if (checked) next.add(p.id)
+        else next.delete(p.id)
+      })
+      return next
+    })
+  }
+
+  const openBulkCategory = () => {
+    setBulkCategory("")
+    setBulkNewCategory("")
+    setBulkCategoryOpen(true)
+  }
+
+  const applyBulkCategory = async () => {
+    const category = (bulkCategory === "__new__" ? bulkNewCategory : bulkCategory).trim()
+    if (!category) {
+      toast.error("Select or enter a category")
+      return
+    }
+    const ids = [...selectedIds]
+    if (ids.length === 0) return
+    setBulkSaving(true)
+    try {
+      await bulkUpdateProductCategory(ids, category)
+      toast.success(`Moved ${ids.length} product${ids.length === 1 ? "" : "s"} to "${category}"`)
+      setSelectedIds(new Set())
+      setBulkCategoryOpen(false)
+    } catch (e) {
+      console.error(e)
+      toast.error(e instanceof Error ? e.message : "Failed to update category")
+    } finally {
+      setBulkSaving(false)
+    }
+  }
 
   const batchRows = useMemo((): BatchRow[] => {
     const rows: BatchRow[] = []
@@ -327,10 +397,32 @@ export default function InventoryPage() {
             </TabsList>
 
             <TabsContent value="products" className="mt-0 focus-visible:outline-none">
+              {selectedIds.size > 0 ? (
+                <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+                  <span className="text-sm font-semibold">
+                    {selectedIds.size} product{selectedIds.size === 1 ? "" : "s"} selected
+                  </span>
+                  <Button size="sm" className="gap-1.5" onClick={openBulkCategory}>
+                    <Tags className="h-3.5 w-3.5" />
+                    Change category
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+                    Clear
+                  </Button>
+                </div>
+              ) : null}
               <div className={inventoryTableFrameClassName()}>
                 <Table>
                   <TableHeader>
                     <TableRow className="border-b-0 hover:bg-transparent">
+                      <TableHead className={cn(invTableHeadClass, "w-10 pl-4")}>
+                        <Checkbox
+                          checked={allFilteredSelected ? true : someFilteredSelected ? "indeterminate" : false}
+                          onCheckedChange={(checked) => toggleSelectAllFiltered(checked === true)}
+                          aria-label="Select all visible products"
+                          disabled={filteredProducts.length === 0}
+                        />
+                      </TableHead>
                       <TableHead className={invTableHeadClass}>Product</TableHead>
                       <TableHead className={cn(invTableHeadClass, "hidden md:table-cell")}>Category</TableHead>
                       <TableHead className={cn(invTableHeadClass, "hidden md:table-cell")}>Rack</TableHead>
@@ -346,7 +438,7 @@ export default function InventoryPage() {
                   <TableBody>
                     {filteredProducts.length === 0 ? (
                       <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={10} className="h-40 text-center">
+                        <TableCell colSpan={11} className="h-40 text-center">
                           <div className="flex flex-col items-center justify-center gap-2 py-6">
                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
                               <Inbox className="h-6 w-6 text-muted-foreground" />
@@ -367,6 +459,13 @@ export default function InventoryPage() {
                             key={product.id}
                             className="border-border/50 transition-colors hover:bg-muted/40"
                           >
+                            <TableCell className={cn(invTableCellClass, "pl-4 w-10")}>
+                              <Checkbox
+                                checked={selectedIds.has(product.id)}
+                                onCheckedChange={(checked) => toggleSelect(product.id, checked === true)}
+                                aria-label={`Select ${product.name}`}
+                              />
+                            </TableCell>
                             <TableCell className={invTableCellClass}>
                               <div className="flex items-start gap-3">
                                 <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -540,6 +639,52 @@ export default function InventoryPage() {
       />
 
       <CsvUploadDialog open={csvDialogOpen} onOpenChange={setCsvDialogOpen} />
+
+      <Dialog open={bulkCategoryOpen} onOpenChange={setBulkCategoryOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Change category for {selectedIds.size} products</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div className="space-y-1.5">
+              <Label>New category</Label>
+              <Select value={bulkCategory} onValueChange={setBulkCategory}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="__new__">+ Add new category</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {bulkCategory === "__new__" ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="bulk-new-category">Category name</Label>
+                <Input
+                  id="bulk-new-category"
+                  placeholder="e.g. Stationery"
+                  value={bulkNewCategory}
+                  onChange={(e) => setBulkNewCategory(e.target.value)}
+                />
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkCategoryOpen(false)} disabled={bulkSaving}>
+              Cancel
+            </Button>
+            <Button onClick={() => void applyBulkCategory()} disabled={bulkSaving || !bulkCategory}>
+              {bulkSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Move products
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
