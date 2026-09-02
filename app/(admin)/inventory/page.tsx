@@ -19,6 +19,8 @@ import {
   ScanBarcode,
   Tags,
   Loader2,
+  Eye,
+  EyeOff,
 } from "lucide-react"
 import { format, differenceInCalendarDays, startOfDay } from "date-fns"
 import { useProducts } from "@/hooks/use-firestore"
@@ -114,6 +116,7 @@ export default function InventoryPage() {
   const [bulkCategory, setBulkCategory] = useState("")
   const [bulkNewCategory, setBulkNewCategory] = useState("")
   const [bulkSaving, setBulkSaving] = useState(false)
+  const [showCost, setShowCost] = useState(false)
 
   const categories = useMemo(() => {
     const cats = [...new Set(products.map((p) => p.category))]
@@ -374,7 +377,8 @@ export default function InventoryPage() {
           </div>
 
           <Tabs defaultValue="products" className="w-full">
-            <TabsList className="mb-6 grid h-auto w-full grid-cols-2 gap-1 rounded-xl bg-muted/60 p-1.5 sm:inline-flex sm:w-auto">
+            <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl bg-muted/60 p-1.5 sm:inline-flex sm:w-auto">
               <TabsTrigger
                 value="products"
                 className="gap-2 rounded-lg px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm"
@@ -395,6 +399,17 @@ export default function InventoryPage() {
                 ) : null}
               </TabsTrigger>
             </TabsList>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2 self-start"
+                onClick={() => setShowCost((v) => !v)}
+              >
+                {showCost ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showCost ? "Hide Cost" : "Show Cost"}
+              </Button>
+            </div>
 
             <TabsContent value="products" className="mt-0 focus-visible:outline-none">
               {selectedIds.size > 0 ? (
@@ -426,8 +441,11 @@ export default function InventoryPage() {
                       <TableHead className={invTableHeadClass}>Product</TableHead>
                       <TableHead className={cn(invTableHeadClass, "hidden md:table-cell")}>Category</TableHead>
                       <TableHead className={cn(invTableHeadClass, "hidden md:table-cell")}>Rack</TableHead>
-                      <TableHead className={cn(invTableHeadClass, "text-right")}>MRP / sell</TableHead>
-                      <TableHead className={cn(invTableHeadClass, "hidden lg:table-cell text-right")}>Cost</TableHead>
+                      <TableHead className={cn(invTableHeadClass, "text-right")}>MRP</TableHead>
+                      <TableHead className={cn(invTableHeadClass, "text-right")}>Sell</TableHead>
+                      {showCost ? (
+                        <TableHead className={cn(invTableHeadClass, "text-right")}>Cost</TableHead>
+                      ) : null}
                       <TableHead className={cn(invTableHeadClass, "text-right")}>Total qty</TableHead>
                       <TableHead className={cn(invTableHeadClass, "text-center w-[88px]")}>Batches</TableHead>
                       <TableHead className={cn(invTableHeadClass, "hidden sm:table-cell")}>Next expiry</TableHead>
@@ -438,7 +456,7 @@ export default function InventoryPage() {
                   <TableBody>
                     {filteredProducts.length === 0 ? (
                       <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={11} className="h-40 text-center">
+                        <TableCell colSpan={showCost ? 12 : 11} className="h-40 text-center">
                           <div className="flex flex-col items-center justify-center gap-2 py-6">
                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
                               <Inbox className="h-6 w-6 text-muted-foreground" />
@@ -485,10 +503,15 @@ export default function InventoryPage() {
                             <TableCell className={cn(invTableCellClass, "hidden md:table-cell text-muted-foreground")}>
                               {product.rack || "—"}
                             </TableCell>
-                            <TableCell className={invTableCellNumeric}>{formatCurrency(product.price)}</TableCell>
-                            <TableCell className={cn(invTableCellNumeric, "hidden lg:table-cell text-muted-foreground")}>
-                              {formatCurrency(product.costPrice)}
+                            <TableCell className={invTableCellNumeric}>
+                              {product.mrp != null && product.mrp > 0 ? formatCurrency(product.mrp) : "—"}
                             </TableCell>
+                            <TableCell className={invTableCellNumeric}>{formatCurrency(product.price)}</TableCell>
+                            {showCost ? (
+                              <TableCell className={cn(invTableCellNumeric, "text-muted-foreground")}>
+                                {formatCurrency(product.costPrice)}
+                              </TableCell>
+                            ) : null}
                             <TableCell className={invTableCellNumeric}>
                               <span className="font-semibold text-foreground">{product.stock}</span>
                               <span className="ml-1 text-muted-foreground">{product.unit}</span>
