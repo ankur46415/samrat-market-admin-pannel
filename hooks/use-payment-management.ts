@@ -10,6 +10,7 @@ import {
   deletePaymentPayee,
   subscribePaymentLedger,
   subscribePaymentPayees,
+  updatePaymentLedgerEntry,
   updatePaymentPayee,
 } from "@/lib/features/payment-management/service"
 
@@ -96,6 +97,13 @@ export function usePaymentManagement() {
     []
   )
 
+  const editEntry = useCallback(
+    async (id: string, input: { type: "purchase" | "payment"; amount: number; date: Date; notes?: string }) => {
+      await updatePaymentLedgerEntry(id, input)
+    },
+    []
+  )
+
   const removeEntry = useCallback(async (id: string) => {
     await deletePaymentLedgerEntry(id)
   }, [])
@@ -110,6 +118,7 @@ export function usePaymentManagement() {
     editPayee,
     removePayee,
     addEntry,
+    editEntry,
     removeEntry,
   }
 }

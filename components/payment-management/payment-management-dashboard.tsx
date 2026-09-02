@@ -14,7 +14,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { usePaymentManagement } from "@/hooks/use-payment-management"
-import type { PaymentEntryType, PaymentPayee } from "@/lib/features/payment-management/models"
+import type { PaymentEntryType, PaymentLedgerEntry, PaymentPayee } from "@/lib/features/payment-management/models"
 import {
   downloadPayeeStatementPdf,
   downloadPaymentOverviewPdf,
@@ -27,6 +27,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -51,6 +52,13 @@ import {
 } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 
 function formatCurrency(amount: number) {
@@ -88,6 +96,7 @@ export function PaymentManagementDashboard() {
     editPayee,
     removePayee,
     addEntry,
+    editEntry,
     removeEntry,
   } = usePaymentManagement()
 
@@ -101,6 +110,7 @@ export function PaymentManagementDashboard() {
   const [payeeForm, setPayeeForm] = useState({ name: "", phone: "", notes: "" })
 
   const [entryDialogOpen, setEntryDialogOpen] = useState(false)
+  const [editingEntry, setEditingEntry] = useState<PaymentLedgerEntry | null>(null)
   const [entryType, setEntryType] = useState<PaymentEntryType>("purchase")
   const [entryForm, setEntryForm] = useState({
     amount: "",
@@ -195,8 +205,20 @@ export function PaymentManagementDashboard() {
   }
 
   const openEntryDialog = (type: PaymentEntryType) => {
+    setEditingEntry(null)
     setEntryType(type)
     setEntryForm({ amount: "", date: formatDateInput(new Date()), notes: "" })
+    setEntryDialogOpen(true)
+  }
+
+  const openEditEntry = (entry: PaymentLedgerEntry) => {
+    setEditingEntry(entry)
+    setEntryType(entry.type)
+    setEntryForm({
+      amount: String(entry.amount),
+      date: formatDateInput(entry.date),
+      notes: entry.notes ?? "",
+    })
     setEntryDialogOpen(true)
   }
 
@@ -214,15 +236,26 @@ export function PaymentManagementDashboard() {
     }
     setSaving(true)
     try {
-      await addEntry({
-        payeeId: selectedPayeeId,
-        type: entryType,
-        amount,
-        date,
-        notes: entryForm.notes,
-      })
-      toast.success(entryType === "purchase" ? "Purchase added" : "Payment recorded")
+      if (editingEntry) {
+        await editEntry(editingEntry.id, {
+          type: entryType,
+          amount,
+          date,
+          notes: entryForm.notes,
+        })
+        toast.success("Transaction updated")
+      } else {
+        await addEntry({
+          payeeId: selectedPayeeId,
+          type: entryType,
+          amount,
+          date,
+          notes: entryForm.notes,
+        })
+        toast.success(entryType === "purchase" ? "Purchase added" : "Payment recorded")
+      }
       setEntryDialogOpen(false)
+      setEditingEntry(null)
     } catch (error) {
       console.error(error)
       toast.error("Could not save entry")
@@ -367,7 +400,7 @@ export function PaymentManagementDashboard() {
                       <TableHead>Type</TableHead>
                       <TableHead>Notes</TableHead>
                       <TableHead className="text-right">Amount</TableHead>
-                      <TableHead className="w-12" />
+                      <TableHead className="w-[88px]" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -375,7 +408,14 @@ export function PaymentManagementDashboard() {
                       <TableRow key={entry.id}>
                         <TableCell className="whitespace-nowrap">{format(entry.date, "dd MMM yyyy")}</TableCell>
                         <TableCell>
-                          <Badge variant={entry.type === "purchase" ? "secondary" : "default"}>
+                          <Badge
+                            variant="secondary"
+                            className={
+                              entry.type === "purchase"
+                                ? "bg-red-100 text-red-700 hover:bg-red-100"
+                                : "bg-emerald-100 text-emerald-700 hover:bg-emerald-100"
+                            }
+                          >
                             {entry.type === "purchase" ? "Purchase" : "Payment"}
                           </Badge>
                         </TableCell>
@@ -392,9 +432,14 @@ export function PaymentManagementDashboard() {
                           {formatCurrency(entry.amount)}
                         </TableCell>
                         <TableCell>
-                          <Button variant="ghost" size="icon" onClick={() => setDeleteEntryId(entry.id)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <div className="flex justify-end">
+                            <Button variant="ghost" size="icon" onClick={() => openEditEntry(entry)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => setDeleteEntryId(entry.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -416,8 +461,13 @@ export function PaymentManagementDashboard() {
         />
         <EntryDialog
           open={entryDialogOpen}
-          onOpenChange={setEntryDialogOpen}
+          onOpenChange={(open) => {
+            setEntryDialogOpen(open)
+            if (!open) setEditingEntry(null)
+          }}
           type={entryType}
+          onTypeChange={setEntryType}
+          isEditing={!!editingEntry}
           payeeName={selectedPayee.name}
           remaining={selectedSummary.remaining}
           form={entryForm}
@@ -617,6 +667,7 @@ function PayeeDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>Save a supplier or payee for purchases and payments.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
@@ -666,6 +717,8 @@ function EntryDialog({
   open,
   onOpenChange,
   type,
+  onTypeChange,
+  isEditing,
   payeeName,
   remaining,
   form,
@@ -676,6 +729,8 @@ function EntryDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
   type: PaymentEntryType
+  onTypeChange: (type: PaymentEntryType) => void
+  isEditing: boolean
   payeeName: string
   remaining: number
   form: { amount: string; date: string; notes: string }
@@ -688,12 +743,31 @@ function EntryDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isPurchase ? "Add purchase" : "Add payment"}</DialogTitle>
+          <DialogTitle>
+            {isEditing ? "Edit transaction" : isPurchase ? "Add purchase" : "Add payment"}
+          </DialogTitle>
+          <DialogDescription>
+            {isEditing
+              ? "Update date, type, amount, or notes. Remaining amount will recalculate."
+              : "Record a purchase or a payment against this payee."}
+          </DialogDescription>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
           {payeeName} · current remaining {formatCurrency(remaining)}
         </p>
         <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Type *</Label>
+            <Select value={type} onValueChange={(value) => onTypeChange(value as PaymentEntryType)}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="purchase">Purchase</SelectItem>
+                <SelectItem value="payment">Payment</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="entry-amount">Amount (₹) *</Label>
             <Input
@@ -732,7 +806,7 @@ function EntryDialog({
           </Button>
           <Button onClick={onSave} disabled={saving}>
             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            {isPurchase ? "Save purchase" : "Save payment"}
+            {isEditing ? "Save changes" : isPurchase ? "Save purchase" : "Save payment"}
           </Button>
         </DialogFooter>
       </DialogContent>

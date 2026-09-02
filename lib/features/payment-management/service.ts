@@ -148,6 +148,28 @@ export async function addPaymentLedgerEntry(input: {
   return ref.id
 }
 
+export async function updatePaymentLedgerEntry(
+  id: string,
+  input: {
+    type: "purchase" | "payment"
+    amount: number
+    date: Date
+    notes?: string
+  }
+): Promise<void> {
+  const amount = Number(input.amount)
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter a valid amount")
+  await updateDoc(
+    doc(db, ENTRIES_COL, id),
+    omitUndefinedFields({
+      type: input.type,
+      amount,
+      date: Timestamp.fromDate(input.date),
+      notes: input.notes?.trim() || "",
+    })
+  )
+}
+
 export async function deletePaymentLedgerEntry(id: string): Promise<void> {
   await deleteDoc(doc(db, ENTRIES_COL, id))
 }

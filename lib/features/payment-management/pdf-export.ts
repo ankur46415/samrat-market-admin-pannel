@@ -225,13 +225,17 @@ export async function downloadPayeeStatementPdf(
     didParseCell: (data) => {
       if (data.section !== "body") return
       const type = String(data.row.raw?.[2] ?? "")
-      if (data.column.index === 2 && type === "Purchase") {
-        data.cell.styles.textColor = BLUE
-        data.cell.styles.fontStyle = "bold"
-      }
-      if (data.column.index === 2 && type === "Payment") {
-        data.cell.styles.textColor = [14, 116, 144]
-        data.cell.styles.fontStyle = "bold"
+      const purchaseRed: [number, number, number] = [185, 28, 28]
+      const paymentGreen: [number, number, number] = [22, 163, 74]
+      if (data.column.index === 2 || data.column.index === 4) {
+        if (type === "Purchase") {
+          data.cell.styles.textColor = purchaseRed
+          data.cell.styles.fontStyle = "bold"
+        }
+        if (type === "Payment") {
+          data.cell.styles.textColor = paymentGreen
+          data.cell.styles.fontStyle = "bold"
+        }
       }
     },
   })
