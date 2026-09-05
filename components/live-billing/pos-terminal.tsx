@@ -8,6 +8,7 @@ import {
   Check,
   CheckCircle2,
   Clock,
+  CloudOff,
   Keyboard,
   Loader2,
   Minus,
@@ -48,7 +49,13 @@ import {
   updateSessionItemDiscount,
   updateSessionItemPrice,
   updateSessionItemQuantity,
+  type CheckoutCustomerInfo,
+  type LiveBillingLineItem,
 } from "@/lib/features/live_billing_admin/services/live_billing_admin_service"
+import { useLocalPosCart } from "@/lib/offline/use-local-pos-cart"
+import { isLikelyNetworkError } from "@/lib/offline/offline-bills"
+import { enqueueOfflineBill, syncOneOfflineBill } from "@/lib/offline/sync-offline-bills"
+import { useOnlineStatus } from "@/lib/offline/use-online-status"
 import type { EditableLiveItem } from "@/components/live-billing/live-bill-items-editor"
 import { PosLineDiscountCell } from "@/components/live-billing/pos-line-discount-cell"
 import { PosManualItemDialog } from "@/components/live-billing/pos-manual-item-dialog"
@@ -157,6 +164,7 @@ export function PosTerminal({
 
   const [sessionId, setSessionId] = useState<string | null>(initialSessionId ?? null)
   const [booting, setBooting] = useState(!initialSessionId)
+  const [offlineMode, setOfflineMode] = useState(false)
   const [view, setView] = useState<"billing" | "finalize">(mode === "checkout" ? "finalize" : "billing")
   const [acting, setActing] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(-1)
@@ -186,13 +194,21 @@ export function PosTerminal({
     mrp: p.mrp,
   }))
 
-  const { items, loading: itemsLoading, sessionStatus, totals } = usePosSession(sessionId)
-  const isActive = sessionStatus === "active"
+  const online = useOnlineStatus()
+  const { items: liveItems, loading: liveItemsLoading, sessionStatus, totals: liveTotals } = usePosSession(
+    offlineMode ? null : sessionId
+  )
+  const localCart = useLocalPosCart(offlineMode, sessionId)
+  const items = offlineMode ? localCart.items : liveItems
+  const itemsLoading = offlineMode ? localCart.loading : liveItemsLoading
+  const totals = offlineMode ? localCart.totals : liveTotals
+  const isActive = offlineMode || sessionStatus === "active"
 
   const scanner = usePosScanner({
     sessionId,
     productCache,
     enabled: isActive && view === "billing" && !manualDialogOpen && !editingItemId,
+    scanItem: offlineMode ? (_id, barcode, cache) => localCart.scanProduct(barcode, cache) : undefined,
   })
 
   const scannerFocusPaused =
@@ -341,11 +357,31 @@ export function PosTerminal({
     async function boot() {
       try {
         setBooting(true)
-        const id = await getOrCreateScannerBillingSession(cashierName)
-        if (!cancelled) setSessionId(id)
+        if (!navigator.onLine) {
+          setOfflineMode(true)
+          if (!cancelled) {
+            setSessionId(`offline-${crypto.randomUUID()}`)
+            toast.warning("No network. Billing from saved products. Bills go to Offline Billing.")
+          }
+          return
+        }
+        const id = await Promise.race([
+          getOrCreateScannerBillingSession(cashierName),
+          new Promise<string>((_, reject) => {
+            window.setTimeout(() => reject(new Error("POS session timeout")), 8000)
+          }),
+        ])
+        if (!cancelled) {
+          setOfflineMode(false)
+          setSessionId(id)
+        }
       } catch (e) {
         console.error(e)
-        toast.error("Failed to start POS session")
+        if (!cancelled) {
+          setOfflineMode(true)
+          setSessionId(`offline-${crypto.randomUUID()}`)
+          toast.warning("Could not reach server. Switched to offline billing.")
+        }
       } finally {
         if (!cancelled) setBooting(false)
       }
@@ -404,9 +440,15 @@ export function PosTerminal({
       setSelectedIndex(-1)
 
       if (!isActive) {
-        const id = await forceNewScannerBillingSession(cashierName)
-        setSessionId(id)
-        toast.success("New scan session started — ready to scan")
+        if (offlineMode) {
+          await localCart.clearCart()
+          setSessionId(`offline-${crypto.randomUUID()}`)
+          toast.success("New offline scan session — ready to scan")
+        } else {
+          const id = await forceNewScannerBillingSession(cashierName)
+          setSessionId(id)
+          toast.success("New scan session started — ready to scan")
+        }
       } else {
         toast.success("Scanner reset — ready to scan")
       }
@@ -418,14 +460,15 @@ export function PosTerminal({
     } finally {
       setResettingScan(false)
     }
-  }, [cashierName, focusScanInput, isActive, scanner])
+  }, [cashierName, focusScanInput, isActive, localCart, offlineMode, scanner])
 
   const handleRemove = useCallback(
     async (item: EditableLiveItem) => {
       if (!sessionId || !isActive) return
       setRemovingId(item.itemDocId)
       try {
-        await removeItemFromSession(sessionId, item.itemDocId)
+        if (offlineMode) await localCart.removeItem(item.itemDocId)
+        else await removeItemFromSession(sessionId, item.itemDocId)
         if (editingItemId === item.itemDocId) setEditingItemId(null)
         focusScanInput()
       } catch (e) {
@@ -435,7 +478,7 @@ export function PosTerminal({
         setRemovingId(null)
       }
     },
-    [editingItemId, focusScanInput, isActive, sessionId]
+    [editingItemId, focusScanInput, isActive, localCart, offlineMode, sessionId]
   )
 
   const handleQtyChange = useCallback(
@@ -448,7 +491,8 @@ export function PosTerminal({
 
       setUpdatingItemId(item.itemDocId)
       try {
-        await updateSessionItemQuantity(sessionId, item.itemDocId, nextQty)
+        if (offlineMode) await localCart.updateQuantity(item.itemDocId, nextQty)
+        else await updateSessionItemQuantity(sessionId, item.itemDocId, nextQty)
         if (nextQty <= 0) setEditingItemId(null)
       } catch (e) {
         console.error(e)
@@ -457,7 +501,7 @@ export function PosTerminal({
         setUpdatingItemId(null)
       }
     },
-    [isActive, sessionId]
+    [isActive, localCart, offlineMode, sessionId]
   )
 
   const handlePriceSave = useCallback(
@@ -472,7 +516,8 @@ export function PosTerminal({
 
       setUpdatingItemId(item.itemDocId)
       try {
-        await updateSessionItemPrice(sessionId, item.itemDocId, nextPrice)
+        if (offlineMode) await localCart.updatePrice(item.itemDocId, nextPrice)
+        else await updateSessionItemPrice(sessionId, item.itemDocId, nextPrice)
         toast.success("Rate updated")
       } catch (e) {
         console.error(e)
@@ -481,7 +526,7 @@ export function PosTerminal({
         setUpdatingItemId(null)
       }
     },
-    [editingPrice, isActive, sessionId]
+    [editingPrice, isActive, localCart, offlineMode, sessionId]
   )
 
   const handleDiscountChange = useCallback(
@@ -491,7 +536,8 @@ export function PosTerminal({
 
       setUpdatingItemId(item.itemDocId)
       try {
-        await updateSessionItemDiscount(sessionId, item.itemDocId, discountPercent)
+        if (offlineMode) await localCart.updateDiscount(item.itemDocId, discountPercent)
+        else await updateSessionItemDiscount(sessionId, item.itemDocId, discountPercent)
       } catch (e) {
         console.error(e)
         toast.error("Failed to update discount")
@@ -499,7 +545,7 @@ export function PosTerminal({
         setUpdatingItemId(null)
       }
     },
-    [isActive, sessionId]
+    [isActive, localCart, offlineMode, sessionId]
   )
 
   const toggleEditItem = useCallback(
@@ -530,7 +576,11 @@ export function PosTerminal({
 
     try {
       setActing(true)
-      await cancelLiveBillingSession(sessionId)
+      if (offlineMode) {
+        await localCart.clearCart()
+      } else {
+        await cancelLiveBillingSession(sessionId)
+      }
       toast.success("Bill cancelled")
       onExit?.()
       router.push("/generate-bill")
@@ -540,7 +590,31 @@ export function PosTerminal({
     } finally {
       setActing(false)
     }
-  }, [onExit, router, sessionId])
+  }, [localCart, offlineMode, onExit, router, sessionId])
+
+  const billingCustomer = (): CheckoutCustomerInfo => {
+    const customerName = (selectedCustomer?.name || pendingCustomerName || "").trim()
+    if (isWalkInPhone) {
+      return { customerPhone: normalizedCustomerPhone }
+    }
+    return {
+      customerPhone: selectedCustomer?.phone || normalizedCustomerPhone,
+      ...(selectedCustomer?.id || selectedCustomerId
+        ? { customerId: selectedCustomer?.id || selectedCustomerId || undefined }
+        : {}),
+      ...(customerName ? { customerName } : {}),
+    }
+  }
+
+  const itemsAsLineItems = (): LiveBillingLineItem[] =>
+    items.map((item) => ({
+      barcode: item.barcode,
+      name: item.name,
+      price: item.price,
+      quantity: item.quantity,
+      discountPercent: item.discountPercent,
+      ...(item.mrp && item.mrp > 0 ? { mrp: item.mrp } : {}),
+    }))
 
   const handleComplete = useCallback(async () => {
     if (!sessionId || totals.lines === 0) {
@@ -549,20 +623,47 @@ export function PosTerminal({
     }
     try {
       setActing(true)
-      const customerName = (selectedCustomer?.name || pendingCustomerName || "").trim()
-      const result = await completeLiveBillingSession(sessionId, {
-        customerPhone: normalizedCustomerPhone,
-        ...(!isWalkInPhone
-          ? {
-              ...(selectedCustomer?.id || selectedCustomerId
-                ? { customerId: selectedCustomer?.id || selectedCustomerId || undefined }
-                : {}),
-              ...(customerName ? { customerName } : {}),
-              customerPhone: selectedCustomer?.phone || normalizedCustomerPhone,
-            }
-          : {}),
-      })
-      toast.success(result.billNo ? `Bill ${result.billNo} completed` : "Bill completed")
+      const customer = billingCustomer()
+
+      if (offlineMode) {
+        const bill = await enqueueOfflineBill({
+          items: localCart.lineItems,
+          customer,
+          source: "offline_pos",
+        })
+        await localCart.clearCart()
+        if (navigator.onLine) {
+          try {
+            await syncOneOfflineBill(bill.id)
+            toast.success("Bill completed and synced")
+          } catch {
+            toast.success("Saved to Offline Billing. Will sync when online.")
+          }
+        } else {
+          toast.success("Saved to Offline Billing. Will sync when online.")
+        }
+        onExit?.()
+        router.push("/generate-bill")
+        return
+      }
+
+      try {
+        const result = await completeLiveBillingSession(sessionId, customer)
+        toast.success(result.billNo ? `Bill ${result.billNo} completed` : "Bill completed")
+      } catch (e) {
+        console.error(e)
+        await enqueueOfflineBill({
+          items: itemsAsLineItems(),
+          customer,
+          source: "complete_failed",
+          liveSessionId: sessionId,
+        })
+        toast.success(
+          isLikelyNetworkError(e)
+            ? "Network issue. Bill saved to Offline Billing."
+            : "Could not complete online. Bill saved to Offline Billing."
+        )
+      }
       onExit?.()
       router.push("/generate-bill")
     } catch (e) {
@@ -571,7 +672,20 @@ export function PosTerminal({
     } finally {
       setActing(false)
     }
-  }, [isWalkInPhone, normalizedCustomerPhone, onExit, pendingCustomerName, router, selectedCustomer, selectedCustomerId, sessionId, totals.lines])
+  }, [
+    isWalkInPhone,
+    items,
+    localCart,
+    normalizedCustomerPhone,
+    offlineMode,
+    onExit,
+    pendingCustomerName,
+    router,
+    selectedCustomer,
+    selectedCustomerId,
+    sessionId,
+    totals.lines,
+  ])
 
   const goFinalize = useCallback(() => {
     if (totals.lines === 0) {
@@ -650,7 +764,7 @@ export function PosTerminal({
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [focusScanInput, goFinalize, handleCancel, handleComplete, handleRemove, handleResetScan, items, manualDialogOpen, selectedIndex, view])
 
-  if (booting || productsLoading || !sessionId) {
+  if (booting || (productsLoading && products.length === 0) || !sessionId) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-muted-foreground">
@@ -684,7 +798,7 @@ export function PosTerminal({
               <h1 className="truncate text-lg font-semibold tracking-tight md:text-xl">Scan & Generate Bill</h1>
             </div>
             <p className="truncate text-xs text-muted-foreground">
-              {view === "billing" ? "Billing Terminal" : "Payment & Finalize"} · {cashierName}
+              {view === "billing" ? (offlineMode ? "Offline Billing" : "Billing Terminal") : "Payment & Finalize"} · {cashierName}
             </p>
           </div>
         </div>
@@ -706,12 +820,29 @@ export function PosTerminal({
               </Badge>
             ) : null}
           </Button>
-          <Badge variant="outline" className="hidden gap-1.5 border-primary/30 bg-primary/10 text-primary lg:inline-flex">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
-            </span>
-            {isActive ? "Scanner Live" : sessionStatus}
+          <Badge
+            variant="outline"
+            className={cn(
+              "hidden gap-1.5 lg:inline-flex",
+              offlineMode || !online
+                ? "border-amber-400/50 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                : "border-primary/30 bg-primary/10 text-primary"
+            )}
+          >
+            {offlineMode || !online ? (
+              <>
+                <CloudOff className="h-3.5 w-3.5" />
+                Offline
+              </>
+            ) : (
+              <>
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+                </span>
+                {isActive ? "Scanner Live" : sessionStatus}
+              </>
+            )}
           </Badge>
           <div className="flex items-center gap-1.5 text-sm tabular-nums text-muted-foreground">
             <Clock className="h-4 w-4" />
@@ -832,6 +963,11 @@ export function PosTerminal({
                     disabled={!isActive}
                     onOpenChange={setManualDialogOpen}
                     onAdded={focusScanInput}
+                    addItem={
+                      offlineMode
+                        ? async (_id, input) => localCart.addManual(input)
+                        : undefined
+                    }
                   />
                 </div>
               </div>

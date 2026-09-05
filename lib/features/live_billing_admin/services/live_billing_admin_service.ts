@@ -68,6 +68,151 @@ function generateBillNo(sessionId: string): string {
   return `SM-${datePart}-${shortId}`
 }
 
+async function deductStockForLineItem(itemPayload: LiveBillingLineItem): Promise<void> {
+  try {
+    const productQuery = query(
+      collection(db, "products"),
+      where("barcode", "==", itemPayload.barcode),
+      limit(1)
+    )
+    const productSnap = await getDocs(productQuery)
+
+    let productDoc = productSnap.empty ? null : productSnap.docs[0]
+    if (!productDoc) {
+      const directRef = doc(db, "products", itemPayload.barcode)
+      const directSnap = await getDoc(directRef)
+      if (directSnap.exists()) {
+        productDoc = directSnap as typeof productSnap.docs[0]
+      }
+    }
+
+    if (!productDoc) {
+      console.warn(`[StockDeduct] Product NOT FOUND for barcode: "${itemPayload.barcode}". Stock not deducted.`)
+      return
+    }
+
+    const productId = productDoc.id
+    const productData = productDoc.data() as Record<string, unknown>
+    const batchesCol = collection(db, "products", productId, "batches")
+    const batchesSnap = await getDocs(batchesCol)
+
+    const batchesList = batchesSnap.docs
+      .map((d) => {
+        const bd = d.data() as Record<string, unknown>
+        let expiryDate = new Date()
+        if (bd.expiryDate && typeof (bd.expiryDate as { toDate?: () => Date }).toDate === "function") {
+          expiryDate = (bd.expiryDate as { toDate: () => Date }).toDate()
+        } else if (bd.expiryDate) {
+          expiryDate = new Date(String(bd.expiryDate))
+        }
+        return {
+          id: d.id,
+          ref: d.ref,
+          quantity: Number(bd.quantity ?? 0),
+          expiryDate,
+        }
+      })
+      .sort((a, b) => a.expiryDate.getTime() - b.expiryDate.getTime())
+
+    let remainingQtyToDeduct = itemPayload.quantity
+    for (const batch of batchesList) {
+      if (remainingQtyToDeduct <= 0) break
+      if (batch.quantity <= remainingQtyToDeduct) {
+        remainingQtyToDeduct -= batch.quantity
+        await updateDoc(batch.ref, { quantity: 0 })
+      } else {
+        const nextQty = batch.quantity - remainingQtyToDeduct
+        remainingQtyToDeduct = 0
+        await updateDoc(batch.ref, { quantity: nextQty })
+      }
+    }
+
+    const currentStock = firestoreNumber(productData.stock, 0)
+    const newStock = Math.max(0, currentStock - itemPayload.quantity)
+    await updateDoc(productDoc.ref, {
+      stock: newStock,
+      updatedAt: Timestamp.now(),
+    })
+  } catch (stockErr) {
+    console.error(`Failed to deduct stock for barcode ${itemPayload.barcode}:`, stockErr)
+  }
+}
+
+/** Write a sales invoice and deduct stock. Used by live complete and offline sync. */
+export async function writeSaleFromLineItems(input: {
+  sessionId: string
+  lineItems: LiveBillingLineItem[]
+  customer?: CheckoutCustomerInfo
+  source?: string
+}): Promise<CompleteSessionResult> {
+  const soldAt = new Date().toISOString()
+  const resolvedCustomer = await ensureCustomerForBilling(input.customer)
+  const customerPhone =
+    resolvedCustomer?.customerPhone?.trim() || input.customer?.customerPhone?.trim() || "NA"
+
+  let salesWritten = 0
+  let billNo: string | undefined
+
+  if (input.lineItems.length > 0) {
+    billNo = generateBillNo(input.sessionId)
+    const subtotal = input.lineItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
+    const totalDiscount = input.lineItems.reduce(
+      (sum, item) => sum + lineDiscountSaved(item.quantity, item.price, item.discountPercent ?? 0),
+      0
+    )
+    const total = input.lineItems.reduce(
+      (sum, item) => sum + lineItemAmount(item.quantity, item.price, item.discountPercent ?? 0),
+      0
+    )
+
+    const salePayload: Record<string, unknown> = {
+      billNo,
+      sessionId: input.sessionId,
+      items: input.lineItems.map((item) => {
+        const unitPrice = discountedUnitPrice(item.price, item.discountPercent ?? 0)
+        return {
+          productId: item.barcode,
+          productName: item.name,
+          quantity: item.quantity,
+          price: unitPrice,
+          total: lineItemAmount(item.quantity, item.price, item.discountPercent ?? 0),
+          ...(item.discountPercent ? { discountPercent: item.discountPercent } : {}),
+          ...(item.mrp && item.mrp > 0 ? { mrp: item.mrp } : {}),
+        }
+      }),
+      subtotal,
+      discount: totalDiscount,
+      tax: 0,
+      total,
+      paymentMethod: "cash",
+      amountPaid: total,
+      change: 0,
+      soldAt,
+      createdAt: Timestamp.now(),
+      source: input.source || "admin_billing",
+      customerPhone,
+      ...(resolvedCustomer?.customerId ? { customerId: resolvedCustomer.customerId } : {}),
+      ...(resolvedCustomer?.customerName ? { customerName: resolvedCustomer.customerName } : {}),
+    }
+
+    const saleRef = await addDoc(collection(db, "sales"), salePayload)
+    await setDoc(saleRef, { id: saleRef.id }, { merge: true })
+    salesWritten = 1
+
+    for (const item of input.lineItems) {
+      await deductStockForLineItem(item)
+    }
+  }
+
+  return {
+    completedItems: input.lineItems.length,
+    salesWritten,
+    billNo,
+  }
+}
+
+/** Reuse one active scanner session per browser tab — avoids duplicate sessions on re-open / Strict Mode. */
+
 function normalizeBillingPhone(phone: string): string {
   const digits = phone.replace(/\D/g, "")
   if (digits.length >= 10) return digits.slice(-10)
@@ -172,13 +317,9 @@ export async function completeLiveBillingSession(
   }
 
   const liveData = liveSnap.data() as Record<string, unknown>
-  const itemsCol = collection(db, "live_sessions", sessionId, "items")
-  const itemsSnap = await getDocs(itemsCol)
+  const itemsSnap = await getDocs(collection(db, "live_sessions", sessionId, "items"))
 
-  const soldAt = new Date().toISOString()
   const lineItems: LiveBillingLineItem[] = []
-  const resolvedCustomer = await ensureCustomerForBilling(customer)
-  const customerPhone = resolvedCustomer?.customerPhone?.trim() || customer?.customerPhone?.trim() || "NA"
 
   for (const itemDoc of itemsSnap.docs) {
     const itemData = itemDoc.data() as Record<string, unknown>
@@ -188,165 +329,38 @@ export async function completeLiveBillingSession(
     const discountPercent = clampDiscountPercent(firestoreNumber(itemData.discountPercent, 0))
     const mrpRaw = firestoreNumber(itemData.mrp, 0)
 
-    const itemPayload: LiveBillingLineItem = {
+    lineItems.push({
       barcode,
       name: String(itemData.name ?? "").trim(),
       price: basePrice,
       quantity: liveSessionItemQuantity(itemData),
       discountPercent,
       ...(mrpRaw > 0 ? { mrp: mrpRaw } : {}),
-    }
-    lineItems.push(itemPayload)
-
-    // Deduct stock and batches for the item
-    try {
-      console.log(`[StockDeduct] Processing barcode: "${itemPayload.barcode}", qty: ${itemPayload.quantity}`)
-
-      // Try matching by barcode field first
-      const productQuery = query(
-        collection(db, "products"),
-        where("barcode", "==", itemPayload.barcode),
-        limit(1)
-      )
-      const productSnap = await getDocs(productQuery)
-
-      // Fallback: try matching by document ID (some products use barcode as doc ID)
-      let productDoc = productSnap.empty ? null : productSnap.docs[0]
-      if (!productDoc) {
-        const directRef = doc(db, "products", itemPayload.barcode)
-        const directSnap = await getDoc(directRef)
-        if (directSnap.exists()) {
-          productDoc = directSnap as any
-        }
-      }
-
-      if (productDoc) {
-        const productId = productDoc.id
-        const productData = productDoc.data() as Record<string, unknown>
-        console.log(`[StockDeduct] Found product: ${productId}, currentStock: ${productData.stock}`)
-
-        // Fetch batches
-        const batchesCol = collection(db, "products", productId, "batches")
-        const batchesSnap = await getDocs(batchesCol)
-        console.log(`[StockDeduct] Batches found: ${batchesSnap.size}`)
-
-        const batchesList = batchesSnap.docs
-          .map((d) => {
-            const bd = d.data() as Record<string, unknown>
-            let expiryDate = new Date()
-            if (bd.expiryDate && typeof (bd.expiryDate as any).toDate === "function") {
-              expiryDate = (bd.expiryDate as any).toDate()
-            } else if (bd.expiryDate) {
-              expiryDate = new Date(String(bd.expiryDate))
-            }
-            return {
-              id: d.id,
-              ref: d.ref,
-              quantity: Number(bd.quantity ?? 0),
-              expiryDate,
-            }
-          })
-          .sort((a, b) => a.expiryDate.getTime() - b.expiryDate.getTime())
-
-        let remainingQtyToDeduct = itemPayload.quantity
-        for (const batch of batchesList) {
-          if (remainingQtyToDeduct <= 0) break
-          if (batch.quantity <= remainingQtyToDeduct) {
-            remainingQtyToDeduct -= batch.quantity
-            await updateDoc(batch.ref, { quantity: 0 })
-          } else {
-            const nextQty = batch.quantity - remainingQtyToDeduct
-            remainingQtyToDeduct = 0
-            await updateDoc(batch.ref, { quantity: nextQty })
-          }
-        }
-
-        const currentStock = firestoreNumber(productData.stock, 0)
-        const newStock = Math.max(0, currentStock - itemPayload.quantity)
-        console.log(`[StockDeduct] Updating stock: ${currentStock} → ${newStock}`)
-        await updateDoc(productDoc.ref, {
-          stock: newStock,
-          updatedAt: Timestamp.now(),
-        })
-        console.log(`[StockDeduct] Stock updated successfully for ${productId}`)
-      } else {
-        console.warn(`[StockDeduct] Product NOT FOUND for barcode: "${itemPayload.barcode}". Stock not deducted.`)
-      }
-    } catch (stockErr) {
-      console.error(`Failed to deduct stock for barcode ${itemPayload.barcode}:`, stockErr)
-    }
+    })
   }
 
-  await updateDoc(liveSessionRef, {
-    status: "completed",
-    sessionId: (liveData.sessionId as string) || sessionId,
-    customerPhone,
-    ...(resolvedCustomer?.customerId ? { customerId: resolvedCustomer.customerId } : {}),
-    ...(resolvedCustomer?.customerName ? { customerName: resolvedCustomer.customerName } : {}),
+  const result = await writeSaleFromLineItems({
+    sessionId,
+    lineItems,
+    customer,
+    source: "admin_billing",
   })
 
-  clearAdminScanSessionStorage()
-
-  let salesWritten = 0
-  let billNo: string | undefined
-
-  if (lineItems.length > 0) {
-    billNo = generateBillNo(sessionId)
-    const subtotal = lineItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
-    const totalDiscount = lineItems.reduce(
-      (sum, item) => sum + lineDiscountSaved(item.quantity, item.price, item.discountPercent ?? 0),
-      0
-    )
-    const total = lineItems.reduce(
-      (sum, item) => sum + lineItemAmount(item.quantity, item.price, item.discountPercent ?? 0),
-      0
-    )
-
-    const salePayload: Record<string, unknown> = {
-      billNo,
-      sessionId,
-      items: lineItems.map((item) => {
-        const unitPrice = discountedUnitPrice(item.price, item.discountPercent ?? 0)
-        return {
-          productId: item.barcode,
-          productName: item.name,
-          quantity: item.quantity,
-          price: unitPrice,
-          total: lineItemAmount(item.quantity, item.price, item.discountPercent ?? 0),
-          ...(item.discountPercent ? { discountPercent: item.discountPercent } : {}),
-          ...(item.mrp && item.mrp > 0 ? { mrp: item.mrp } : {}),
-        }
-      }),
-      subtotal,
-      discount: totalDiscount,
-      tax: 0,
-      total,
-      paymentMethod: "cash",
-      amountPaid: total,
-      change: 0,
-      soldAt,
-      createdAt: Timestamp.now(),
-      source: "admin_billing",
+  const customerPhone = customer?.customerPhone?.trim() || "NA"
+  try {
+    await updateDoc(liveSessionRef, {
+      status: "completed",
+      sessionId: (liveData.sessionId as string) || sessionId,
       customerPhone,
-      ...(resolvedCustomer?.customerId ? { customerId: resolvedCustomer.customerId } : {}),
-      ...(resolvedCustomer?.customerName ? { customerName: resolvedCustomer.customerName } : {}),
-    }
-
-    try {
-      const saleRef = await addDoc(collection(db, "sales"), salePayload)
-      await setDoc(saleRef, { id: saleRef.id }, { merge: true })
-      salesWritten = 1
-    } catch (err) {
-      console.error("Failed writing consolidated sales bill:", err)
-      throw err
-    }
+      ...(customer?.customerId ? { customerId: customer.customerId } : {}),
+      ...(customer?.customerName ? { customerName: customer.customerName } : {}),
+    })
+  } catch (sessionErr) {
+    console.error("Sale written but session status update failed:", sessionErr)
   }
 
-  return {
-    completedItems: lineItems.length,
-    salesWritten,
-    billNo,
-  }
+  clearAdminScanSessionStorage()
+  return result
 }
 
 /**

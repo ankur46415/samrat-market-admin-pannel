@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { AdminActiveSessionsList } from "@/components/live-billing/admin-active-sessions-list"
+import { OfflineBillingBucket } from "@/components/live-billing/offline-billing-bucket"
 import {
   cancelLiveBillingSession,
   type LiveBillingSession,
@@ -123,6 +124,8 @@ export default function GenerateBillPage() {
           ))}
         </CardContent>
       </Card>
+
+      <OfflineBillingBucket />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-1">

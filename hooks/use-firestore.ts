@@ -22,6 +22,7 @@ import type { Product, ProductBatch, Customer, Sale, LedgerEntry, DashboardStats
 import { saleFromFirestoreDoc } from "@/lib/sale-from-firestore"
 import { omitUndefinedFields } from "@/lib/utils"
 import { InventoryBatchService } from "@/lib/features/inventory/services/inventory_batch_service"
+import { loadCachedProductsAsProduct, saveProductCache } from "@/lib/offline/product-cache"
 import {
   coerceProductStockFromFirestore,
   firestoreNumber,
@@ -140,11 +141,21 @@ export function useProducts() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    // Full collection (no orderBy): orderBy("name") omits docs missing `name`, so low-stock counts
-    // diverged from dashboard / mobile. Sort client-side instead.
+    let fromNetwork = false
+    const fallbackTimer = window.setTimeout(() => {
+      if (fromNetwork) return
+      void loadCachedProductsAsProduct().then((cached) => {
+        if (fromNetwork || cached.length === 0) return
+        setProducts(cached)
+        setLoading(false)
+      })
+    }, 2500)
+
     const unsubscribe = onSnapshot(
       collection(db, "products"),
       async (snapshot) => {
+        fromNetwork = true
+        window.clearTimeout(fallbackTimer)
         try {
           const items = await Promise.all(
             snapshot.docs.map(async (doc) => {
@@ -175,6 +186,7 @@ export function useProducts() {
           )
           setProducts(items)
           setError(null)
+          void saveProductCache(items)
         } catch (err) {
           console.error("Products snapshot processing error:", err)
           setError(err instanceof Error ? err.message : "Failed to process products")
@@ -186,11 +198,19 @@ export function useProducts() {
       (err) => {
         console.error("Products error:", err)
         setError(err.message)
-        setLoading(false)
+        void loadCachedProductsAsProduct().then((cached) => {
+          if (cached.length > 0) {
+            setProducts(cached)
+            setError(null)
+          }
+        }).finally(() => setLoading(false))
       }
     )
 
-    return () => unsubscribe()
+    return () => {
+      window.clearTimeout(fallbackTimer)
+      unsubscribe()
+    }
   }, [])
 
   const addProduct = useCallback(async (product: Omit<Product, "id" | "createdAt" | "updatedAt" | "batches">) => {

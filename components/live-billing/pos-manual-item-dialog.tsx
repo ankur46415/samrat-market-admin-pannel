@@ -38,11 +38,16 @@ export function PosManualItemDialog({
   disabled,
   onOpenChange,
   onAdded,
+  addItem,
 }: {
   sessionId: string | null
   disabled?: boolean
   onOpenChange?: (open: boolean) => void
   onAdded?: () => void
+  addItem?: (
+    sessionId: string,
+    input: { name: string; quantity: number; price: number; discountPercent?: number }
+  ) => Promise<{ name: string }>
 }) {
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -103,7 +108,8 @@ export function PosManualItemDialog({
 
     setSaving(true)
     try {
-      const item = await addManualItemToSession(sessionId, {
+      const addFn = addItem ?? addManualItemToSession
+      const item = await addFn(sessionId, {
         name,
         quantity,
         price,

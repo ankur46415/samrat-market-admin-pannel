@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { normalizeScannedBarcode } from "@/lib/stock"
 import { scanItemIntoSession } from "@/lib/features/live_billing_admin/services/live_billing_admin_service"
+import type { LiveBillingLineItem } from "@/lib/features/live_billing_admin/services/live_billing_admin_service"
 import type { BarcodeProductRef } from "@/lib/stock"
 
 export type PosScanResult = {
@@ -16,10 +17,16 @@ export function usePosScanner({
   sessionId,
   productCache,
   enabled = true,
+  scanItem,
 }: {
   sessionId: string | null
   productCache: BarcodeProductRef[]
   enabled?: boolean
+  scanItem?: (
+    sessionId: string,
+    barcode: string,
+    productCache: BarcodeProductRef[]
+  ) => Promise<LiveBillingLineItem>
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const queueRef = useRef<string[]>([])
@@ -54,6 +61,9 @@ export function usePosScanner({
     })
   }, [])
 
+  const scanItemRef = useRef(scanItem)
+  scanItemRef.current = scanItem
+
   const processQueue = useCallback(async () => {
     if (processingRef.current) return
 
@@ -75,7 +85,8 @@ export function usePosScanner({
         setStatusMessage(`Scanning ${barcode}…`)
 
         try {
-          const item = await scanItemIntoSession(
+          const scanFn = scanItemRef.current ?? scanItemIntoSession
+          const item = await scanFn(
             activeSessionId,
             barcode,
             productCacheRef.current
