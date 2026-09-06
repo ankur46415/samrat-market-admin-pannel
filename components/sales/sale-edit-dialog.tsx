@@ -16,6 +16,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   Table,
   TableBody,
   TableCell,
@@ -25,7 +35,7 @@ import {
 } from "@/components/ui/table"
 import { useProducts } from "@/hooks/use-firestore"
 import type { Sale, SaleItem } from "@/lib/types"
-import { saveEditedSale, totalsFromItems } from "@/lib/features/sales/update-sale"
+import { saveEditedSale, deleteSale, totalsFromItems } from "@/lib/features/sales/update-sale"
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -53,12 +63,15 @@ export function SaleEditDialog({
   const [reason, setReason] = useState("")
   const [search, setSearch] = useState("")
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   useEffect(() => {
     if (!open || !sale) return
     setItems(cloneItems(sale.items))
     setReason("")
     setSearch("")
+    setConfirmDelete(false)
   }, [open, sale])
 
   const preview = useMemo(() => totalsFromItems(items), [items])
@@ -131,6 +144,21 @@ export function SaleEditDialog({
       toast.error(error instanceof Error ? error.message : "Failed to update bill")
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    setDeleting(true)
+    try {
+      await deleteSale(sale)
+      toast.success(`Bill ${sale.billNo} deleted. Stock restored.`)
+      setConfirmDelete(false)
+      onOpenChange(false)
+    } catch (error) {
+      console.error(error)
+      toast.error(error instanceof Error ? error.message : "Failed to delete bill")
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -262,16 +290,52 @@ export function SaleEditDialog({
           </div>
         </div>
 
-        <DialogFooter className="shrink-0">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+        <DialogFooter className="shrink-0 sm:justify-between">
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={() => setConfirmDelete(true)}
+            disabled={saving || deleting}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Delete transaction
           </Button>
-          <Button type="button" onClick={() => void handleSave()} disabled={saving}>
-            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Save bill
-          </Button>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void handleSave()} disabled={saving || deleting}>
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Save bill
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete bill {sale.billNo}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the sale from Sales History and Today’s Sales. Item quantities are returned to stock. This
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleting}
+              onClick={(e) => {
+                e.preventDefault()
+                void handleDelete()
+              }}
+            >
+              {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Delete transaction
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   )
 }

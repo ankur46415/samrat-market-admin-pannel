@@ -1,4 +1,4 @@
-import { doc, Timestamp, updateDoc } from "firebase/firestore"
+import { deleteDoc, doc, Timestamp, updateDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { omitUndefinedFields } from "@/lib/utils"
 import { lineDiscountSaved, lineItemAmount } from "@/lib/billing/line-discount"
@@ -81,4 +81,12 @@ export async function saveEditedSale(input: {
       editReason: reason || undefined,
     })
   )
+}
+
+export async function deleteSale(sale: Sale): Promise<void> {
+  const prevQty = qtyByStockKey(sale.items)
+  for (const [key, qty] of prevQty) {
+    if (qty) await adjustProductStockByBarcode(key, -qty)
+  }
+  await deleteDoc(doc(db, "sales", sale.id))
 }
