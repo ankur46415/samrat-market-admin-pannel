@@ -1,7 +1,7 @@
 "use client"
 
 import { format } from "date-fns"
-import { FileDown, Printer } from "lucide-react"
+import { FileDown, Pencil, Printer } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -27,9 +27,10 @@ interface SaleDetailDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   sale: Sale | null
+  onEdit?: () => void
 }
 
-export function SaleDetailDialog({ open, onOpenChange, sale }: SaleDetailDialogProps) {
+export function SaleDetailDialog({ open, onOpenChange, sale, onEdit }: SaleDetailDialogProps) {
   if (!sale) return null
 
   const mrpSavingsTotal = sale.items.reduce((sum, item) => {
@@ -306,6 +307,18 @@ export function SaleDetailDialog({ open, onOpenChange, sale }: SaleDetailDialogP
           </div>
 
           <div className="flex shrink-0 justify-end gap-2">
+            {onEdit ? (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  onOpenChange(false)
+                  onEdit()
+                }}
+              >
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit bill
+              </Button>
+            ) : null}
             <Button variant="outline" onClick={handlePrint}>
               <Printer className="mr-2 h-4 w-4" />
               Print

@@ -1,4 +1,5 @@
 import type { CheckoutCustomerInfo, LiveBillingLineItem } from "@/lib/features/live_billing_admin/services/live_billing_admin_service"
+import { generateOfflineBillNo } from "@/lib/features/sales/bill-no"
 import { lineDiscountSaved, lineItemAmount } from "@/lib/billing/line-discount"
 import { idbDelete, idbGet, idbGetAll, idbPut, STORE_PENDING_BILLS } from "./idb"
 
@@ -11,6 +12,7 @@ export type OfflineBill = {
   lastError?: string
   source: "offline_pos" | "complete_failed"
   liveSessionId?: string
+  billNo: string
   customer?: CheckoutCustomerInfo
   items: LiveBillingLineItem[]
   subtotal: number
@@ -23,6 +25,7 @@ export function buildOfflineBill(input: {
   customer?: CheckoutCustomerInfo
   source: OfflineBill["source"]
   liveSessionId?: string
+  billNo?: string
 }): OfflineBill {
   const subtotal = input.items.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const discount = input.items.reduce(
@@ -39,6 +42,7 @@ export function buildOfflineBill(input: {
     status: "pending",
     source: input.source,
     liveSessionId: input.liveSessionId,
+    billNo: input.billNo || generateOfflineBillNo(),
     customer: input.customer,
     items: input.items,
     subtotal,

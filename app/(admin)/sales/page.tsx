@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react"
 import { format, subDays, isWithinInterval, startOfDay, endOfDay } from "date-fns"
-import { CalendarIcon, Search, Eye, FileText, Download } from "lucide-react"
+import { CalendarIcon, Search } from "lucide-react"
 import { useSales } from "@/hooks/use-firestore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -31,9 +31,10 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { SaleDetailDialog } from "@/components/sales/sale-detail-dialog"
+import { SaleEditDialog } from "@/components/sales/sale-edit-dialog"
+import { SaleBillActions } from "@/components/sales/sale-bill-actions"
 import type { Sale } from "@/lib/types"
 import { saleMatchesPhoneFilter, saleMatchesSearch, salePhone } from "@/lib/sales-filter"
-import { cn } from "@/lib/utils"
 
 import { DateRange } from "react-day-picker"
 
@@ -48,6 +49,7 @@ export default function SalesHistoryPage() {
   })
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
   const [detailDialogOpen, setDetailDialogOpen] = useState(false)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
 
   const filteredSales = useMemo(() => {
     return sales.filter((sale) => {
@@ -90,6 +92,11 @@ export default function SalesHistoryPage() {
   const handleViewSale = (sale: Sale) => {
     setSelectedSale(sale)
     setDetailDialogOpen(true)
+  }
+
+  const handleEditSale = (sale: Sale) => {
+    setSelectedSale(sale)
+    setEditDialogOpen(true)
   }
 
   if (loading) {
@@ -226,7 +233,7 @@ export default function SalesHistoryPage() {
                   <TableHead>Items</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                   <TableHead>Payment</TableHead>
-                  <TableHead className="w-12"></TableHead>
+                  <TableHead className="w-[148px] text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -259,14 +266,11 @@ export default function SalesHistoryPage() {
                           {sale.paymentMethod.toUpperCase()}
                         </Badge>
                       </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleViewSale(sale)}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
+                      <TableCell className="text-right">
+                        <SaleBillActions
+                          onView={() => handleViewSale(sale)}
+                          onEdit={() => handleEditSale(sale)}
+                        />
                       </TableCell>
                     </TableRow>
                   ))
@@ -280,6 +284,15 @@ export default function SalesHistoryPage() {
       <SaleDetailDialog
         open={detailDialogOpen}
         onOpenChange={setDetailDialogOpen}
+        sale={selectedSale}
+        onEdit={() => {
+          setDetailDialogOpen(false)
+          setEditDialogOpen(true)
+        }}
+      />
+      <SaleEditDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
         sale={selectedSale}
       />
     </div>

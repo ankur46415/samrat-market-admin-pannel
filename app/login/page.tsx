@@ -22,7 +22,9 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false)
 
   useEffect(() => {
-    if (ready && user) router.replace("/")
+    if (ready && user) {
+      router.replace(typeof navigator !== "undefined" && !navigator.onLine ? "/generate-bill/scan" : "/")
+    }
   }, [ready, user, router])
 
   const handleLogin = async (e: React.FormEvent) => {

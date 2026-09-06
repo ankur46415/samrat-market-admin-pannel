@@ -56,6 +56,7 @@ import { useLocalPosCart } from "@/lib/offline/use-local-pos-cart"
 import { isLikelyNetworkError } from "@/lib/offline/offline-bills"
 import { enqueueOfflineBill, syncOneOfflineBill } from "@/lib/offline/sync-offline-bills"
 import { useOnlineStatus } from "@/lib/offline/use-online-status"
+import { generateOfflineBillNo, generateOnlineBillNo } from "@/lib/features/sales/bill-no"
 import type { EditableLiveItem } from "@/components/live-billing/live-bill-items-editor"
 import { PosLineDiscountCell } from "@/components/live-billing/pos-line-discount-cell"
 import { PosManualItemDialog } from "@/components/live-billing/pos-manual-item-dialog"
@@ -165,6 +166,7 @@ export function PosTerminal({
   const [sessionId, setSessionId] = useState<string | null>(initialSessionId ?? null)
   const [booting, setBooting] = useState(!initialSessionId)
   const [offlineMode, setOfflineMode] = useState(false)
+  const [offlineBillNo, setOfflineBillNo] = useState(() => generateOfflineBillNo())
   const [view, setView] = useState<"billing" | "finalize">(mode === "checkout" ? "finalize" : "billing")
   const [acting, setActing] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(-1)
@@ -297,11 +299,14 @@ export function PosTerminal({
     }
   }
 
+  const currentBillNo =
+    offlineMode || !sessionId ? offlineBillNo : generateOnlineBillNo(sessionId)
+
   const buildCurrentReceipt = useCallback((): ReceiptData | null => {
     if (items.length === 0) return null
     const phone = selectedCustomer?.phone ?? normalizedCustomerPhone
     return {
-      billNo: sessionId ? `BILL-${sessionId.slice(-6).toUpperCase()}` : `BILL-${Date.now()}`,
+      billNo: currentBillNo,
       date: new Date(),
       customerName: selectedCustomer?.name || pendingCustomerName || undefined,
       customerPhone: phone,
@@ -322,7 +327,7 @@ export function PosTerminal({
       amountPaid: totals.total,
       change: 0,
     }
-  }, [items, normalizedCustomerPhone, pendingCustomerName, selectedCustomer, sessionId, totals.discountSaved, totals.mrpSaved, totals.total])
+  }, [currentBillNo, items, normalizedCustomerPhone, pendingCustomerName, selectedCustomer, totals.discountSaved, totals.mrpSaved, totals.total])
 
   const handlePrintBill = useCallback(() => {
     const receipt = buildCurrentReceipt()
@@ -347,6 +352,10 @@ export function PosTerminal({
   }, [])
 
   useEffect(() => {
+    if (offlineMode) setOfflineBillNo(generateOfflineBillNo())
+  }, [offlineMode, sessionId])
+
+  useEffect(() => {
     if (initialSessionId) {
       setSessionId(initialSessionId)
       setBooting(false)
@@ -368,7 +377,7 @@ export function PosTerminal({
         const id = await Promise.race([
           getOrCreateScannerBillingSession(cashierName),
           new Promise<string>((_, reject) => {
-            window.setTimeout(() => reject(new Error("POS session timeout")), 8000)
+            window.setTimeout(() => reject(new Error("POS session timeout")), 4000)
           }),
         ])
         if (!cancelled) {
@@ -630,6 +639,8 @@ export function PosTerminal({
           items: localCart.lineItems,
           customer,
           source: "offline_pos",
+          liveSessionId: sessionId || undefined,
+          billNo: currentBillNo,
         })
         await localCart.clearCart()
         if (navigator.onLine) {
@@ -657,6 +668,7 @@ export function PosTerminal({
           customer,
           source: "complete_failed",
           liveSessionId: sessionId,
+          billNo: currentBillNo,
         })
         toast.success(
           isLikelyNetworkError(e)
@@ -673,6 +685,7 @@ export function PosTerminal({
       setActing(false)
     }
   }, [
+    currentBillNo,
     isWalkInPhone,
     items,
     localCart,

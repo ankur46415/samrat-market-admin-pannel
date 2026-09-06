@@ -44,6 +44,12 @@ export default function GenerateBillPage() {
   const [acting, setActing] = useState(false)
 
   useEffect(() => {
+    if (!navigator.onLine) {
+      setSessions([])
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     const q = query(collection(db, "live_sessions"), where("status", "==", "active"))
 
@@ -70,7 +76,14 @@ export default function GenerateBillPage() {
       }
     )
 
-    return () => unsubscribe()
+    const timeout = window.setTimeout(() => {
+      setLoading(false)
+    }, 2500)
+
+    return () => {
+      window.clearTimeout(timeout)
+      unsubscribe()
+    }
   }, [])
 
   const selectedSession = useMemo(
@@ -101,6 +114,7 @@ export default function GenerateBillPage() {
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Generate Bill</h1>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
             Supermarket POS billing — scan continuously, use keyboard shortcuts, complete bills quickly.
+            Open POS once while online so this computer can bill later with no network.
           </p>
         </div>
         <Button asChild size="lg" className="shrink-0 gap-2 font-semibold">

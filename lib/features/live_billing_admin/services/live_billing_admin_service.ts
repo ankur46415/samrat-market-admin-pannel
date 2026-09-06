@@ -1,4 +1,5 @@
 import { db } from "@/lib/firebase"
+import { generateOnlineBillNo } from "@/lib/features/sales/bill-no"
 import { firestoreNumber, getBarcodeLookupCandidates, normalizeScannedBarcode, barcodeValuesFromFirestore, findCachedProductByBarcode, liveSessionItemQuantity, type BarcodeProductRef } from "@/lib/stock"
 import {
   clampDiscountPercent,
@@ -62,10 +63,22 @@ export function clearAdminScanSessionStorage(): void {
   }
 }
 
-function generateBillNo(sessionId: string): string {
-  const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "")
-  const shortId = sessionId.slice(-6).toUpperCase()
-  return `SM-${datePart}-${shortId}`
+async function billNoAlreadyExists(billNo: string): Promise<boolean> {
+  try {
+    const snap = await getDocs(query(collection(db, "sales"), where("billNo", "==", billNo), limit(1)))
+    return !snap.empty
+  } catch {
+    return false
+  }
+}
+
+async function resolveUniqueBillNo(preferred: string): Promise<string> {
+  if (!(await billNoAlreadyExists(preferred))) return preferred
+  for (let n = 2; n <= 9; n++) {
+    const candidate = `${preferred}-${n}`
+    if (!(await billNoAlreadyExists(candidate))) return candidate
+  }
+  return `${preferred}-${Date.now().toString(36).toUpperCase()}`
 }
 
 async function deductStockForLineItem(itemPayload: LiveBillingLineItem): Promise<void> {
@@ -144,6 +157,7 @@ export async function writeSaleFromLineItems(input: {
   lineItems: LiveBillingLineItem[]
   customer?: CheckoutCustomerInfo
   source?: string
+  billNo?: string
 }): Promise<CompleteSessionResult> {
   const soldAt = new Date().toISOString()
   const resolvedCustomer = await ensureCustomerForBilling(input.customer)
@@ -154,7 +168,7 @@ export async function writeSaleFromLineItems(input: {
   let billNo: string | undefined
 
   if (input.lineItems.length > 0) {
-    billNo = generateBillNo(input.sessionId)
+    billNo = await resolveUniqueBillNo(input.billNo || generateOnlineBillNo(input.sessionId))
     const subtotal = input.lineItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
     const totalDiscount = input.lineItems.reduce(
       (sum, item) => sum + lineDiscountSaved(item.quantity, item.price, item.discountPercent ?? 0),

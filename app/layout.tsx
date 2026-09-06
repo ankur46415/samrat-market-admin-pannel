@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
+import { PwaRegister } from '@/components/pwa-register'
 import './globals.css'
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
@@ -11,6 +12,12 @@ export const metadata: Metadata = {
   title: 'Samrat Market Admin',
   description: 'Admin panel for Samrat Market - Inventory, Sales & CRM Management',
   generator: 'v0.app',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    title: 'Samrat POS',
+    statusBarStyle: 'black-translucent',
+  },
 }
 
 export const viewport: Viewport = {
@@ -36,6 +43,7 @@ export default function RootLayout({
         >
           {children}
           <Toaster richColors position="top-right" />
+          <PwaRegister />
         </ThemeProvider>
         <Analytics />
       </body>

@@ -150,6 +150,7 @@ export function OfflineBillingBucket() {
               <TableHeader>
                 <TableRow>
                   <TableHead>When</TableHead>
+                  <TableHead>Bill no</TableHead>
                   <TableHead>Items</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead>Status</TableHead>
@@ -162,6 +163,7 @@ export function OfflineBillingBucket() {
                     <TableCell className="whitespace-nowrap text-sm">
                       {new Date(bill.createdAt).toLocaleString("en-IN")}
                     </TableCell>
+                    <TableCell className="font-mono text-xs font-medium">{bill.billNo || "—"}</TableCell>
                     <TableCell>
                       <div className="text-sm font-medium">{bill.items.length} line(s)</div>
                       <div className="max-w-[240px] truncate text-xs text-muted-foreground">

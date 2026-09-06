@@ -142,13 +142,21 @@ export function useProducts() {
 
   useEffect(() => {
     let fromNetwork = false
-    const fallbackTimer = window.setTimeout(() => {
-      if (fromNetwork) return
+    const loadCache = () => {
       void loadCachedProductsAsProduct().then((cached) => {
         if (fromNetwork || cached.length === 0) return
         setProducts(cached)
         setLoading(false)
       })
+    }
+
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      loadCache()
+    }
+
+    const fallbackTimer = window.setTimeout(() => {
+      if (fromNetwork) return
+      loadCache()
     }, 2500)
 
     const unsubscribe = onSnapshot(

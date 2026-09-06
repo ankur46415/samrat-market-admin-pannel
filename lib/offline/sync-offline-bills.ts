@@ -11,6 +11,7 @@ import {
   saveOfflineBill,
   type OfflineBill,
 } from "./offline-bills"
+import { generateOfflineBillNo } from "@/lib/features/sales/bill-no"
 
 let syncInFlight: Promise<{ synced: number; failed: number }> | null = null
 
@@ -19,6 +20,7 @@ export async function enqueueOfflineBill(input: {
   customer?: CheckoutCustomerInfo
   source: OfflineBill["source"]
   liveSessionId?: string
+  billNo?: string
 }): Promise<OfflineBill> {
   const bill = buildOfflineBill(input)
   await saveOfflineBill(bill)
@@ -40,6 +42,7 @@ export async function syncOneOfflineBill(id: string): Promise<void> {
       lineItems: bill.items,
       customer: bill.customer,
       source: "admin_billing_offline",
+      billNo: bill.billNo || generateOfflineBillNo(),
     })
     await deleteOfflineBill(id)
   } catch (error) {
