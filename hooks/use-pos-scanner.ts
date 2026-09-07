@@ -105,12 +105,13 @@ export function usePosScanner({
             `✓ ${item.name} — Qty ${item.quantity} × ₹${item.price.toLocaleString("en-IN")}`
           )
         } catch (e) {
-          console.error(e)
           const msg = e instanceof Error ? e.message : "Scan failed"
+          const notFound = msg.toLowerCase().includes("not found")
+          if (!notFound) console.error(e)
           setLastFailedBarcode(barcode)
           setStatusTone("error")
           setStatusMessage(
-            msg.includes("not found") ? `✗ Barcode not in inventory: ${barcode}` : `✗ ${msg}`
+            notFound ? `✗ Barcode not in inventory: ${barcode}` : `✗ ${msg}`
           )
         }
       }

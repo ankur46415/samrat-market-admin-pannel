@@ -64,6 +64,7 @@ export function LiveBillItemsEditor({
     price: p.price,
     barcode: p.barcode,
     mrp: p.mrp,
+    barcodeKeys: p.barcodeKeys,
   }))
 
   const focusScanInput = useCallback(() => {

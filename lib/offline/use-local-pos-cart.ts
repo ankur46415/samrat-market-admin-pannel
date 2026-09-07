@@ -6,6 +6,7 @@ import { clampDiscountPercent, lineItemAmount, mrpLineSaved } from "@/lib/billin
 import type { EditableLiveItem } from "@/components/live-billing/live-bill-items-editor"
 import type { LiveBillingLineItem } from "@/lib/features/live_billing_admin/services/live_billing_admin_service"
 import { idbDelete, idbGet, idbPut, STORE_KV } from "./idb"
+import { lookupProductFromIdb } from "./product-cache"
 
 function cartKey(sessionId: string) {
   return `offline-cart:${sessionId}`
@@ -63,11 +64,14 @@ export function useLocalPosCart(active: boolean, sessionId: string | null) {
 
   const scanProduct = useCallback(async (barcode: string, productCache: BarcodeProductRef[]) => {
     const cleaned = normalizeScannedBarcode(barcode)
-    const product = findCachedProductByBarcode(productCache, cleaned)
+    let product = findCachedProductByBarcode(productCache, cleaned)
+    if (!product) {
+      product = await lookupProductFromIdb(cleaned)
+    }
     if (!product) {
       throw new Error(`Product not found for barcode: ${cleaned || barcode.trim()}`)
     }
-    const resolvedBarcode = product.barcode?.trim() || cleaned
+    const resolvedBarcode = normalizeScannedBarcode(product.barcode ?? "") || product.id
     const name = product.name
     const price = product.price
     const mrp = product.mrp && product.mrp > 0 ? product.mrp : undefined

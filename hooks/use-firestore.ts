@@ -30,6 +30,7 @@ import {
   minStockThresholdFromFirestore,
   productUnitFromFirestore,
   normalizeProductUnit,
+  barcodeValuesFromFirestore,
 } from "@/lib/stock"
 import { RACK_OPTIONS, RACK_OPTIONS_SET } from "@/lib/rack-options"
 import { STATUS_OPTIONS, STATUS_OPTIONS_SET } from "@/lib/status-options"
@@ -93,6 +94,8 @@ function productFromData(id: string, data: Record<string, unknown>): Product {
   const rack = trimStr((data as any).rack)
   const tag = trimStr((data as any).tag)
   const status = trimStr((data as any).status)
+  const barcodeKeys = barcodeValuesFromFirestore(data, id)
+  const barcode = optionalBarcode(data.barcode) || optionalBarcode((data as any).productBarcode)
   const batches: ProductBatch[] = Array.isArray(rawBatches)
     ? (rawBatches as ProductBatch[]).map((b) => ({
         id: b.id,
@@ -108,7 +111,8 @@ function productFromData(id: string, data: Record<string, unknown>): Product {
     rack,
     tag,
     status,
-    barcode: optionalBarcode(data.barcode),
+    barcode: barcode || undefined,
+    barcodeKeys,
     brand: brand.length > 0 ? brand : undefined,
     price: firestoreNumber(data.price, 0),
     costPrice: firestoreNumber(data.costPrice, 0),
@@ -142,80 +146,103 @@ export function useProducts() {
 
   useEffect(() => {
     let fromNetwork = false
-    const loadCache = () => {
-      void loadCachedProductsAsProduct().then((cached) => {
-        if (fromNetwork || cached.length === 0) return
-        setProducts(cached)
-        setLoading(false)
-      })
+    let cancelled = false
+
+    const applyCache = (cached: Product[]) => {
+      if (cancelled || fromNetwork || cached.length === 0) return
+      setProducts(cached)
+      setLoading(false)
     }
 
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      loadCache()
-    }
+    void loadCachedProductsAsProduct().then(applyCache)
 
     const fallbackTimer = window.setTimeout(() => {
       if (fromNetwork) return
-      loadCache()
-    }, 2500)
+      void loadCachedProductsAsProduct().then(applyCache)
+    }, 1500)
 
     const unsubscribe = onSnapshot(
       collection(db, "products"),
-      async (snapshot) => {
+      (snapshot) => {
         fromNetwork = true
         window.clearTimeout(fallbackTimer)
         try {
-          const items = await Promise.all(
-            snapshot.docs.map(async (doc) => {
-              const data = doc.data() as Record<string, unknown>
-              try {
-                const batchesSnap = await getDocs(collection(db, "products", doc.id, "batches"))
-                const batchList: ProductBatch[] = batchesSnap.docs.map((b) => {
-                  const bd = b.data() as Record<string, unknown>
-                  return {
-                    id: b.id,
-                    quantity: Number.isFinite(Number(bd.quantity)) ? Number(bd.quantity) : 0,
-                    expiryDate: convertTimestamp(bd.expiryDate),
-                    createdAt: convertTimestamp(bd.createdAt),
-                  }
-                })
-                batchList.sort((a, b) => a.expiryDate.getTime() - b.expiryDate.getTime())
-                const totalStock = batchList.reduce((sum, b) => sum + b.quantity, 0)
-                return productFromData(doc.id, { ...data, __totalStock: totalStock, __batches: batchList })
-              } catch (batchErr) {
-                // Fallback so one bad batch subquery doesn't keep whole UI in loading state.
-                console.error("Batches read error:", batchErr)
-                return productFromData(doc.id, data)
-              }
-            })
+          // Billing needs barcode/price immediately. Do not wait on batches subcollection reads.
+          const items = snapshot.docs.map((docSnap) =>
+            productFromData(docSnap.id, docSnap.data() as Record<string, unknown>)
           )
           items.sort((a, b) =>
             (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })
           )
+          if (cancelled) return
           setProducts(items)
           setError(null)
+          setLoading(false)
           void saveProductCache(items)
+
+          void (async () => {
+            try {
+              const withBatches = await Promise.all(
+                snapshot.docs.map(async (docSnap) => {
+                  const data = docSnap.data() as Record<string, unknown>
+                  try {
+                    const batchesSnap = await getDocs(collection(db, "products", docSnap.id, "batches"))
+                    const batchList: ProductBatch[] = batchesSnap.docs.map((b) => {
+                      const bd = b.data() as Record<string, unknown>
+                      return {
+                        id: b.id,
+                        quantity: Number.isFinite(Number(bd.quantity)) ? Number(bd.quantity) : 0,
+                        expiryDate: convertTimestamp(bd.expiryDate),
+                        createdAt: convertTimestamp(bd.createdAt),
+                      }
+                    })
+                    batchList.sort((a, b) => a.expiryDate.getTime() - b.expiryDate.getTime())
+                    const totalStock = batchList.reduce((sum, b) => sum + b.quantity, 0)
+                    return productFromData(docSnap.id, { ...data, __totalStock: totalStock, __batches: batchList })
+                  } catch {
+                    return productFromData(docSnap.id, data)
+                  }
+                })
+              )
+              withBatches.sort((a, b) =>
+                (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })
+              )
+              if (cancelled || withBatches.length === 0) return
+              setProducts(withBatches)
+              void saveProductCache(withBatches)
+            } catch (batchErr) {
+              console.error("Batch enrichment error:", batchErr)
+            }
+          })()
         } catch (err) {
           console.error("Products snapshot processing error:", err)
           setError(err instanceof Error ? err.message : "Failed to process products")
-          setProducts([])
-        } finally {
-          setLoading(false)
+          void loadCachedProductsAsProduct().then((cached) => {
+            if (cancelled || cached.length === 0) return
+            setProducts(cached)
+            setError(null)
+          }).finally(() => {
+            if (!cancelled) setLoading(false)
+          })
         }
       },
       (err) => {
         console.error("Products error:", err)
         setError(err.message)
         void loadCachedProductsAsProduct().then((cached) => {
+          if (cancelled) return
           if (cached.length > 0) {
             setProducts(cached)
             setError(null)
           }
-        }).finally(() => setLoading(false))
+        }).finally(() => {
+          if (!cancelled) setLoading(false)
+        })
       }
     )
 
     return () => {
+      cancelled = true
       window.clearTimeout(fallbackTimer)
       unsubscribe()
     }

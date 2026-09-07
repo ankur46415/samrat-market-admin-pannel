@@ -87,6 +87,25 @@ export async function idbDelete(storeName: string, key: IDBValidKey): Promise<vo
   }
 }
 
+export async function idbReplaceAll<T extends { id: string }>(storeName: string, values: T[]): Promise<void> {
+  const db = await openDb()
+  try {
+    const tx = db.transaction(storeName, "readwrite")
+    const store = tx.objectStore(storeName)
+    store.clear()
+    for (const row of values) {
+      store.put(row)
+    }
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+      tx.onabort = () => reject(tx.error ?? new Error("IndexedDB transaction aborted"))
+    })
+  } finally {
+    db.close()
+  }
+}
+
 export async function idbClear(storeName: string): Promise<void> {
   const db = await openDb()
   try {

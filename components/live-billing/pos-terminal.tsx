@@ -54,6 +54,7 @@ import {
 } from "@/lib/features/live_billing_admin/services/live_billing_admin_service"
 import { useLocalPosCart } from "@/lib/offline/use-local-pos-cart"
 import { isLikelyNetworkError } from "@/lib/offline/offline-bills"
+import { loadProductCache } from "@/lib/offline/product-cache"
 import { enqueueOfflineBill, syncOneOfflineBill } from "@/lib/offline/sync-offline-bills"
 import { useOnlineStatus } from "@/lib/offline/use-online-status"
 import { generateOfflineBillNo, generateOnlineBillNo } from "@/lib/features/sales/bill-no"
@@ -194,12 +195,24 @@ export function PosTerminal({
     price: p.price,
     barcode: p.barcode,
     mrp: p.mrp,
+    barcodeKeys: p.barcodeKeys,
   }))
 
   const online = useOnlineStatus()
   const { items: liveItems, loading: liveItemsLoading, sessionStatus, totals: liveTotals } = usePosSession(
     offlineMode ? null : sessionId
   )
+
+  const [cachedProductCount, setCachedProductCount] = useState(0)
+
+  useEffect(() => {
+    void loadProductCache().then((rows) => {
+      setCachedProductCount(rows.length)
+      if (offlineMode && rows.length === 0) {
+        toast.error("No products saved on this computer. Open billing once while online.")
+      }
+    })
+  }, [products.length, offlineMode])
   const localCart = useLocalPosCart(offlineMode, sessionId)
   const items = offlineMode ? localCart.items : liveItems
   const itemsLoading = offlineMode ? localCart.loading : liveItemsLoading
@@ -811,7 +824,12 @@ export function PosTerminal({
               <h1 className="truncate text-lg font-semibold tracking-tight md:text-xl">Scan & Generate Bill</h1>
             </div>
             <p className="truncate text-xs text-muted-foreground">
-              {view === "billing" ? (offlineMode ? "Offline Billing" : "Billing Terminal") : "Payment & Finalize"} · {cashierName}
+              {view === "billing"
+                ? offlineMode
+                  ? `Offline Billing · ${cachedProductCount || products.length} products cached`
+                  : `Billing Terminal · ${cachedProductCount || products.length} products cached`
+                : "Payment & Finalize"}{" "}
+              · {cashierName}
             </p>
           </div>
         </div>
@@ -845,7 +863,7 @@ export function PosTerminal({
             {offlineMode || !online ? (
               <>
                 <CloudOff className="h-3.5 w-3.5" />
-                Offline
+                Offline · {(cachedProductCount || products.length).toLocaleString("en-IN")} cached
               </>
             ) : (
               <>

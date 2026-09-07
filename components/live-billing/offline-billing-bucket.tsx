@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { deleteOfflineBill, listOfflineBills, type OfflineBill } from "@/lib/offline/offline-bills"
+import { loadProductCache } from "@/lib/offline/product-cache"
 import { syncAllOfflineBills, syncOneOfflineBill } from "@/lib/offline/sync-offline-bills"
 import { useOnlineStatus } from "@/lib/offline/use-online-status"
 
@@ -31,10 +32,12 @@ export function OfflineBillingBucket() {
   const [bills, setBills] = useState<OfflineBill[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [cachedProductCount, setCachedProductCount] = useState<number | null>(null)
 
   const refresh = useCallback(async () => {
-    const rows = await listOfflineBills()
+    const [rows, products] = await Promise.all([listOfflineBills(), loadProductCache()])
     setBills(rows)
+    setCachedProductCount(products.length)
     setLoading(false)
   }, [])
 
@@ -123,9 +126,15 @@ export function OfflineBillingBucket() {
           </CardTitle>
           <CardDescription>
             Bills saved when the network was down. They post to sales and stock when you are online.
+            {cachedProductCount == null
+              ? ""
+              : ` ${cachedProductCount.toLocaleString("en-IN")} products saved on this computer for offline scan.`}
           </CardDescription>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {cachedProductCount != null ? (
+            <Badge variant="outline">{cachedProductCount.toLocaleString("en-IN")} products cached</Badge>
+          ) : null}
           <Badge variant={online ? "secondary" : "outline"} className="gap-1">
             {online ? <Wifi className="h-3.5 w-3.5" /> : <CloudOff className="h-3.5 w-3.5" />}
             {online ? "Online" : "Offline"}

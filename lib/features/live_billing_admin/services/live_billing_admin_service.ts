@@ -1,6 +1,6 @@
 import { db } from "@/lib/firebase"
 import { generateOnlineBillNo } from "@/lib/features/sales/bill-no"
-import { firestoreNumber, getBarcodeLookupCandidates, normalizeScannedBarcode, barcodeValuesFromFirestore, findCachedProductByBarcode, liveSessionItemQuantity, type BarcodeProductRef } from "@/lib/stock"
+import { firestoreNumber, getBarcodeLookupCandidates, normalizeScannedBarcode, findCachedProductByBarcode, liveSessionItemQuantity, type BarcodeProductRef } from "@/lib/stock"
 import {
   clampDiscountPercent,
   discountedUnitPrice,
@@ -407,17 +407,13 @@ export async function createScannerBillingSession(cashierLabel?: string): Promis
 function toBillingProduct(
   docId: string,
   data: Record<string, unknown>,
-  fallbackBarcode: string
+  scanned: string
 ): { barcode: string; name: string; price: number; mrp?: number } {
-  const resolvedBarcode =
-    barcodeValuesFromFirestore(data, docId).find((value) => /^\d+$/.test(value)) ||
-    String(data.barcode ?? fallbackBarcode).trim() ||
-    fallbackBarcode
-
+  const storedBarcode = normalizeScannedBarcode(String(data.barcode ?? ""))
   const mrpRaw = firestoreNumber(data.mrp, 0)
   return {
-    barcode: resolvedBarcode,
-    name: String(data.name ?? "").trim() || resolvedBarcode,
+    barcode: storedBarcode || scanned || docId,
+    name: String(data.name ?? "").trim() || storedBarcode || scanned || docId,
     price: firestoreNumber(data.price, 0),
     ...(mrpRaw > 0 ? { mrp: mrpRaw } : {}),
   }
@@ -427,66 +423,31 @@ export async function lookupProductForBilling(
   barcode: string,
   cachedProducts?: BarcodeProductRef[]
 ): Promise<{ barcode: string; name: string; price: number; mrp?: number } | null> {
-  const cleaned = normalizeScannedBarcode(barcode)
-  if (!cleaned) return null
+  const scanned = normalizeScannedBarcode(barcode)
+  if (!scanned) return null
 
-  const cached = cachedProducts ? findCachedProductByBarcode(cachedProducts, cleaned) : null
+  const cached = cachedProducts ? findCachedProductByBarcode(cachedProducts, scanned) : null
   if (cached) {
+    const storedBarcode = normalizeScannedBarcode(cached.barcode ?? "")
     return {
-      barcode: cached.barcode?.trim() || cleaned,
+      barcode: storedBarcode || cached.id,
       name: cached.name,
       price: cached.price,
       ...(cached.mrp && cached.mrp > 0 ? { mrp: cached.mrp } : {}),
     }
   }
 
-  const candidates = getBarcodeLookupCandidates(cleaned)
-
-  for (const candidate of candidates) {
-    const productQuery = query(
-      collection(db, "products"),
-      where("barcode", "==", candidate),
-      limit(1)
-    )
-    const productSnap = await getDocs(productQuery)
-
-    let productDoc = productSnap.empty ? null : productSnap.docs[0]
-    if (!productDoc) {
-      const directRef = doc(db, "products", candidate)
-      const directSnap = await getDoc(directRef)
-      if (directSnap.exists()) {
-        productDoc = directSnap
-      }
-    }
-
-    if (!productDoc && /^\d+$/.test(candidate)) {
-      const asNumber = Number(candidate)
-      if (Number.isSafeInteger(asNumber)) {
-        const numericQuery = query(
-          collection(db, "products"),
-          where("barcode", "==", asNumber),
-          limit(1)
-        )
-        const numericSnap = await getDocs(numericQuery)
-        if (!numericSnap.empty) productDoc = numericSnap.docs[0]
-      }
-    }
-
-    if (!productDoc) continue
-
-    return toBillingProduct(productDoc.id, productDoc.data() as Record<string, unknown>, candidate)
+  const byId = await getDoc(doc(db, "products", scanned))
+  if (byId.exists()) {
+    return toBillingProduct(byId.id, byId.data() as Record<string, unknown>, scanned)
   }
 
-  // Fallback: scan loaded products collection (handles alternate field names / legacy docs).
-  const allSnap = await getDocs(collection(db, "products"))
-  const scannedSet = new Set(candidates)
-
-  for (const productDoc of allSnap.docs) {
-    const data = productDoc.data() as Record<string, unknown>
-    const knownValues = barcodeValuesFromFirestore(data, productDoc.id)
-    if (knownValues.some((value) => scannedSet.has(value))) {
-      return toBillingProduct(productDoc.id, data, cleaned)
-    }
+  const byBarcode = await getDocs(
+    query(collection(db, "products"), where("barcode", "==", scanned), limit(1))
+  )
+  if (!byBarcode.empty) {
+    const hit = byBarcode.docs[0]
+    return toBillingProduct(hit.id, hit.data() as Record<string, unknown>, scanned)
   }
 
   return null

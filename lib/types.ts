@@ -28,6 +28,8 @@ export interface Product {
   stock: number
   unit: string
   barcode?: string
+  /** Extra lookup keys (sku, ean, padded variants) for POS scan matching */
+  barcodeKeys?: string[]
   brand?: string
   /** Maximum retail price (MRP) when set at product creation */
   mrp?: number
