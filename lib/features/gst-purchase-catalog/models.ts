@@ -86,13 +86,18 @@ export function sanitizeGstCatalogOrder(order: GstCatalogOrder): GstCatalogOrder
   return next
 }
 
-export function itemsTotalForOrder(products: GstCatalogProduct[], orderId: string): number {
+export function itemsTotalForOrder(
+  products: GstCatalogProduct[],
+  orderId: string,
+  incGst = true
+): number {
   const id = String(orderId).trim()
   return roundMoney(
     products.reduce((sum, p) => {
       const pid = catalogProductOrderId(p)
-      if (id === NO_ORDER_ID) return pid ? sum : sum + p.price * p.moq
-      return pid === id ? sum + p.price * p.moq : sum
+      const line = catalogProductLineTotal(p, incGst)
+      if (id === NO_ORDER_ID) return pid ? sum : sum + line
+      return pid === id ? sum + line : sum
     }, 0)
   )
 }
@@ -201,8 +206,11 @@ export interface GstPurchaseCatalog {
   updatedAt: Date
 }
 
-export function catalogProductLineTotal(product: GstCatalogProduct): number {
-  return roundMoney((Number(product.price) || 0) * (Number(product.moq) || 0))
+export function catalogProductLineTotal(product: GstCatalogProduct, incGst = true): number {
+  const qty = Number(product.moq) || 0
+  const rate = Number(product.price) || 0
+  if (incGst) return roundMoney(rate * qty)
+  return roundMoney(qty * priceWithGst(rate, catalogProductGstPercent(product)))
 }
 
 const MONTH_INDEX: Record<string, number> = {
@@ -315,7 +323,8 @@ export function gstFilterLabel(gstFilter: string): string {
 export function purchaseTotalsByCatalogGroup(
   catalogs: GstPurchaseCatalog[],
   orderTag: string,
-  gstFilter: string = ALL_GST_FILTER
+  gstFilter: string = ALL_GST_FILTER,
+  incGst = true
 ): CatalogGroupPurchaseRow[] {
   return catalogs
     .map((catalog) => {
@@ -327,7 +336,7 @@ export function purchaseTotalsByCatalogGroup(
         id: catalog.id,
         name: catalog.name,
         color: catalog.color ?? "#0d9488",
-        total: roundMoney(products.reduce((sum, product) => sum + catalogProductLineTotal(product), 0)),
+        total: roundMoney(products.reduce((sum, product) => sum + catalogProductLineTotal(product, incGst), 0)),
         items: products.length,
       }
     })

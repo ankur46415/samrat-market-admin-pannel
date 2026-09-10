@@ -36,6 +36,7 @@ import {
   catalogProductGstPercent,
   catalogProductOrderId,
   catalogProductSalePrice,
+  catalogProductLineTotal,
   formatMarginPercent,
   gstLabel,
   itemsTotalForOrder,
@@ -380,6 +381,25 @@ function CatalogCard({
 }
 
 // ─── Product Detail Row ───────────────────────────────────────────────────────
+function IncGstToggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean
+  onChange: (next: boolean) => void
+}) {
+  return (
+    <label className="inline-flex h-9 cursor-pointer select-none items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm">
+      <Checkbox
+        checked={checked}
+        onCheckedChange={(value) => onChange(value === true)}
+        aria-label="Inc GST"
+      />
+      Inc GST
+    </label>
+  )
+}
+
 function ProductRow({
   product,
   index,
@@ -388,6 +408,7 @@ function ProductRow({
   canEdit,
   gstPercents,
   salePercents,
+  incGst,
   onSelectChange,
   onChange,
   onEdit,
@@ -400,6 +421,7 @@ function ProductRow({
   canEdit: boolean
   gstPercents: number[]
   salePercents: number[]
+  incGst: boolean
   onSelectChange: (checked: boolean) => void
   onChange: (patch: Partial<GstCatalogProduct>) => void
   onEdit: () => void
@@ -411,7 +433,7 @@ function ProductRow({
   const salePrice = catalogProductSalePrice(product)
   const livePercent = salePrice == null ? null : marginPercentFromPrices(product.price, salePrice)
   const inclGst = priceWithGst(product.price, gst)
-  const lineTotal = (Number(product.price) || 0) * (Number(product.moq) || 0)
+  const lineTotal = catalogProductLineTotal(product, incGst)
   const cellInput = "h-8 min-w-[4.5rem] text-sm"
   return (
     <tr className={cn("group border-b border-slate-100 hover:bg-indigo-50/40 transition-colors", selected && "bg-indigo-50/70")}>
@@ -1384,12 +1406,14 @@ function OrderDialog({
   onSave,
   products,
   existingIds,
+  incGst,
 }: {
   open: boolean
   onClose: () => void
   onSave: (order: GstCatalogOrder) => Promise<void>
   products: GstCatalogProduct[]
   existingIds: string[]
+  incGst: boolean
 }) {
   const [orderId, setOrderId] = useState("")
   const [percent, setPercent] = useState("")
@@ -1399,7 +1423,7 @@ function OrderDialog({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
 
-  const itemsTotal = itemsTotalForOrder(products, orderId.trim())
+  const itemsTotal = itemsTotalForOrder(products, orderId.trim(), incGst)
 
   useEffect(() => {
     if (!open) return
@@ -1484,7 +1508,9 @@ function OrderDialog({
             />
           </div>
           <div className="rounded-lg border bg-slate-50 px-3 py-2 text-sm">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Items total (MOQ × Price)</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              {incGst ? "Items total (MOQ × Price)" : "Items total (qty × rate) + GST"}
+            </p>
             <p className="text-lg font-black text-slate-800">₹{itemsTotal.toLocaleString("en-IN")}</p>
             <p className="text-[11px] text-slate-400">Assign products to this Order ID to fill the total.</p>
           </div>
@@ -1576,6 +1602,7 @@ function CatalogDetailView({
   const [orderTagFilter, setOrderTagFilter] = useState("all")
   const [orderIdFilter, setOrderIdFilter] = useState<Set<string>>(new Set())
   const [gstFilter, setGstFilter] = useState("all")
+  const [incGst, setIncGst] = useState(true)
   const [selectedIndexes, setSelectedIndexes] = useState<Set<number>>(new Set())
   const [bulkEditDialogOpen, setBulkEditDialogOpen] = useState(false)
   const [bulkFields, setBulkFields] = useState<BulkEditFields>(EMPTY_BULK_FIELDS)
@@ -1634,6 +1661,7 @@ function CatalogDetailView({
       })
       await downloadCatalogGroupPdf(
         { ...catalog, products: visible, orders },
+        incGst
       )
     } finally {
       setDownloadingPdf(false)
@@ -1955,7 +1983,7 @@ function CatalogDetailView({
   const totalsByOrder = new Map<string, number>()
   filtered.forEach(({ product }) => {
     const id = catalogProductOrderId(product) || NO_ORDER_ID
-    totalsByOrder.set(id, (totalsByOrder.get(id) ?? 0) + product.price * product.moq)
+    totalsByOrder.set(id, (totalsByOrder.get(id) ?? 0) + catalogProductLineTotal(product, incGst))
   })
   const orderSummaries = [...totalsByOrder.entries()].map(([id, total]) => {
     const resolved = resolvedOrderDiscount(orderById.get(id), total)
@@ -1994,6 +2022,7 @@ function CatalogDetailView({
             </Badge>
           )}
           <EditModeToggle canEdit={canEdit} onRequestEdit={onRequestEdit} onExitEdit={onExitEdit} />
+          <IncGstToggle checked={incGst} onChange={setIncGst} />
           <Button
             variant="outline"
             size="sm"
@@ -2099,7 +2128,7 @@ function CatalogDetailView({
           { label: "Visible products", value: String(filtered.length), icon: Package, color: "#0d9488" },
           { label: "Min Price", value: products.length > 0 ? `₹${Math.min(...products.map((p) => p.price))}` : "—", icon: IndianRupee, color: "#10b981" },
           { label: "Max Price", value: products.length > 0 ? `₹${Math.max(...products.map((p) => p.price))}` : "—", icon: IndianRupee, color: "#f97316" },
-          { label: "MOQ × Price Total", value: `₹${filteredMoqTotal.toLocaleString("en-IN")}`, icon: Layers, color: color },
+          { label: incGst ? "MOQ × Price Total" : "(Qty × Rate) + GST", value: `₹${filteredMoqTotal.toLocaleString("en-IN")}`, icon: Layers, color: color },
         ].map((kpi) => {
           const Icon = kpi.icon
           return (
@@ -2201,6 +2230,7 @@ function CatalogDetailView({
             ))}
           </SelectContent>
         </Select>
+        <IncGstToggle checked={incGst} onChange={setIncGst} />
         {canEdit && tableEditing ? (
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={cancelTableEdit} disabled={saving}>
@@ -2315,7 +2345,9 @@ function CatalogDetailView({
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">GST %</th>
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Price + GST</th>
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">MOQ</th>
-                  <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Total</th>
+                  <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Total{incGst ? "" : " +GST"}
+                  </th>
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Unit</th>
                   <th className="py-3 pl-3 pr-4 text-xs font-bold uppercase tracking-wider text-slate-400 text-right">Actions</th>
                 </tr>
@@ -2331,6 +2363,7 @@ function CatalogDetailView({
                       canEdit={canEdit}
                       gstPercents={gstPercents}
                       salePercents={salePercents}
+                      incGst={incGst}
                       onSelectChange={(checked) => toggleSelect(index, checked)}
                       onChange={(patch) => patchProductAt(index, patch)}
                       onEdit={() => {
@@ -2365,6 +2398,7 @@ function CatalogDetailView({
         onClose={() => setOrderDialogOpen(false)}
         products={products}
         existingIds={createdOrderIds}
+        incGst={incGst}
         onSave={async (order) => {
           await syncOrders([...orders, order])
           setOrderIdFilter(new Set([order.order_id]))

@@ -5,6 +5,7 @@ import {
   catalogProductGstPercent,
   catalogProductOrderId,
   catalogProductSalePrice,
+  catalogProductLineTotal,
   gstLabel,
   NO_ORDER_ID,
   priceWithGst,
@@ -44,7 +45,10 @@ function safeFileName(name: string): string {
 }
 
 /** Download PDF for a catalog group (filtered products + each order's saved discount). */
-export async function downloadCatalogGroupPdf(catalog: GstPurchaseCatalog): Promise<void> {
+export async function downloadCatalogGroupPdf(
+  catalog: GstPurchaseCatalog,
+  incGst = true
+): Promise<void> {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" })
   const pageW = doc.internal.pageSize.getWidth()
   const pageH = doc.internal.pageSize.getHeight()
@@ -92,12 +96,12 @@ export async function downloadCatalogGroupPdf(catalog: GstPurchaseCatalog): Prom
   doc.text(pdfSafe(metaParts.join("  |  ")), 14, 43)
   doc.setTextColor(0)
 
-  const totalMoqValue = catalog.products.reduce((sum, p) => sum + p.price * p.moq, 0)
+  const totalMoqValue = catalog.products.reduce((sum, p) => sum + catalogProductLineTotal(p, incGst), 0)
   const orderMap = new Map((catalog.orders ?? []).map((o) => [o.order_id, o]))
   const byOrder = new Map<string, number>()
   catalog.products.forEach((p) => {
     const id = catalogProductOrderId(p) || NO_ORDER_ID
-    byOrder.set(id, (byOrder.get(id) ?? 0) + p.price * p.moq)
+    byOrder.set(id, (byOrder.get(id) ?? 0) + catalogProductLineTotal(p, incGst))
   })
   let discountAmount = 0
   const orderLines: string[] = []
@@ -136,7 +140,7 @@ export async function downloadCatalogGroupPdf(catalog: GstPurchaseCatalog): Prom
         pdfSafe(gstLabel(gst)),
         formatPdfPrice(priceWithGst(p.price, gst)),
         String(p.moq),
-        formatPdfPrice(p.price * p.moq),
+        formatPdfPrice(catalogProductLineTotal(p, incGst)),
         pdfSafe(p.unit ?? "-"),
       ]
     }),
@@ -165,7 +169,11 @@ export async function downloadCatalogGroupPdf(catalog: GstPurchaseCatalog): Prom
     doc.setFontSize(10)
     doc.setFont("helvetica", "bold")
     doc.text(
-      pdfSafe(`Total MOQ x Price: ${formatPdfPrice(totalMoqValue)}`),
+      pdfSafe(
+        incGst
+          ? `Total MOQ x Price: ${formatPdfPrice(totalMoqValue)}`
+          : `Total (qty x rate) + GST: ${formatPdfPrice(totalMoqValue)}`
+      ),
       pageW - 14,
       tableEndY,
       { align: "right" }
