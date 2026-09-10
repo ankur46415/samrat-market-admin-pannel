@@ -49,6 +49,70 @@ export function catalogProductOrderId(product: GstCatalogProduct): string {
 
 export const NO_ORDER_ID = "none"
 
+export function roundMoney(n: number): number {
+  return Math.round((Number(n) || 0) * 100) / 100
+}
+
+export interface GstCatalogOrder {
+  order_id: string
+  /** Last edited field — used to keep % and off in sync when item totals change */
+  discount_mode?: "percent" | "off"
+  discount_percent?: number
+  discount_off?: number
+}
+
+export function sanitizeGstCatalogOrder(order: GstCatalogOrder): GstCatalogOrder | null {
+  const order_id = String(order.order_id ?? "").trim()
+  if (!order_id || order_id === NO_ORDER_ID) return null
+  const next: GstCatalogOrder = { order_id }
+  const pct = Number(order.discount_percent)
+  const off = Number(order.discount_off)
+  if (Number.isFinite(pct) && pct > 0) next.discount_percent = roundMoney(Math.min(pct, 100))
+  if (Number.isFinite(off) && off > 0) next.discount_off = roundMoney(off)
+  if (order.discount_mode === "off" || order.discount_mode === "percent") next.discount_mode = order.discount_mode
+  return next
+}
+
+export function itemsTotalForOrder(products: GstCatalogProduct[], orderId: string): number {
+  const id = String(orderId).trim()
+  return roundMoney(
+    products.reduce((sum, p) => {
+      const pid = catalogProductOrderId(p)
+      if (id === NO_ORDER_ID) return pid ? sum : sum + p.price * p.moq
+      return pid === id ? sum + p.price * p.moq : sum
+    }, 0)
+  )
+}
+
+export function percentFromOff(total: number, off: number): number {
+  if (!Number.isFinite(total) || total <= 0) return 0
+  const o = Math.min(Math.max(Number(off) || 0, 0), total)
+  return roundMoney((o / total) * 100)
+}
+
+export function offFromPercent(total: number, percent: number): number {
+  if (!Number.isFinite(total) || total <= 0) return 0
+  const p = Math.min(Math.max(Number(percent) || 0, 0), 100)
+  return roundMoney(total * (p / 100))
+}
+
+export function resolvedOrderDiscount(
+  order: GstCatalogOrder | undefined,
+  itemsTotal: number
+): { percent: number; off: number; balance: number } {
+  const total = roundMoney(itemsTotal)
+  if (total <= 0 || !order) {
+    return { percent: 0, off: 0, balance: total }
+  }
+  if (order.discount_mode === "off") {
+    const off = Math.min(roundMoney(Number(order.discount_off) || 0), total)
+    return { percent: percentFromOff(total, off), off, balance: roundMoney(total - off) }
+  }
+  const percent = Math.min(100, Math.max(0, Number(order.discount_percent) || 0))
+  const off = offFromPercent(total, percent)
+  return { percent, off, balance: roundMoney(total - off) }
+}
+
 export function catalogProductGstPercent(product: GstCatalogProduct): number | undefined {
   const n = Number(product.gst_percent)
   return Number.isFinite(n) && n >= 0 ? n : undefined
@@ -116,6 +180,8 @@ export interface GstPurchaseCatalog {
   source?: string
   color?: string
   products: GstCatalogProduct[]
+  /** Created orders — each has its own persisted discount */
+  orders?: GstCatalogOrder[]
   createdAt: Date
   updatedAt: Date
 }

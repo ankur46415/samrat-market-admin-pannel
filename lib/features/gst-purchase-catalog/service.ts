@@ -19,7 +19,14 @@ import {
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import type { GstPurchaseCatalog, GstCatalogProduct } from "./models"
-import { DEFAULT_GST_PERCENTS, DEFAULT_SALE_MARGIN_PERCENTS, normalizeGstPercents, normalizeSaleMarginPercents, sanitizeGstCatalogProduct } from "./models"
+import {
+  DEFAULT_GST_PERCENTS,
+  DEFAULT_SALE_MARGIN_PERCENTS,
+  normalizeGstPercents,
+  normalizeSaleMarginPercents,
+  sanitizeGstCatalogOrder,
+  sanitizeGstCatalogProduct,
+} from "./models"
 
 function normalizeGstCatalogProduct(p: GstCatalogProduct): GstCatalogProduct {
   const raw = p as GstCatalogProduct & {
@@ -62,6 +69,9 @@ function fromFirestore(id: string, data: Record<string, unknown>): GstPurchaseCa
     source: (data.source as string) ?? "",
     color: (data.color as string) ?? "#0d9488",
     products: ((data.products as GstCatalogProduct[]) ?? []).map(normalizeGstCatalogProduct),
+    orders: ((data.orders as GstPurchaseCatalog["orders"]) ?? [])
+      .map((o) => sanitizeGstCatalogOrder(o))
+      .filter((o): o is NonNullable<typeof o> => o != null),
     createdAt: toDate(data.createdAt),
     updatedAt: toDate(data.updatedAt),
   }
@@ -93,6 +103,7 @@ export async function addGstPurchaseCatalog(
   const ref = await addDoc(collection(db, COL), {
     ...data,
     products: (data.products ?? []).map(sanitizeGstCatalogProduct),
+    orders: (data.orders ?? []).map(sanitizeGstCatalogOrder).filter((o): o is NonNullable<typeof o> => o != null),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })
@@ -109,6 +120,9 @@ export async function updateGstPurchaseCatalog(
   }
   if (data.products) {
     payload.products = data.products.map(sanitizeGstCatalogProduct)
+  }
+  if (data.orders) {
+    payload.orders = data.orders.map(sanitizeGstCatalogOrder).filter((o): o is NonNullable<typeof o> => o != null)
   }
   await updateDoc(doc(db, COL, id), payload as UpdateData<DocumentData>)
 }

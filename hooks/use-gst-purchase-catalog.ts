@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import type { GstPurchaseCatalog, GstCatalogProduct } from "@/lib/features/gst-purchase-catalog/models"
+import type { GstPurchaseCatalog, GstCatalogProduct, GstCatalogOrder } from "@/lib/features/gst-purchase-catalog/models"
 import { DEFAULT_GST_PERCENTS, DEFAULT_SALE_MARGIN_PERCENTS } from "@/lib/features/gst-purchase-catalog/models"
 import {
   subscribeGstPurchaseCatalogs,
@@ -59,7 +59,7 @@ export function useGstPurchaseCatalog() {
 
   const createCatalog = useCallback(
     async (name: string, source: string, color: string, products: GstCatalogProduct[]) => {
-      await addGstPurchaseCatalog({ name, source, color, products })
+      await addGstPurchaseCatalog({ name, source, color, products, orders: [] })
     },
     []
   )
@@ -75,6 +75,10 @@ export function useGstPurchaseCatalog() {
     await updateGstPurchaseCatalog(id, { products })
   }, [])
 
+  const updateCatalogOrders = useCallback(async (id: string, orders: GstCatalogOrder[]) => {
+    await updateGstPurchaseCatalog(id, { orders })
+  }, [])
+
   const removeCatalog = useCallback(async (id: string) => {
     await deleteGstPurchaseCatalog(id)
   }, [])
@@ -86,6 +90,7 @@ export function useGstPurchaseCatalog() {
     createCatalog,
     updateCatalogMeta,
     updateCatalogProducts,
+    updateCatalogOrders,
     removeCatalog,
     gstPercents,
     updateGstPercents,

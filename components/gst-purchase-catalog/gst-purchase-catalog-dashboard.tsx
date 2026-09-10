@@ -28,7 +28,7 @@ import {
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { useGstPurchaseCatalog } from "@/hooks/use-gst-purchase-catalog"
-import type { GstCatalogProduct, GstPurchaseCatalog } from "@/lib/features/gst-purchase-catalog/models"
+import type { GstCatalogProduct, GstCatalogOrder, GstPurchaseCatalog } from "@/lib/features/gst-purchase-catalog/models"
 import {
   catalogProductOrderTag,
   catalogProductGstPercent,
@@ -36,12 +36,17 @@ import {
   catalogProductSalePrice,
   formatMarginPercent,
   gstLabel,
+  itemsTotalForOrder,
   marginPercentFromPrices,
   matchingSaleMarginPercent,
   NO_ORDER_ID,
   normalizeGstPercents,
   normalizeSaleMarginPercents,
+  offFromPercent,
+  percentFromOff,
   priceWithGst,
+  resolvedOrderDiscount,
+  roundMoney,
   salePriceFromMarginPercent,
 } from "@/lib/features/gst-purchase-catalog/models"
 import { downloadCatalogGroupPdf } from "@/lib/features/gst-purchase-catalog/pdf-export"
@@ -668,6 +673,7 @@ function ProductDialog({
   initial,
   gstPercents,
   salePercents,
+  knownOrderIds,
 }: {
   open: boolean
   onClose: () => void
@@ -675,6 +681,7 @@ function ProductDialog({
   initial?: GstCatalogProduct | null
   gstPercents: number[]
   salePercents: number[]
+  knownOrderIds: string[]
 }) {
   const [productName, setProductName] = useState(initial?.product_name ?? "")
   const [orderTag, setOrderTag] = useState(initial?.order_tag ?? "NA")
@@ -768,13 +775,35 @@ function ProductDialog({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="prod-order-id">Order ID</Label>
-            <Input
-              id="prod-order-id"
-              placeholder="e.g. PO-1045"
-              value={orderId}
-              onChange={(e) => setOrderId(e.target.value)}
-            />
-            <p className="text-[11px] text-slate-400">Used to group and filter products. Select one or more Order IDs above the list, or ALL.</p>
+            {knownOrderIds.length > 0 ? (
+              <Select
+                value={orderId.trim() || "none"}
+                onValueChange={(v) => setOrderId(v === "none" ? "" : v)}
+              >
+                <SelectTrigger id="prod-order-id" className="h-9">
+                  <SelectValue placeholder="Select order" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No order</SelectItem>
+                  {knownOrderIds.map((id) => (
+                    <SelectItem key={id} value={id}>
+                      {id}
+                    </SelectItem>
+                  ))}
+                  {orderId.trim() && !knownOrderIds.includes(orderId.trim()) ? (
+                    <SelectItem value={orderId.trim()}>{orderId.trim()}</SelectItem>
+                  ) : null}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                id="prod-order-id"
+                placeholder="Create an order first, or type an ID"
+                value={orderId}
+                onChange={(e) => setOrderId(e.target.value)}
+              />
+            )}
+            <p className="text-[11px] text-slate-400">Create orders above, then assign products to an order. Discount is saved on the order.</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -1109,22 +1138,259 @@ function ConfirmDeleteDialog({
   )
 }
 
+function OrderDiscountRow({
+  orderId,
+  order,
+  itemsTotal,
+  disabled,
+  onSave,
+}: {
+  orderId: string
+  order?: GstCatalogOrder
+  itemsTotal: number
+  disabled?: boolean
+  onSave: (mode: "percent" | "off", percent: number, off: number) => void
+}) {
+  const resolved = resolvedOrderDiscount(order, itemsTotal)
+  const [percent, setPercent] = useState(resolved.percent ? String(resolved.percent) : "")
+  const [off, setOff] = useState(resolved.off ? String(resolved.off) : "")
+
+  useEffect(() => {
+    setPercent(resolved.percent ? String(resolved.percent) : "")
+    setOff(resolved.off ? String(resolved.off) : "")
+  }, [orderId, resolved.percent, resolved.off])
+
+  const commitPercent = (raw: string) => {
+    const n = Number(raw)
+    const pct = Number.isFinite(n) && n > 0 ? Math.min(n, 100) : 0
+    const nextOff = offFromPercent(itemsTotal, pct)
+    setPercent(pct ? String(pct) : "")
+    setOff(nextOff ? String(nextOff) : "")
+    onSave("percent", pct, nextOff)
+  }
+
+  const commitOff = (raw: string) => {
+    const n = Number(raw)
+    const nextOff = Number.isFinite(n) && n > 0 ? Math.min(n, itemsTotal) : 0
+    const pct = percentFromOff(itemsTotal, nextOff)
+    setOff(nextOff ? String(nextOff) : "")
+    setPercent(pct ? String(pct) : "")
+    onSave("off", pct, nextOff)
+  }
+
+  return (
+    <tr className="border-t border-amber-100/80">
+      <td className="py-2 pr-3 font-mono text-xs font-semibold text-teal-800">
+        {orderId === NO_ORDER_ID ? "No ID" : orderId}
+      </td>
+      <td className="py-2 pr-3 font-semibold">₹{itemsTotal.toLocaleString("en-IN")}</td>
+      <td className="py-2 pr-3">
+        <Input
+          type="number"
+          min={0}
+          max={100}
+          className="h-8 w-24 bg-white"
+          disabled={disabled}
+          value={percent}
+          onChange={(e) => {
+            const raw = e.target.value
+            setPercent(raw)
+            const n = Number(raw)
+            if (Number.isFinite(n) && n >= 0) setOff(String(offFromPercent(itemsTotal, n)))
+          }}
+          onBlur={(e) => commitPercent(e.target.value)}
+        />
+      </td>
+      <td className="py-2 pr-3">
+        <Input
+          type="number"
+          min={0}
+          className="h-8 w-28 bg-white"
+          disabled={disabled}
+          value={off}
+          onChange={(e) => {
+            const raw = e.target.value
+            setOff(raw)
+            const n = Number(raw)
+            if (Number.isFinite(n) && n >= 0) setPercent(String(percentFromOff(itemsTotal, n)))
+          }}
+          onBlur={(e) => commitOff(e.target.value)}
+        />
+      </td>
+      <td className="py-2 font-black text-amber-900">₹{resolved.balance.toLocaleString("en-IN")}</td>
+    </tr>
+  )
+}
+
+function OrderDialog({
+  open,
+  onClose,
+  onSave,
+  products,
+  existingIds,
+}: {
+  open: boolean
+  onClose: () => void
+  onSave: (order: GstCatalogOrder) => Promise<void>
+  products: GstCatalogProduct[]
+  existingIds: string[]
+}) {
+  const [orderId, setOrderId] = useState("")
+  const [percent, setPercent] = useState("")
+  const [off, setOff] = useState("")
+  const [mode, setMode] = useState<"percent" | "off">("percent")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState("")
+
+  const itemsTotal = itemsTotalForOrder(products, orderId.trim())
+
+  useEffect(() => {
+    if (!open) return
+    setOrderId("")
+    setPercent("")
+    setOff("")
+    setMode("percent")
+    setError("")
+  }, [open])
+
+  const applyPercent = (raw: string) => {
+    setMode("percent")
+    setPercent(raw)
+    const n = Number(raw)
+    if (!Number.isFinite(n) || n < 0) {
+      setOff("")
+      return
+    }
+    setOff(itemsTotal > 0 ? String(offFromPercent(itemsTotal, n)) : "")
+  }
+
+  const applyOff = (raw: string) => {
+    setMode("off")
+    setOff(raw)
+    const n = Number(raw)
+    if (!Number.isFinite(n) || n < 0) {
+      setPercent("")
+      return
+    }
+    setPercent(itemsTotal > 0 ? String(percentFromOff(itemsTotal, n)) : "")
+  }
+
+  const handleSave = async () => {
+    const id = orderId.trim()
+    if (!id) { setError("Order ID required"); return }
+    if (existingIds.some((x) => x.toLowerCase() === id.toLowerCase())) {
+      setError("This Order ID already exists")
+      return
+    }
+    setSaving(true)
+    setError("")
+    try {
+      const pct = Number(percent)
+      const offN = Number(off)
+      await onSave({
+        order_id: id,
+        discount_mode: mode,
+        ...(Number.isFinite(pct) && pct > 0 ? { discount_percent: roundMoney(pct) } : {}),
+        ...(Number.isFinite(offN) && offN > 0 ? { discount_off: roundMoney(offN) } : {}),
+      })
+      onClose()
+    } catch {
+      setError("Failed to save order")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Create order</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          {error ? (
+            <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              {error}
+            </div>
+          ) : null}
+          <div className="space-y-1.5">
+            <Label htmlFor="new-order-id">Order ID *</Label>
+            <Input
+              id="new-order-id"
+              placeholder="e.g. PO-1045"
+              value={orderId}
+              onChange={(e) => setOrderId(e.target.value)}
+            />
+          </div>
+          <div className="rounded-lg border bg-slate-50 px-3 py-2 text-sm">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Items total (MOQ × Price)</p>
+            <p className="text-lg font-black text-slate-800">₹{itemsTotal.toLocaleString("en-IN")}</p>
+            <p className="text-[11px] text-slate-400">Assign products to this Order ID to fill the total.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="new-order-pct">Discount %</Label>
+              <Input
+                id="new-order-pct"
+                type="number"
+                min={0}
+                max={100}
+                placeholder="0"
+                value={percent}
+                onChange={(e) => applyPercent(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="new-order-off">Off value (₹)</Label>
+              <Input
+                id="new-order-off"
+                type="number"
+                min={0}
+                placeholder="0"
+                value={off}
+                onChange={(e) => applyOff(e.target.value)}
+              />
+            </div>
+          </div>
+          <p className="text-sm font-semibold text-amber-900">
+            Balance: ₹{roundMoney(Math.max(0, itemsTotal - (Number(off) || 0))).toLocaleString("en-IN")}
+          </p>
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">Cancel</Button>
+          </DialogClose>
+          <Button onClick={() => void handleSave()} disabled={saving}>
+            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Create order
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── Catalog Detail View (Products table) ─────────────────────────────────────
 function CatalogDetailView({
   catalog,
   onBack,
   onUpdateProducts,
+  onUpdateOrders,
   gstPercents,
   salePercents,
 }: {
   catalog: GstPurchaseCatalog
   onBack: () => void
   onUpdateProducts: (products: GstCatalogProduct[]) => Promise<void>
+  onUpdateOrders: (orders: GstCatalogOrder[]) => Promise<void>
   gstPercents: number[]
   salePercents: number[]
 }) {
   const [products, setProducts] = useState<GstCatalogProduct[]>(catalog.products)
+  const [orders, setOrders] = useState<GstCatalogOrder[]>(catalog.orders ?? [])
   const [productDialogOpen, setProductDialogOpen] = useState(false)
+  const [orderDialogOpen, setOrderDialogOpen] = useState(false)
   const [jsonImportOpen, setJsonImportOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<{ product: GstCatalogProduct; index: number } | null>(null)
   const [deletingIndex, setDeletingIndex] = useState<number | null>(null)
@@ -1132,7 +1398,6 @@ function CatalogDetailView({
   const [search, setSearch] = useState("")
   const [orderTagFilter, setOrderTagFilter] = useState("all")
   const [orderIdFilter, setOrderIdFilter] = useState<Set<string>>(new Set())
-  const [discountPercent, setDiscountPercent] = useState("")
   const [gstFilter, setGstFilter] = useState("all")
   const [selectedIndexes, setSelectedIndexes] = useState<Set<number>>(new Set())
   const [bulkEditDialogOpen, setBulkEditDialogOpen] = useState(false)
@@ -1158,6 +1423,10 @@ function CatalogDetailView({
     if (!tableEditing) setProducts(catalog.products)
   }, [catalog.products, tableEditing])
 
+  useEffect(() => {
+    setOrders(catalog.orders ?? [])
+  }, [catalog.orders])
+
   const handleDownloadPdf = async () => {
     setDownloadingPdf(true)
     try {
@@ -1171,11 +1440,8 @@ function CatalogDetailView({
         if (gstFilter === "none") return gst == null
         return gst != null && String(gst) === gstFilter
       })
-      const pct = Number(discountPercent)
-      const discount = Number.isFinite(pct) && pct > 0 ? Math.min(pct, 100) : 0
       await downloadCatalogGroupPdf(
-        { ...catalog, products: visible },
-        { discountPercent: discount }
+        { ...catalog, products: visible, orders },
       )
     } finally {
       setDownloadingPdf(false)
@@ -1193,6 +1459,21 @@ function CatalogDetailView({
       console.error(e)
       setProducts(previous)
       toast.error(e instanceof Error ? e.message : "Failed to save products")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const syncOrders = async (updated: GstCatalogOrder[]) => {
+    const previous = orders
+    setOrders(updated)
+    setSaving(true)
+    try {
+      await onUpdateOrders(updated)
+    } catch (e) {
+      console.error(e)
+      setOrders(previous)
+      toast.error(e instanceof Error ? e.message : "Failed to save orders")
     } finally {
       setSaving(false)
     }
@@ -1247,6 +1528,10 @@ function CatalogDetailView({
 
   const availableOrderIds = useMemo(() => {
     const ids = new Set<string>()
+    orders.forEach((o) => {
+      const id = String(o.order_id ?? "").trim()
+      if (id) ids.add(id)
+    })
     products.forEach((p) => {
       const id = catalogProductOrderId(p)
       ids.add(id || NO_ORDER_ID)
@@ -1256,7 +1541,18 @@ function CatalogDetailView({
       if (b === NO_ORDER_ID) return -1
       return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
     })
-  }, [products])
+  }, [products, orders])
+
+  const createdOrderIds = useMemo(
+    () => orders.map((o) => o.order_id).filter(Boolean),
+    [orders]
+  )
+
+  const orderById = useMemo(() => {
+    const map = new Map<string, GstCatalogOrder>()
+    orders.forEach((o) => map.set(o.order_id, o))
+    return map
+  }, [orders])
 
   const orderIdAllSelected = orderIdFilter.size === 0
 
@@ -1439,11 +1735,38 @@ function CatalogDetailView({
     )
   }
 
-  const filteredMoqTotal = filtered.reduce((sum, { product }) => sum + product.price * product.moq, 0)
-  const discountPct = Number(discountPercent)
-  const validDiscount = Number.isFinite(discountPct) && discountPct > 0 ? Math.min(discountPct, 100) : 0
-  const discountAmount = Math.round(filteredMoqTotal * (validDiscount / 100) * 100) / 100
-  const discountedBalance = Math.round((filteredMoqTotal - discountAmount) * 100) / 100
+  const saveOrderDiscount = async (
+    orderId: string,
+    mode: "percent" | "off",
+    percent: number,
+    off: number
+  ) => {
+    if (!orderId || orderId === NO_ORDER_ID) return
+    const nextOrder: GstCatalogOrder = {
+      order_id: orderId,
+      discount_mode: mode,
+      ...(percent > 0 ? { discount_percent: roundMoney(percent) } : {}),
+      ...(off > 0 ? { discount_off: roundMoney(off) } : {}),
+    }
+    const exists = orders.some((o) => o.order_id === orderId)
+    const updated = exists
+      ? orders.map((o) => (o.order_id === orderId ? nextOrder : o))
+      : [...orders, nextOrder]
+    await syncOrders(updated)
+  }
+
+  const totalsByOrder = new Map<string, number>()
+  filtered.forEach(({ product }) => {
+    const id = catalogProductOrderId(product) || NO_ORDER_ID
+    totalsByOrder.set(id, (totalsByOrder.get(id) ?? 0) + product.price * product.moq)
+  })
+  const orderSummaries = [...totalsByOrder.entries()].map(([id, total]) => {
+    const resolved = resolvedOrderDiscount(orderById.get(id), total)
+    return { id, total: roundMoney(total), ...resolved }
+  })
+  const filteredMoqTotal = roundMoney(orderSummaries.reduce((sum, o) => sum + o.total, 0))
+  const discountAmount = roundMoney(orderSummaries.reduce((sum, o) => sum + o.off, 0))
+  const discountedBalance = roundMoney(orderSummaries.reduce((sum, o) => sum + o.balance, 0))
 
   return (
     <div className="space-y-6">
@@ -1490,6 +1813,15 @@ function CatalogDetailView({
           <Button
             variant="outline"
             size="sm"
+            onClick={() => setOrderDialogOpen(true)}
+            className="gap-2 border-teal-200 text-teal-800 hover:bg-teal-50"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Create order
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setJsonImportOpen(true)}
             className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
           >
@@ -1508,55 +1840,59 @@ function CatalogDetailView({
         </div>
       </div>
 
-      {/* Order ID chips */}
-      {availableOrderIds.length > 0 && (
-        <div className="rounded-xl border border-teal-100 bg-teal-50/40 px-4 py-3 space-y-2">
+      {/* Orders */}
+      <div className="rounded-xl border border-teal-100 bg-teal-50/40 px-4 py-3 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-teal-800">
             <Hash className="h-3.5 w-3.5" />
-            Order ID
+            Orders
             <span className="font-medium normal-case tracking-normal text-teal-600">
-              — tap ALL, or one / several IDs
+              — ALL, or select one / several. Each order keeps its own discount.
             </span>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => toggleOrderIdFilter("all")}
-              className={cn(
-                "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
-                orderIdAllSelected
-                  ? "border-teal-600 bg-teal-600 text-white"
-                  : "border-teal-200 bg-white text-teal-800 hover:bg-teal-50"
-              )}
-            >
-              ALL
-            </button>
-            {availableOrderIds.map((id) => {
-              const selected = !orderIdAllSelected && orderIdFilter.has(id)
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => toggleOrderIdFilter(id)}
-                  className={cn(
-                    "rounded-full border px-3 py-1 text-xs font-semibold font-mono transition-colors",
-                    selected
-                      ? "border-teal-600 bg-teal-600 text-white"
-                      : "border-teal-200 bg-white text-teal-800 hover:bg-teal-50"
-                  )}
-                >
-                  {id === NO_ORDER_ID ? "No ID" : id}
-                </button>
-              )
-            })}
-          </div>
+          <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setOrderDialogOpen(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            New order
+          </Button>
         </div>
-      )}
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => toggleOrderIdFilter("all")}
+            className={cn(
+              "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
+              orderIdAllSelected
+                ? "border-teal-600 bg-teal-600 text-white"
+                : "border-teal-200 bg-white text-teal-800 hover:bg-teal-50"
+            )}
+          >
+            ALL
+          </button>
+          {availableOrderIds.map((id) => {
+            const selected = !orderIdAllSelected && orderIdFilter.has(id)
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => toggleOrderIdFilter(id)}
+                className={cn(
+                  "rounded-full border px-3 py-1 text-xs font-semibold font-mono transition-colors",
+                  selected
+                    ? "border-teal-600 bg-teal-600 text-white"
+                    : "border-teal-200 bg-white text-teal-800 hover:bg-teal-50"
+                )}
+              >
+                {id === NO_ORDER_ID ? "No ID" : id}
+              </button>
+            )
+          })}
+        </div>
+      </div>
 
       {/* KPI bar */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
-          { label: "Total Products", value: String(orderIdAllSelected ? products.length : filtered.length), icon: Package, color: "#0d9488" },
+          { label: "Visible products", value: String(filtered.length), icon: Package, color: "#0d9488" },
           { label: "Min Price", value: products.length > 0 ? `₹${Math.min(...products.map((p) => p.price))}` : "—", icon: IndianRupee, color: "#10b981" },
           { label: "Max Price", value: products.length > 0 ? `₹${Math.max(...products.map((p) => p.price))}` : "—", icon: IndianRupee, color: "#f97316" },
           { label: "MOQ × Price Total", value: `₹${filteredMoqTotal.toLocaleString("en-IN")}`, icon: Layers, color: color },
@@ -1572,30 +1908,51 @@ function CatalogDetailView({
             </div>
           )
         })}
-        <div className="rounded-xl border border-amber-100 bg-amber-50/50 p-4 shadow-sm col-span-2 lg:col-span-1">
-          <div className="flex items-center gap-2 mb-2">
-            <Percent className="h-3.5 w-3.5 text-amber-600" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Discount</span>
+      </div>
+
+      <div className="rounded-xl border border-amber-100 bg-amber-50/60 p-4 shadow-sm space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Percent className="h-3.5 w-3.5 text-amber-600" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Order discounts (saved)</span>
+            </div>
+            <p className="text-xs text-slate-500">Edit % or off value — the other field updates. Each order has its own discount.</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              min={0}
-              max={100}
-              placeholder="0"
-              className="h-8 bg-white"
-              value={discountPercent}
-              onChange={(e) => setDiscountPercent(e.target.value)}
-            />
-            <span className="text-sm font-semibold text-slate-500 shrink-0">%</span>
+          <div className="text-right">
+            <p className="text-xs text-slate-500">Off ₹{discountAmount.toLocaleString("en-IN")}</p>
+            <p className="text-xl font-black text-amber-900">Balance ₹{discountedBalance.toLocaleString("en-IN")}</p>
           </div>
-          <p className="mt-2 text-xs text-slate-500">
-            Off: ₹{discountAmount.toLocaleString("en-IN")}
-          </p>
-          <p className="text-lg font-black text-amber-900">
-            Balance ₹{discountedBalance.toLocaleString("en-IN")}
-          </p>
         </div>
+        {orderSummaries.length === 0 ? (
+          <p className="text-sm text-slate-400">No items in this selection.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <th className="py-1 pr-3">Order</th>
+                  <th className="py-1 pr-3">Total</th>
+                  <th className="py-1 pr-3">Discount %</th>
+                  <th className="py-1 pr-3">Off ₹</th>
+                  <th className="py-1">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orderSummaries.map((row) => (
+                  <OrderDiscountRow
+                    key={row.id}
+                    orderId={row.id}
+                    itemsTotal={row.total}
+                    order={orderById.get(row.id)}
+                    disabled={row.id === NO_ORDER_ID}
+                    onSave={(mode, percent, off) => void saveOrderDiscount(row.id, mode, percent, off)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Search + order tag filter */}
@@ -1786,6 +2143,18 @@ function CatalogDetailView({
         initial={editingProduct?.product ?? null}
         gstPercents={gstPercents}
         salePercents={salePercents}
+        knownOrderIds={createdOrderIds}
+      />
+
+      <OrderDialog
+        open={orderDialogOpen}
+        onClose={() => setOrderDialogOpen(false)}
+        products={products}
+        existingIds={createdOrderIds}
+        onSave={async (order) => {
+          await syncOrders([...orders, order])
+          setOrderIdFilter(new Set([order.order_id]))
+        }}
       />
 
       <JsonImportDialog
@@ -2083,6 +2452,7 @@ export function GstPurchaseCatalogDashboard() {
     createCatalog,
     updateCatalogMeta,
     updateCatalogProducts,
+    updateCatalogOrders,
     removeCatalog,
     gstPercents,
     updateGstPercents,
@@ -2127,6 +2497,7 @@ export function GstPurchaseCatalogDashboard() {
           salePercents={saleMarginPercents}
           onBack={() => setSelectedCatalog(null)}
           onUpdateProducts={(products) => updateCatalogProducts(liveCatalog.id, products)}
+          onUpdateOrders={(next) => updateCatalogOrders(liveCatalog.id, next)}
         />
       </div>
     )

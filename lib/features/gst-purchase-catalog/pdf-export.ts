@@ -1,7 +1,16 @@
 import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
 import type { GstPurchaseCatalog } from "./models"
-import { catalogProductGstPercent, catalogProductOrderId, catalogProductSalePrice, gstLabel, priceWithGst } from "./models"
+import {
+  catalogProductGstPercent,
+  catalogProductOrderId,
+  catalogProductSalePrice,
+  gstLabel,
+  NO_ORDER_ID,
+  priceWithGst,
+  resolvedOrderDiscount,
+  roundMoney,
+} from "./models"
 
 /** jsPDF default font (Helvetica) does not support ₹, •, ×, em-dash — use ASCII-safe text */
 function pdfSafe(text: string): string {
@@ -34,11 +43,8 @@ function safeFileName(name: string): string {
   return name.replace(/[^\w\s-]/g, "").replace(/\s+/g, "_").slice(0, 60)
 }
 
-/** Download PDF for a catalog group (optionally filtered products + discount). */
-export async function downloadCatalogGroupPdf(
-  catalog: GstPurchaseCatalog,
-  options?: { discountPercent?: number }
-): Promise<void> {
+/** Download PDF for a catalog group (filtered products + each order's saved discount). */
+export async function downloadCatalogGroupPdf(catalog: GstPurchaseCatalog): Promise<void> {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" })
   const pageW = doc.internal.pageSize.getWidth()
   const pageH = doc.internal.pageSize.getHeight()
@@ -87,12 +93,25 @@ export async function downloadCatalogGroupPdf(
   doc.setTextColor(0)
 
   const totalMoqValue = catalog.products.reduce((sum, p) => sum + p.price * p.moq, 0)
-  const discountPct =
-    options?.discountPercent && Number.isFinite(options.discountPercent) && options.discountPercent > 0
-      ? Math.min(options.discountPercent, 100)
-      : 0
-  const discountAmount = Math.round(totalMoqValue * (discountPct / 100) * 100) / 100
-  const balance = Math.round((totalMoqValue - discountAmount) * 100) / 100
+  const orderMap = new Map((catalog.orders ?? []).map((o) => [o.order_id, o]))
+  const byOrder = new Map<string, number>()
+  catalog.products.forEach((p) => {
+    const id = catalogProductOrderId(p) || NO_ORDER_ID
+    byOrder.set(id, (byOrder.get(id) ?? 0) + p.price * p.moq)
+  })
+  let discountAmount = 0
+  const orderLines: string[] = []
+  byOrder.forEach((total, id) => {
+    const resolved = resolvedOrderDiscount(orderMap.get(id), total)
+    discountAmount += resolved.off
+    if (id !== NO_ORDER_ID && (resolved.off > 0 || resolved.percent > 0)) {
+      orderLines.push(
+        `${id}: ${resolved.percent}% / -${formatPdfPrice(resolved.off)} / bal ${formatPdfPrice(resolved.balance)}`
+      )
+    }
+  })
+  discountAmount = roundMoney(discountAmount)
+  const balance = roundMoney(totalMoqValue - discountAmount)
 
   autoTable(doc, {
     startY: 49,
@@ -145,19 +164,26 @@ export async function downloadCatalogGroupPdf(
       tableEndY,
       { align: "right" }
     )
-    if (discountPct > 0) {
+    if (discountAmount > 0) {
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(8)
+      orderLines.slice(0, 6).forEach((line, idx) => {
+        doc.text(pdfSafe(line), pageW - 14, tableEndY + 5 + idx * 4, { align: "right" })
+      })
+      const extra = Math.min(orderLines.length, 6) * 4
+      doc.setFontSize(10)
       doc.setFont("helvetica", "normal")
       doc.text(
-        pdfSafe(`Discount ${discountPct}%: -${formatPdfPrice(discountAmount)}`),
+        pdfSafe(`Discount: -${formatPdfPrice(discountAmount)}`),
         pageW - 14,
-        tableEndY + 6,
+        tableEndY + extra + 6,
         { align: "right" }
       )
       doc.setFont("helvetica", "bold")
       doc.text(
         pdfSafe(`Balance: ${formatPdfPrice(balance)}`),
         pageW - 14,
-        tableEndY + 12,
+        tableEndY + extra + 12,
         { align: "right" }
       )
     }
