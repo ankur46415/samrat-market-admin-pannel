@@ -24,6 +24,8 @@ import {
   Tags,
   Percent,
   Hash,
+  Lock,
+  Unlock,
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -51,6 +53,7 @@ import {
   salePriceFromMarginPercent,
 } from "@/lib/features/gst-purchase-catalog/models"
 import { downloadCatalogGroupPdf } from "@/lib/features/gst-purchase-catalog/pdf-export"
+import { GstOrderTagPurchaseChart } from "@/components/gst-purchase-catalog/gst-order-tag-purchase-chart"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -62,6 +65,7 @@ import {
   DialogTitle,
   DialogFooter,
   DialogClose,
+  DialogDescription,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -252,18 +256,22 @@ function SyncBadge({ status }: { status: CatalogSyncStatus }) {
 }
 
 // ─── Catalog Group Card ───────────────────────────────────────────────────────
+const GST_CATALOG_EDIT_PASSWORD = "7269"
+
 function CatalogCard({
   catalog,
   onClick,
   onEdit,
   onDelete,
   onDownloadPdf,
+  canEdit,
 }: {
   catalog: GstPurchaseCatalog
   onClick: () => void
   onEdit: () => void
   onDelete: () => void
   onDownloadPdf: () => void
+  canEdit: boolean
 }) {
   const color = catalog.color ?? "#0d9488"
   return (
@@ -307,20 +315,24 @@ function CatalogCard({
             >
               <Download className="h-3.5 w-3.5" />
             </button>
-            <button
-              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
-              onClick={onEdit}
-              title="Edit catalog"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-            <button
-              className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
-              onClick={onDelete}
-              title="Delete catalog"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            {canEdit ? (
+              <>
+                <button
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                  onClick={onEdit}
+                  title="Edit catalog"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                  onClick={onDelete}
+                  title="Delete catalog"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
 
@@ -373,6 +385,7 @@ function ProductRow({
   index,
   selected,
   editing,
+  canEdit,
   gstPercents,
   salePercents,
   onSelectChange,
@@ -384,6 +397,7 @@ function ProductRow({
   index: number
   selected: boolean
   editing: boolean
+  canEdit: boolean
   gstPercents: number[]
   salePercents: number[]
   onSelectChange: (checked: boolean) => void
@@ -404,7 +418,7 @@ function ProductRow({
       <td className="py-3 pl-4 pr-2 w-10">
         <Checkbox
           checked={selected}
-          disabled={editing}
+          disabled={editing || !canEdit}
           onCheckedChange={(checked) => onSelectChange(checked === true)}
           aria-label={`Select ${product.product_name}`}
         />
@@ -548,7 +562,7 @@ function ProductRow({
         )}
       </td>
       <td className="py-3 pl-3 pr-4 text-right">
-        {!editing ? (
+        {canEdit && !editing ? (
           <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button
               className="rounded p-1 text-slate-400 hover:bg-white hover:text-slate-700 hover:shadow-sm transition-all"
@@ -1139,6 +1153,106 @@ function ConfirmDeleteDialog({
   )
 }
 
+function EditModeToggle({
+  canEdit,
+  onRequestEdit,
+  onExitEdit,
+}: {
+  canEdit: boolean
+  onRequestEdit: () => void
+  onExitEdit: () => void
+}) {
+  if (canEdit) {
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        className="gap-2 border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100"
+        onClick={onExitEdit}
+      >
+        <Lock className="h-3.5 w-3.5" />
+        Exit Edit Mode
+      </Button>
+    )
+  }
+  return (
+    <Button variant="outline" size="sm" className="gap-2" onClick={onRequestEdit}>
+      <Unlock className="h-3.5 w-3.5" />
+      Enter Edit Mode
+    </Button>
+  )
+}
+
+function EditModePasswordDialog({
+  open,
+  onClose,
+  onUnlock,
+}: {
+  open: boolean
+  onClose: () => void
+  onUnlock: () => void
+}) {
+  const [password, setPassword] = useState("")
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    if (!open) return
+    setPassword("")
+    setError("")
+  }, [open])
+
+  const submit = () => {
+    if (password === GST_CATALOG_EDIT_PASSWORD) {
+      onUnlock()
+      onClose()
+      return
+    }
+    setError("Incorrect password")
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => { if (!next) onClose() }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Enter Edit Mode</DialogTitle>
+          <DialogDescription>
+            This page is view-only until you unlock it. Enter the edit password to add, change, or delete catalog data.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="space-y-3 py-1"
+          onSubmit={(e) => {
+            e.preventDefault()
+            submit()
+          }}
+        >
+          <div className="space-y-1.5">
+            <Label htmlFor="gst-catalog-edit-password">Password</Label>
+            <Input
+              id="gst-catalog-edit-password"
+              type="password"
+              autoFocus
+              autoComplete="off"
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value)
+                if (error) setError("")
+              }}
+            />
+            {error ? <p className="text-xs font-medium text-red-600">{error}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit">Unlock</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function OrderDiscountRow({
   orderId,
   order,
@@ -1436,6 +1550,9 @@ function CatalogDetailView({
   onUpdateOrders,
   gstPercents,
   salePercents,
+  canEdit,
+  onRequestEdit,
+  onExitEdit,
 }: {
   catalog: GstPurchaseCatalog
   onBack: () => void
@@ -1443,6 +1560,9 @@ function CatalogDetailView({
   onUpdateOrders: (orders: GstCatalogOrder[]) => Promise<void>
   gstPercents: number[]
   salePercents: number[]
+  canEdit: boolean
+  onRequestEdit: () => void
+  onExitEdit: () => void
 }) {
   const [products, setProducts] = useState<GstCatalogProduct[]>(catalog.products)
   const [orders, setOrders] = useState<GstCatalogOrder[]>(catalog.orders ?? [])
@@ -1484,6 +1604,20 @@ function CatalogDetailView({
     if (saving) return
     setOrders(catalog.orders ?? [])
   }, [catalog.orders, saving])
+
+  useEffect(() => {
+    if (canEdit) return
+    setTableEditing(false)
+    setProducts(catalog.products)
+    setProductDialogOpen(false)
+    setOrderDialogOpen(false)
+    setJsonImportOpen(false)
+    setBulkEditDialogOpen(false)
+    setBulkDeleteOpen(false)
+    setDeletingIndex(null)
+    setEditingProduct(null)
+    setSelectedIndexes(new Set())
+  }, [canEdit, catalog.products])
 
   const handleDownloadPdf = async () => {
     setDownloadingPdf(true)
@@ -1859,6 +1993,7 @@ function CatalogDetailView({
               Saving…
             </Badge>
           )}
+          <EditModeToggle canEdit={canEdit} onRequestEdit={onRequestEdit} onExitEdit={onExitEdit} />
           <Button
             variant="outline"
             size="sm"
@@ -1873,33 +2008,37 @@ function CatalogDetailView({
             )}
             Download PDF
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setOrderDialogOpen(true)}
-            className="gap-2 border-teal-200 text-teal-800 hover:bg-teal-50"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Create order
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setJsonImportOpen(true)}
-            className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-          >
-            <FileJson className="h-3.5 w-3.5" />
-            Import JSON
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => { setEditingProduct(null); setProductDialogOpen(true) }}
-            className="gap-2"
-            style={{ backgroundColor: color }}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Add Product
-          </Button>
+          {canEdit ? (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setOrderDialogOpen(true)}
+                className="gap-2 border-teal-200 text-teal-800 hover:bg-teal-50"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Create order
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setJsonImportOpen(true)}
+                className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+              >
+                <FileJson className="h-3.5 w-3.5" />
+                Import JSON
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => { setEditingProduct(null); setProductDialogOpen(true) }}
+                className="gap-2"
+                style={{ backgroundColor: color }}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add Product
+              </Button>
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -1913,10 +2052,12 @@ function CatalogDetailView({
               — ALL, or select one / several. Each order keeps its own discount.
             </span>
           </div>
-          <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setOrderDialogOpen(true)}>
-            <Plus className="h-3.5 w-3.5" />
-            New order
-          </Button>
+          {canEdit ? (
+            <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setOrderDialogOpen(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              New order
+            </Button>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -1980,7 +2121,11 @@ function CatalogDetailView({
               <Percent className="h-3.5 w-3.5 text-amber-600" />
               <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Order discounts (saved)</span>
             </div>
-            <p className="text-xs text-slate-500">Edit % or off — they stay in sync. Round off (±) adjusts the final amount, e.g. +0.02 to make 99.98 into 100.</p>
+            <p className="text-xs text-slate-500">
+              {canEdit
+                ? "Edit % or off — they stay in sync. Round off (±) adjusts the final amount, e.g. +0.02 to make 99.98 into 100."
+                : "View only. Enter Edit Mode to change discounts and round off."}
+            </p>
           </div>
           <div className="text-right">
             <p className="text-xs text-slate-500">Off ₹{discountAmount.toLocaleString("en-IN")}</p>
@@ -2009,7 +2154,7 @@ function CatalogDetailView({
                     orderId={row.id}
                     itemsTotal={row.total}
                     order={orderById.get(row.id)}
-                    disabled={row.id === NO_ORDER_ID}
+                    disabled={!canEdit || row.id === NO_ORDER_ID}
                     onSave={(mode, percent, off, roundOff) => void saveOrderDiscount(row.id, mode, percent, off, roundOff)}
                   />
                 ))}
@@ -2056,7 +2201,7 @@ function CatalogDetailView({
             ))}
           </SelectContent>
         </Select>
-        {tableEditing ? (
+        {canEdit && tableEditing ? (
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={cancelTableEdit} disabled={saving}>
               Cancel
@@ -2066,7 +2211,7 @@ function CatalogDetailView({
               Save Items
             </Button>
           </div>
-        ) : (
+        ) : canEdit ? (
           <Button
             variant="outline"
             size="sm"
@@ -2077,7 +2222,7 @@ function CatalogDetailView({
             <Pencil className="h-3.5 w-3.5" />
             Edit Items
           </Button>
-        )}
+        ) : null}
       </div>
 
       {/* Products table */}
@@ -2094,16 +2239,20 @@ function CatalogDetailView({
               <p className="font-bold text-slate-700">No products yet</p>
               <p className="text-sm text-slate-400 mt-1">Add products manually or import via JSON</p>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setJsonImportOpen(true)} className="gap-2">
-                <FileJson className="h-3.5 w-3.5" />
-                Import JSON
-              </Button>
-              <Button size="sm" onClick={() => setProductDialogOpen(true)} className="gap-2" style={{ backgroundColor: color }}>
-                <Plus className="h-3.5 w-3.5" />
-                Add Product
-              </Button>
-            </div>
+            {canEdit ? (
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setJsonImportOpen(true)} className="gap-2">
+                  <FileJson className="h-3.5 w-3.5" />
+                  Import JSON
+                </Button>
+                <Button size="sm" onClick={() => setProductDialogOpen(true)} className="gap-2" style={{ backgroundColor: color }}>
+                  <Plus className="h-3.5 w-3.5" />
+                  Add Product
+                </Button>
+              </div>
+            ) : (
+              <p className="text-xs font-medium text-slate-400">Enter Edit Mode to add products.</p>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -2112,7 +2261,7 @@ function CatalogDetailView({
                 Editing table — change any item including sale price, then click Save Items.
               </div>
             )}
-            {selectedIndexes.size > 0 && !tableEditing && (
+            {selectedIndexes.size > 0 && !tableEditing && canEdit && (
               <div className="flex flex-wrap items-center gap-3 border-b border-indigo-100 bg-indigo-50/80 px-4 py-3">
                 <span className="text-sm font-semibold text-indigo-900">
                   {selectedIndexes.size} item{selectedIndexes.size === 1 ? "" : "s"} selected
@@ -2152,7 +2301,7 @@ function CatalogDetailView({
                       checked={allFilteredSelected ? true : someFilteredSelected ? "indeterminate" : false}
                       onCheckedChange={(checked) => toggleSelectAllFiltered(checked === true)}
                       aria-label="Select all visible products"
-                      disabled={filtered.length === 0 || tableEditing}
+                      disabled={!canEdit || filtered.length === 0 || tableEditing}
                     />
                   </th>
                   <th className="py-3 pr-2 text-xs font-bold uppercase tracking-wider text-slate-400 w-10">#</th>
@@ -2179,6 +2328,7 @@ function CatalogDetailView({
                       index={i}
                       selected={selectedIndexes.has(index)}
                       editing={tableEditing}
+                      canEdit={canEdit}
                       gstPercents={gstPercents}
                       salePercents={salePercents}
                       onSelectChange={(checked) => toggleSelect(index, checked)}
@@ -2332,9 +2482,11 @@ function CatalogDetailView({
 function SaleMarginPercentsCard({
   percents,
   onSave,
+  canEdit,
 }: {
   percents: number[]
   onSave: (next: number[]) => Promise<void>
+  canEdit: boolean
 }) {
   const [draft, setDraft] = useState("")
   const [saving, setSaving] = useState(false)
@@ -2381,38 +2533,42 @@ function SaleMarginPercentsCard({
               className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-800"
             >
               {formatMarginPercent(percent)}
-              <button
-                type="button"
-                className="rounded-full p-0.5 text-indigo-400 hover:bg-white hover:text-red-500"
-                onClick={() => void removePercent(percent)}
-                disabled={saving}
-                title={`Remove ${formatMarginPercent(percent)}`}
-              >
-                <X className="h-3 w-3" />
-              </button>
+              {canEdit ? (
+                <button
+                  type="button"
+                  className="rounded-full p-0.5 text-indigo-400 hover:bg-white hover:text-red-500"
+                  onClick={() => void removePercent(percent)}
+                  disabled={saving}
+                  title={`Remove ${formatMarginPercent(percent)}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              ) : null}
             </span>
           ))}
         </div>
-        <div className="flex max-w-xs items-center gap-2">
-          <Input
-            type="number"
-            min={1}
-            max={500}
-            placeholder="e.g. 12"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault()
-                void addPercent()
-              }
-            }}
-          />
-          <Button type="button" size="sm" className="gap-1.5 shrink-0" disabled={saving || !draft} onClick={() => void addPercent()}>
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-            Add %
-          </Button>
-        </div>
+        {canEdit ? (
+          <div className="flex max-w-xs items-center gap-2">
+            <Input
+              type="number"
+              min={1}
+              max={500}
+              placeholder="e.g. 12"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  void addPercent()
+                }
+              }}
+            />
+            <Button type="button" size="sm" className="gap-1.5 shrink-0" disabled={saving || !draft} onClick={() => void addPercent()}>
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+              Add %
+            </Button>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   )
@@ -2421,9 +2577,11 @@ function SaleMarginPercentsCard({
 function GstPercentsCard({
   percents,
   onSave,
+  canEdit,
 }: {
   percents: number[]
   onSave: (next: number[]) => Promise<void>
+  canEdit: boolean
 }) {
   const [draft, setDraft] = useState("")
   const [saving, setSaving] = useState(false)
@@ -2470,38 +2628,42 @@ function GstPercentsCard({
               className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-800"
             >
               {gstLabel(percent)}
-              <button
-                type="button"
-                className="rounded-full p-0.5 text-teal-400 hover:bg-white hover:text-red-500"
-                onClick={() => void removePercent(percent)}
-                disabled={saving}
-                title={`Remove ${gstLabel(percent)}`}
-              >
-                <X className="h-3 w-3" />
-              </button>
+              {canEdit ? (
+                <button
+                  type="button"
+                  className="rounded-full p-0.5 text-teal-400 hover:bg-white hover:text-red-500"
+                  onClick={() => void removePercent(percent)}
+                  disabled={saving}
+                  title={`Remove ${gstLabel(percent)}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              ) : null}
             </span>
           ))}
         </div>
-        <div className="flex max-w-xs items-center gap-2">
-          <Input
-            type="number"
-            min={0}
-            max={100}
-            placeholder="e.g. 18"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault()
-                void addPercent()
-              }
-            }}
-          />
-          <Button type="button" size="sm" className="gap-1.5 shrink-0" disabled={saving || !draft} onClick={() => void addPercent()}>
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-            Add %
-          </Button>
-        </div>
+        {canEdit ? (
+          <div className="flex max-w-xs items-center gap-2">
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              placeholder="e.g. 18"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  void addPercent()
+                }
+              }}
+            />
+            <Button type="button" size="sm" className="gap-1.5 shrink-0" disabled={saving || !draft} onClick={() => void addPercent()}>
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+              Add %
+            </Button>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   )
@@ -2529,6 +2691,15 @@ export function GstPurchaseCatalogDashboard() {
   const [editingCatalog, setEditingCatalog] = useState<GstPurchaseCatalog | null>(null)
   const [deletingCatalogId, setDeletingCatalogId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
+  const [canEdit, setCanEdit] = useState(false)
+  const [editPasswordOpen, setEditPasswordOpen] = useState(false)
+
+  useEffect(() => {
+    if (canEdit) return
+    setCatalogDialogOpen(false)
+    setEditingCatalog(null)
+    setDeletingCatalogId(null)
+  }, [canEdit])
 
   // Keep selectedCatalog in sync with live data
   const liveCatalog = selectedCatalog
@@ -2559,9 +2730,17 @@ export function GstPurchaseCatalogDashboard() {
           catalog={liveCatalog}
           gstPercents={gstPercents}
           salePercents={saleMarginPercents}
+          canEdit={canEdit}
+          onRequestEdit={() => setEditPasswordOpen(true)}
+          onExitEdit={() => setCanEdit(false)}
           onBack={() => setSelectedCatalog(null)}
           onUpdateProducts={(products) => updateCatalogProducts(liveCatalog.id, products)}
           onUpdateOrders={(next) => updateCatalogOrders(liveCatalog.id, next)}
+        />
+        <EditModePasswordDialog
+          open={editPasswordOpen}
+          onClose={() => setEditPasswordOpen(false)}
+          onUnlock={() => setCanEdit(true)}
         />
       </div>
     )
@@ -2588,20 +2767,34 @@ export function GstPurchaseCatalogDashboard() {
             <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700 px-3 py-1 font-semibold shadow-sm">
               {catalogs.length} catalog{catalogs.length !== 1 ? "s" : ""}
             </Badge>
+            <Badge variant="outline" className={cn("px-3 py-1 font-semibold shadow-sm", canEdit ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-50 text-slate-600")}>
+              {canEdit ? "Edit mode" : "View only"}
+            </Badge>
           </div>
         </div>
 
-        <Button
-          onClick={() => { setEditingCatalog(null); setCatalogDialogOpen(true) }}
-          className="shrink-0 shadow-lg gap-2 bg-gradient-to-r from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 transition-all duration-300 hover:-translate-y-0.5 border-none"
-        >
-          <Plus className="h-4 w-4" />
-          New Catalog Group
-        </Button>
+        <div className="flex flex-wrap shrink-0 items-center gap-2">
+          <EditModeToggle
+            canEdit={canEdit}
+            onRequestEdit={() => setEditPasswordOpen(true)}
+            onExitEdit={() => setCanEdit(false)}
+          />
+          {canEdit ? (
+            <Button
+              onClick={() => { setEditingCatalog(null); setCatalogDialogOpen(true) }}
+              className="shrink-0 shadow-lg gap-2 bg-gradient-to-r from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 transition-all duration-300 hover:-translate-y-0.5 border-none"
+            >
+              <Plus className="h-4 w-4" />
+              New Catalog Group
+            </Button>
+          ) : null}
+        </div>
       </div>
 
-      <SaleMarginPercentsCard percents={saleMarginPercents} onSave={updateSaleMarginPercents} />
-      <GstPercentsCard percents={gstPercents} onSave={updateGstPercents} />
+      <GstOrderTagPurchaseChart catalogs={catalogs} />
+
+      <SaleMarginPercentsCard percents={saleMarginPercents} onSave={updateSaleMarginPercents} canEdit={canEdit} />
+      <GstPercentsCard percents={gstPercents} onSave={updateGstPercents} canEdit={canEdit} />
 
       {/* Search */}
       {catalogs.length > 0 && (
@@ -2628,13 +2821,17 @@ export function GstPurchaseCatalogDashboard() {
               Create your first catalog group — e.g. &ldquo;Pencil Sharpeners&rdquo; or &ldquo;Erasers&rdquo; — and add products manually or via JSON import.
             </p>
           </div>
-          <Button
-            onClick={() => setCatalogDialogOpen(true)}
-            className="gap-2 bg-gradient-to-r from-indigo-500 to-violet-600 text-white border-none shadow-lg"
-          >
-            <Plus className="h-4 w-4" />
-            Create First Catalog
-          </Button>
+          {canEdit ? (
+            <Button
+              onClick={() => setCatalogDialogOpen(true)}
+              className="gap-2 bg-gradient-to-r from-indigo-500 to-violet-600 text-white border-none shadow-lg"
+            >
+              <Plus className="h-4 w-4" />
+              Create First Catalog
+            </Button>
+          ) : (
+            <p className="text-xs font-medium text-slate-400">Enter Edit Mode to create a catalog.</p>
+          )}
         </div>
       )}
 
@@ -2651,6 +2848,7 @@ export function GstPurchaseCatalogDashboard() {
                 setCatalogDialogOpen(true)
               }}
               onDelete={() => setDeletingCatalogId(catalog.id)}
+              canEdit={canEdit}
               onDownloadPdf={() => downloadCatalogGroupPdf(catalog)}
             />
           ))}
@@ -2686,6 +2884,12 @@ export function GstPurchaseCatalogDashboard() {
           onClose={() => setDeletingCatalogId(null)}
         />
       )}
+
+      <EditModePasswordDialog
+        open={editPasswordOpen}
+        onClose={() => setEditPasswordOpen(false)}
+        onUnlock={() => setCanEdit(true)}
+      />
     </div>
   )
 }

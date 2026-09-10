@@ -200,3 +200,137 @@ export interface GstPurchaseCatalog {
   createdAt: Date
   updatedAt: Date
 }
+
+export function catalogProductLineTotal(product: GstCatalogProduct): number {
+  return roundMoney((Number(product.price) || 0) * (Number(product.moq) || 0))
+}
+
+const MONTH_INDEX: Record<string, number> = {
+  jan: 0, january: 0,
+  feb: 1, february: 1,
+  mar: 2, march: 2,
+  apr: 3, april: 3,
+  may: 4,
+  jun: 5, june: 5,
+  jul: 6, july: 6,
+  aug: 7, august: 7,
+  sep: 8, sept: 8, september: 8,
+  oct: 9, october: 9,
+  nov: 10, november: 10,
+  dec: 11, december: 11,
+}
+
+/** Sort key for tags like "Aug 2026" — higher is newer. */
+export function parseOrderTagSortKey(tag: string): number | null {
+  const t = String(tag ?? "").trim()
+  let m = t.match(/^([A-Za-z]+)\.?\s*[-/]?\s*(\d{4})$/)
+  if (m) {
+    const month = MONTH_INDEX[m[1].toLowerCase()]
+    const year = Number(m[2])
+    if (month != null && Number.isFinite(year)) return year * 12 + month
+  }
+  m = t.match(/^(\d{4})\s*[-/]\s*(\d{1,2})$/)
+  if (m) {
+    const year = Number(m[1])
+    const month = Number(m[2]) - 1
+    if (Number.isFinite(year) && month >= 0 && month <= 11) return year * 12 + month
+  }
+  m = t.match(/^(\d{1,2})\s*[-/]\s*(\d{4})$/)
+  if (m) {
+    const month = Number(m[1]) - 1
+    const year = Number(m[2])
+    if (Number.isFinite(year) && month >= 0 && month <= 11) return year * 12 + month
+  }
+  return null
+}
+
+export function uniqueCatalogOrderTags(catalogs: GstPurchaseCatalog[]): string[] {
+  const tags = new Set<string>()
+  catalogs.forEach((catalog) => {
+    catalog.products.forEach((product) => tags.add(catalogProductOrderTag(product)))
+  })
+  return [...tags].sort((a, b) => {
+    if (a === "NA" && b !== "NA") return 1
+    if (b === "NA" && a !== "NA") return -1
+    const ka = parseOrderTagSortKey(a)
+    const kb = parseOrderTagSortKey(b)
+    if (ka != null && kb != null && ka !== kb) return kb - ka
+    if (ka != null && kb == null) return -1
+    if (kb != null && ka == null) return 1
+    return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true })
+  })
+}
+
+export function defaultCatalogOrderTag(tags: string[]): string {
+  if (tags.length === 0) return ""
+  const now = new Date()
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+  const current = `${monthNames[now.getMonth()]} ${now.getFullYear()}`
+  const match = tags.find((tag) => tag.toLowerCase() === current.toLowerCase())
+  if (match) return match
+  return tags[0]
+}
+
+export interface CatalogGroupPurchaseRow {
+  id: string
+  name: string
+  color: string
+  total: number
+  items: number
+}
+
+export const ALL_ORDER_TAGS = "__all__"
+export const ALL_GST_FILTER = "__all_gst__"
+export const NO_GST_FILTER = "__none__"
+
+export function productMatchesGstFilter(product: GstCatalogProduct, gstFilter: string): boolean {
+  if (gstFilter === ALL_GST_FILTER) return true
+  const gst = catalogProductGstPercent(product)
+  if (gstFilter === NO_GST_FILTER) return gst == null
+  return gst != null && String(gst) === gstFilter
+}
+
+export function uniqueCatalogGstFilters(catalogs: GstPurchaseCatalog[], orderTag: string): string[] {
+  const filters = new Set<string>()
+  catalogs.forEach((catalog) => {
+    catalog.products.forEach((product) => {
+      if (orderTag !== ALL_ORDER_TAGS && catalogProductOrderTag(product) !== orderTag) return
+      const gst = catalogProductGstPercent(product)
+      filters.add(gst == null ? NO_GST_FILTER : String(gst))
+    })
+  })
+  return [...filters].sort((a, b) => {
+    if (a === NO_GST_FILTER) return 1
+    if (b === NO_GST_FILTER) return -1
+    return Number(a) - Number(b)
+  })
+}
+
+export function gstFilterLabel(gstFilter: string): string {
+  if (gstFilter === ALL_GST_FILTER) return "All GST"
+  if (gstFilter === NO_GST_FILTER) return "No GST"
+  return gstLabel(Number(gstFilter))
+}
+
+export function purchaseTotalsByCatalogGroup(
+  catalogs: GstPurchaseCatalog[],
+  orderTag: string,
+  gstFilter: string = ALL_GST_FILTER
+): CatalogGroupPurchaseRow[] {
+  return catalogs
+    .map((catalog) => {
+      const products = catalog.products.filter((product) => {
+        const tagOk = orderTag === ALL_ORDER_TAGS || catalogProductOrderTag(product) === orderTag
+        return tagOk && productMatchesGstFilter(product, gstFilter)
+      })
+      return {
+        id: catalog.id,
+        name: catalog.name,
+        color: catalog.color ?? "#0d9488",
+        total: roundMoney(products.reduce((sum, product) => sum + catalogProductLineTotal(product), 0)),
+        items: products.length,
+      }
+    })
+    .filter((row) => row.items > 0)
+    .sort((a, b) => b.total - a.total)
+}
