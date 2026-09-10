@@ -43,6 +43,7 @@ import {
   normalizeGstPercents,
   normalizeSaleMarginPercents,
   offFromPercent,
+  parseSignedMoney,
   percentFromOff,
   priceWithGst,
   resolvedOrderDiscount,
@@ -1149,16 +1150,26 @@ function OrderDiscountRow({
   order?: GstCatalogOrder
   itemsTotal: number
   disabled?: boolean
-  onSave: (mode: "percent" | "off", percent: number, off: number) => void
+  onSave: (mode: "percent" | "off", percent: number, off: number, roundOff: number) => void
 }) {
   const resolved = resolvedOrderDiscount(order, itemsTotal)
   const [percent, setPercent] = useState(resolved.percent ? String(resolved.percent) : "")
   const [off, setOff] = useState(resolved.off ? String(resolved.off) : "")
+  const [roundOff, setRoundOff] = useState(resolved.roundOff !== 0 ? String(resolved.roundOff) : "")
+  const roundOffFocused = useRef(false)
 
   useEffect(() => {
     setPercent(resolved.percent ? String(resolved.percent) : "")
     setOff(resolved.off ? String(resolved.off) : "")
-  }, [orderId, resolved.percent, resolved.off])
+    if (!roundOffFocused.current) {
+      setRoundOff(resolved.roundOff !== 0 ? String(resolved.roundOff) : "")
+    }
+  }, [orderId, resolved.percent, resolved.off, resolved.roundOff])
+
+  const parsedRoundOff = () => {
+    const n = parseSignedMoney(roundOff)
+    return n == null ? 0 : n
+  }
 
   const commitPercent = (raw: string) => {
     const n = Number(raw)
@@ -1166,7 +1177,7 @@ function OrderDiscountRow({
     const nextOff = offFromPercent(itemsTotal, pct)
     setPercent(pct ? String(pct) : "")
     setOff(nextOff ? String(nextOff) : "")
-    onSave("percent", pct, nextOff)
+    onSave("percent", pct, nextOff, parsedRoundOff())
   }
 
   const commitOff = (raw: string) => {
@@ -1175,7 +1186,13 @@ function OrderDiscountRow({
     const pct = percentFromOff(itemsTotal, nextOff)
     setOff(nextOff ? String(nextOff) : "")
     setPercent(pct ? String(pct) : "")
-    onSave("off", pct, nextOff)
+    onSave("off", pct, nextOff, parsedRoundOff())
+  }
+
+  const commitRoundOff = (raw: string) => {
+    const nextRound = parseSignedMoney(raw) ?? 0
+    setRoundOff(nextRound !== 0 ? String(nextRound) : "")
+    onSave(order?.discount_mode === "off" ? "off" : "percent", resolved.percent, resolved.off, nextRound)
   }
 
   return (
@@ -1217,6 +1234,31 @@ function OrderDiscountRow({
           onBlur={(e) => commitOff(e.target.value)}
         />
       </td>
+      <td className="py-2 pr-3">
+        <Input
+          type="text"
+          inputMode="decimal"
+          className="h-8 w-24 bg-white"
+          disabled={disabled}
+          placeholder="0.02 or -0.02"
+          value={roundOff}
+          onFocus={() => {
+            roundOffFocused.current = true
+          }}
+          onChange={(e) => {
+            setRoundOff(e.target.value)
+          }}
+          onBlur={(e) => {
+            roundOffFocused.current = false
+            commitRoundOff(e.target.value)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.currentTarget.blur()
+            }
+          }}
+        />
+      </td>
       <td className="py-2 font-black text-amber-900">₹{resolved.balance.toLocaleString("en-IN")}</td>
     </tr>
   )
@@ -1238,6 +1280,7 @@ function OrderDialog({
   const [orderId, setOrderId] = useState("")
   const [percent, setPercent] = useState("")
   const [off, setOff] = useState("")
+  const [roundOff, setRoundOff] = useState("")
   const [mode, setMode] = useState<"percent" | "off">("percent")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
@@ -1249,6 +1292,7 @@ function OrderDialog({
     setOrderId("")
     setPercent("")
     setOff("")
+    setRoundOff("")
     setMode("percent")
     setError("")
   }, [open])
@@ -1287,11 +1331,13 @@ function OrderDialog({
     try {
       const pct = Number(percent)
       const offN = Number(off)
+      const roundN = parseSignedMoney(roundOff) ?? 0
       await onSave({
         order_id: id,
         discount_mode: mode,
         ...(Number.isFinite(pct) && pct > 0 ? { discount_percent: roundMoney(pct) } : {}),
         ...(Number.isFinite(offN) && offN > 0 ? { discount_off: roundMoney(offN) } : {}),
+        round_off: roundN,
       })
       onClose()
     } catch {
@@ -1303,7 +1349,7 @@ function OrderDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Create order</DialogTitle>
         </DialogHeader>
@@ -1328,7 +1374,7 @@ function OrderDialog({
             <p className="text-lg font-black text-slate-800">₹{itemsTotal.toLocaleString("en-IN")}</p>
             <p className="text-[11px] text-slate-400">Assign products to this Order ID to fill the total.</p>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="new-order-pct">Discount %</Label>
               <Input
@@ -1352,9 +1398,20 @@ function OrderDialog({
                 onChange={(e) => applyOff(e.target.value)}
               />
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="new-order-round">Round off (₹)</Label>
+              <Input
+                id="new-order-round"
+                type="text"
+                inputMode="decimal"
+                placeholder="0.02 or -0.02"
+                value={roundOff}
+                onChange={(e) => setRoundOff(e.target.value)}
+              />
+            </div>
           </div>
           <p className="text-sm font-semibold text-amber-900">
-            Balance: ₹{roundMoney(Math.max(0, itemsTotal - (Number(off) || 0))).toLocaleString("en-IN")}
+            Balance: ₹{roundMoney(Math.max(0, itemsTotal - (Number(off) || 0) + (parseSignedMoney(roundOff) ?? 0))).toLocaleString("en-IN")}
           </p>
         </div>
         <DialogFooter>
@@ -1424,8 +1481,9 @@ function CatalogDetailView({
   }, [catalog.products, tableEditing])
 
   useEffect(() => {
+    if (saving) return
     setOrders(catalog.orders ?? [])
-  }, [catalog.orders])
+  }, [catalog.orders, saving])
 
   const handleDownloadPdf = async () => {
     setDownloadingPdf(true)
@@ -1739,17 +1797,22 @@ function CatalogDetailView({
     orderId: string,
     mode: "percent" | "off",
     percent: number,
-    off: number
+    off: number,
+    roundOff: number
   ) => {
     if (!orderId || orderId === NO_ORDER_ID) return
+    const existing = orders.find((o) => o.order_id === orderId)
     const nextOrder: GstCatalogOrder = {
+      ...existing,
       order_id: orderId,
       discount_mode: mode,
-      ...(percent > 0 ? { discount_percent: roundMoney(percent) } : {}),
-      ...(off > 0 ? { discount_off: roundMoney(off) } : {}),
+      round_off: roundMoney(roundOff),
     }
-    const exists = orders.some((o) => o.order_id === orderId)
-    const updated = exists
+    if (percent > 0) nextOrder.discount_percent = roundMoney(percent)
+    else delete nextOrder.discount_percent
+    if (off > 0) nextOrder.discount_off = roundMoney(off)
+    else delete nextOrder.discount_off
+    const updated = existing
       ? orders.map((o) => (o.order_id === orderId ? nextOrder : o))
       : [...orders, nextOrder]
     await syncOrders(updated)
@@ -1917,7 +1980,7 @@ function CatalogDetailView({
               <Percent className="h-3.5 w-3.5 text-amber-600" />
               <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Order discounts (saved)</span>
             </div>
-            <p className="text-xs text-slate-500">Edit % or off value — the other field updates. Each order has its own discount.</p>
+            <p className="text-xs text-slate-500">Edit % or off — they stay in sync. Round off (±) adjusts the final amount, e.g. +0.02 to make 99.98 into 100.</p>
           </div>
           <div className="text-right">
             <p className="text-xs text-slate-500">Off ₹{discountAmount.toLocaleString("en-IN")}</p>
@@ -1935,6 +1998,7 @@ function CatalogDetailView({
                   <th className="py-1 pr-3">Total</th>
                   <th className="py-1 pr-3">Discount %</th>
                   <th className="py-1 pr-3">Off ₹</th>
+                  <th className="py-1 pr-3">Round off ₹</th>
                   <th className="py-1">Balance</th>
                 </tr>
               </thead>
@@ -1946,7 +2010,7 @@ function CatalogDetailView({
                     itemsTotal={row.total}
                     order={orderById.get(row.id)}
                     disabled={row.id === NO_ORDER_ID}
-                    onSave={(mode, percent, off) => void saveOrderDiscount(row.id, mode, percent, off)}
+                    onSave={(mode, percent, off, roundOff) => void saveOrderDiscount(row.id, mode, percent, off, roundOff)}
                   />
                 ))}
               </tbody>

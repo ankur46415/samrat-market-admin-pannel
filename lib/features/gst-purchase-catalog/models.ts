@@ -53,12 +53,23 @@ export function roundMoney(n: number): number {
   return Math.round((Number(n) || 0) * 100) / 100
 }
 
+export function parseSignedMoney(raw: string): number | null {
+  const t = String(raw ?? "").trim().replace(/,/g, "").replace(/₹/g, "").replace(/^\+/, "")
+  if (t === "") return 0
+  if (t === "-" || t === "." || t === "-.") return null
+  const n = Number(t)
+  if (!Number.isFinite(n)) return null
+  return roundMoney(n)
+}
+
 export interface GstCatalogOrder {
   order_id: string
   /** Last edited field — used to keep % and off in sync when item totals change */
   discount_mode?: "percent" | "off"
   discount_percent?: number
   discount_off?: number
+  /** +/- adjustment after discount, e.g. +0.02 to make 99.98 into 100 */
+  round_off?: number
 }
 
 export function sanitizeGstCatalogOrder(order: GstCatalogOrder): GstCatalogOrder | null {
@@ -69,6 +80,8 @@ export function sanitizeGstCatalogOrder(order: GstCatalogOrder): GstCatalogOrder
   const off = Number(order.discount_off)
   if (Number.isFinite(pct) && pct > 0) next.discount_percent = roundMoney(Math.min(pct, 100))
   if (Number.isFinite(off) && off > 0) next.discount_off = roundMoney(off)
+  const roundOff = Number(order.round_off)
+  if (Number.isFinite(roundOff)) next.round_off = roundMoney(roundOff)
   if (order.discount_mode === "off" || order.discount_mode === "percent") next.discount_mode = order.discount_mode
   return next
 }
@@ -99,18 +112,20 @@ export function offFromPercent(total: number, percent: number): number {
 export function resolvedOrderDiscount(
   order: GstCatalogOrder | undefined,
   itemsTotal: number
-): { percent: number; off: number; balance: number } {
+): { percent: number; off: number; roundOff: number; balance: number } {
   const total = roundMoney(itemsTotal)
+  const roundOff = order && Number.isFinite(Number(order.round_off)) ? roundMoney(Number(order.round_off)) : 0
+  const applyRound = (afterDiscount: number) => roundMoney(Math.max(0, afterDiscount + roundOff))
   if (total <= 0 || !order) {
-    return { percent: 0, off: 0, balance: total }
+    return { percent: 0, off: 0, roundOff, balance: applyRound(total) }
   }
   if (order.discount_mode === "off") {
     const off = Math.min(roundMoney(Number(order.discount_off) || 0), total)
-    return { percent: percentFromOff(total, off), off, balance: roundMoney(total - off) }
+    return { percent: percentFromOff(total, off), off, roundOff, balance: applyRound(total - off) }
   }
   const percent = Math.min(100, Math.max(0, Number(order.discount_percent) || 0))
   const off = offFromPercent(total, percent)
-  return { percent, off, balance: roundMoney(total - off) }
+  return { percent, off, roundOff, balance: applyRound(total - off) }
 }
 
 export function catalogProductGstPercent(product: GstCatalogProduct): number | undefined {

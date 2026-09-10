@@ -104,14 +104,20 @@ export async function downloadCatalogGroupPdf(catalog: GstPurchaseCatalog): Prom
   byOrder.forEach((total, id) => {
     const resolved = resolvedOrderDiscount(orderMap.get(id), total)
     discountAmount += resolved.off
-    if (id !== NO_ORDER_ID && (resolved.off > 0 || resolved.percent > 0)) {
+    if (id !== NO_ORDER_ID && (resolved.off > 0 || resolved.percent > 0 || resolved.roundOff !== 0)) {
+      const roundTxt = resolved.roundOff === 0 ? "" : ` / round ${resolved.roundOff > 0 ? "+" : ""}${formatPdfPrice(resolved.roundOff)}`
       orderLines.push(
-        `${id}: ${resolved.percent}% / -${formatPdfPrice(resolved.off)} / bal ${formatPdfPrice(resolved.balance)}`
+        `${id}: ${resolved.percent}% / -${formatPdfPrice(resolved.off)}${roundTxt} / bal ${formatPdfPrice(resolved.balance)}`
       )
     }
   })
   discountAmount = roundMoney(discountAmount)
-  const balance = roundMoney(totalMoqValue - discountAmount)
+  const roundOffTotal = roundMoney(
+    [...byOrder.entries()].reduce((sum, [id, total]) => {
+      return sum + resolvedOrderDiscount(orderMap.get(id), total).roundOff
+    }, 0)
+  )
+  const balance = roundMoney(totalMoqValue - discountAmount + roundOffTotal)
 
   autoTable(doc, {
     startY: 49,
