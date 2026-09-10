@@ -13,6 +13,7 @@ import {
   LogOut,
   Map,
   ShoppingBag,
+  Percent,
   Wallet,
 } from "lucide-react"
 import Image from "next/image"
@@ -100,6 +101,11 @@ const mainNavItems = [
     title: "Purchase Catalog",
     url: "/purchase-catalog",
     icon: ShoppingBag,
+  },
+  {
+    title: "GST Purchase Catalog",
+    url: "/gst-purchase-catalog",
+    icon: Percent,
   },
   {
     title: "Payment Management",

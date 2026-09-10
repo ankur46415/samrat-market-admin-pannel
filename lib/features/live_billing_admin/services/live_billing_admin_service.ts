@@ -6,6 +6,7 @@ import {
   discountedUnitPrice,
   lineDiscountSaved,
   lineItemAmount,
+  mrpLineSaved,
 } from "@/lib/billing/line-discount"
 import {
   addDoc,
@@ -196,6 +197,10 @@ export async function writeSaleFromLineItems(input: {
       }),
       subtotal,
       discount: totalDiscount,
+      mrpSavings: input.lineItems.reduce(
+        (sum, item) => sum + mrpLineSaved(item.quantity, item.mrp ?? 0, item.price, item.discountPercent ?? 0),
+        0
+      ),
       tax: 0,
       total,
       paymentMethod: "cash",

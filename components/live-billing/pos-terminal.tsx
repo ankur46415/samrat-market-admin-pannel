@@ -68,6 +68,7 @@ import {
   mrpLineSaved,
 } from "@/lib/billing/line-discount"
 import type { ReceiptData } from "@/lib/printing/receipt-data"
+import { attachCatalogMrp } from "@/lib/printing/receipt-data"
 import { printReceiptInBrowser } from "@/lib/printing/receipt-html"
 
 function formatCurrency(amount: number) {
@@ -318,12 +319,9 @@ export function PosTerminal({
   const buildCurrentReceipt = useCallback((): ReceiptData | null => {
     if (items.length === 0) return null
     const phone = selectedCustomer?.phone ?? normalizedCustomerPhone
-    return {
-      billNo: currentBillNo,
-      date: new Date(),
-      customerName: selectedCustomer?.name || pendingCustomerName || undefined,
-      customerPhone: phone,
-      items: items.map((i) => ({
+    const catalog = products.map((p) => ({ id: p.id, barcode: p.barcode, mrp: p.mrp }))
+    const receiptItems = attachCatalogMrp(
+      items.map((i) => ({
         name: i.name,
         quantity: i.quantity,
         price: discountedUnitPrice(i.price, i.discountPercent),
@@ -331,7 +329,16 @@ export function PosTerminal({
         discountPercent: i.discountPercent,
         mrp: i.mrp,
         total: lineItemAmount(i.quantity, i.price, i.discountPercent),
+        barcode: i.barcode,
       })),
+      catalog
+    )
+    return {
+      billNo: currentBillNo,
+      date: new Date(),
+      customerName: selectedCustomer?.name || pendingCustomerName || undefined,
+      customerPhone: phone,
+      items: receiptItems,
       subtotal: items.reduce((sum, i) => sum + i.quantity * i.price, 0),
       discount: totals.discountSaved,
       mrpSavings: totals.mrpSaved,
@@ -340,7 +347,7 @@ export function PosTerminal({
       amountPaid: totals.total,
       change: 0,
     }
-  }, [currentBillNo, items, normalizedCustomerPhone, pendingCustomerName, selectedCustomer, totals.discountSaved, totals.mrpSaved, totals.total])
+  }, [currentBillNo, items, normalizedCustomerPhone, pendingCustomerName, products, selectedCustomer, totals.discountSaved, totals.mrpSaved, totals.total])
 
   const handlePrintBill = useCallback(() => {
     const receipt = buildCurrentReceipt()
@@ -628,15 +635,24 @@ export function PosTerminal({
     }
   }
 
+  const catalogMrpFor = (barcode: string, existing?: number) => {
+    if (existing && existing > 0) return existing
+    const match = products.find((p) => p.id === barcode || (p.barcode && p.barcode.trim() === barcode))
+    return match?.mrp && match.mrp > 0 ? match.mrp : undefined
+  }
+
   const itemsAsLineItems = (): LiveBillingLineItem[] =>
-    items.map((item) => ({
-      barcode: item.barcode,
-      name: item.name,
-      price: item.price,
-      quantity: item.quantity,
-      discountPercent: item.discountPercent,
-      ...(item.mrp && item.mrp > 0 ? { mrp: item.mrp } : {}),
-    }))
+    items.map((item) => {
+      const mrp = catalogMrpFor(item.barcode, item.mrp)
+      return {
+        barcode: item.barcode,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        discountPercent: item.discountPercent,
+        ...(mrp ? { mrp } : {}),
+      }
+    })
 
   const handleComplete = useCallback(async () => {
     if (!sessionId || totals.lines === 0) {
@@ -649,7 +665,10 @@ export function PosTerminal({
 
       if (offlineMode) {
         const bill = await enqueueOfflineBill({
-          items: localCart.lineItems,
+          items: localCart.lineItems.map((item) => {
+            const mrp = catalogMrpFor(item.barcode, item.mrp)
+            return { ...item, ...(mrp ? { mrp } : {}) }
+          }),
           customer,
           source: "offline_pos",
           liveSessionId: sessionId || undefined,

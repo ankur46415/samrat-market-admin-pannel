@@ -1,0 +1,95 @@
+"use client"
+
+import { useEffect, useState, useCallback } from "react"
+import type { GstPurchaseCatalog, GstCatalogProduct } from "@/lib/features/gst-purchase-catalog/models"
+import { DEFAULT_GST_PERCENTS, DEFAULT_SALE_MARGIN_PERCENTS } from "@/lib/features/gst-purchase-catalog/models"
+import {
+  subscribeGstPurchaseCatalogs,
+  addGstPurchaseCatalog,
+  updateGstPurchaseCatalog,
+  deleteGstPurchaseCatalog,
+  subscribeGstPercents,
+  saveGstPercents,
+  subscribeGstSaleMarginPercents,
+  saveGstSaleMarginPercents,
+} from "@/lib/features/gst-purchase-catalog/service"
+
+export type CatalogSyncStatus = "connecting" | "synced" | "error" | "offline"
+
+export function useGstPurchaseCatalog() {
+  const [catalogs, setCatalogs] = useState<GstPurchaseCatalog[]>([])
+  const [loading, setLoading] = useState(true)
+  const [syncStatus, setSyncStatus] = useState<CatalogSyncStatus>("connecting")
+  const [gstPercents, setGstPercents] = useState<number[]>([...DEFAULT_GST_PERCENTS])
+  const [saleMarginPercents, setSaleMarginPercents] = useState<number[]>([...DEFAULT_SALE_MARGIN_PERCENTS])
+
+  useEffect(() => {
+    setSyncStatus("connecting")
+    const unsub = subscribeGstPurchaseCatalogs(
+      (data) => {
+        setCatalogs(data)
+        setLoading(false)
+        setSyncStatus("synced")
+      },
+      () => {
+        setLoading(false)
+        setSyncStatus("error")
+      }
+    )
+    return () => unsub()
+  }, [])
+
+  useEffect(() => {
+    const unsub = subscribeGstPercents(setGstPercents)
+    return () => unsub()
+  }, [])
+
+  useEffect(() => {
+    const unsub = subscribeGstSaleMarginPercents(setSaleMarginPercents)
+    return () => unsub()
+  }, [])
+
+  const updateGstPercents = useCallback(async (next: number[]) => {
+    await saveGstPercents(next)
+  }, [])
+
+  const updateSaleMarginPercents = useCallback(async (next: number[]) => {
+    await saveGstSaleMarginPercents(next)
+  }, [])
+
+  const createCatalog = useCallback(
+    async (name: string, source: string, color: string, products: GstCatalogProduct[]) => {
+      await addGstPurchaseCatalog({ name, source, color, products })
+    },
+    []
+  )
+
+  const updateCatalogMeta = useCallback(
+    async (id: string, name: string, source: string, color: string) => {
+      await updateGstPurchaseCatalog(id, { name, source, color })
+    },
+    []
+  )
+
+  const updateCatalogProducts = useCallback(async (id: string, products: GstCatalogProduct[]) => {
+    await updateGstPurchaseCatalog(id, { products })
+  }, [])
+
+  const removeCatalog = useCallback(async (id: string) => {
+    await deleteGstPurchaseCatalog(id)
+  }, [])
+
+  return {
+    catalogs,
+    loading,
+    syncStatus,
+    createCatalog,
+    updateCatalogMeta,
+    updateCatalogProducts,
+    removeCatalog,
+    gstPercents,
+    updateGstPercents,
+    saleMarginPercents,
+    updateSaleMarginPercents,
+  }
+}

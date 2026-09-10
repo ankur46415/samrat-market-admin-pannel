@@ -1,7 +1,7 @@
 "use client"
 
 import { format } from "date-fns"
-import { FileDown, Pencil, Printer } from "lucide-react"
+import { Pencil, Printer } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,9 @@ import {
 } from "@/components/ui/table"
 import type { Sale } from "@/lib/types"
 import { mrpDiscountPercent } from "@/lib/billing/line-discount"
+import { useProducts } from "@/hooks/use-firestore"
+import { attachCatalogMrp, receiptYouSaved } from "@/lib/printing/receipt-data"
+import { printReceiptInBrowser } from "@/lib/printing/receipt-html"
 
 interface SaleDetailDialogProps {
   open: boolean
@@ -31,12 +34,27 @@ interface SaleDetailDialogProps {
 }
 
 export function SaleDetailDialog({ open, onOpenChange, sale, onEdit }: SaleDetailDialogProps) {
+  const { products } = useProducts()
   if (!sale) return null
 
-  const mrpSavingsTotal = sale.items.reduce((sum, item) => {
-    if (!item.mrp || item.mrp <= item.price) return sum
-    return sum + item.quantity * (item.mrp - item.price)
-  }, 0)
+  const catalog = products.map((p) => ({ id: p.id, barcode: p.barcode, mrp: p.mrp }))
+  const items = attachCatalogMrp(
+    sale.items.map((item) => ({
+      ...item,
+      barcode: item.productId,
+    })),
+    catalog
+  )
+  const mrpSavingsTotal = receiptYouSaved(
+    items.map((item) => ({
+      name: item.productName,
+      quantity: item.quantity,
+      price: item.price,
+      total: item.total,
+      mrp: item.mrp,
+      discountPercent: item.discountPercent,
+    }))
+  )
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
@@ -57,141 +75,28 @@ export function SaleDetailDialog({ open, onOpenChange, sale, onEdit }: SaleDetai
   }
 
   const handlePrint = () => {
-    const printWindow = window.open("", "_blank")
-    if (!printWindow) return
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Invoice - ${sale.billNo}</title>
-          <style>
-            body {
-              font-family: system-ui, sans-serif;
-              max-width: 400px;
-              margin: 0 auto;
-              padding: 20px;
-            }
-            .header { text-align: center; margin-bottom: 20px; }
-            .header h1 { font-size: 24px; margin: 0; }
-            .header p { color: #666; margin: 5px 0; }
-            .info { margin-bottom: 20px; }
-            .info-row { display: flex; justify-content: space-between; margin: 5px 0; }
-            table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-            th, td { padding: 8px; text-align: left; border-bottom: 1px solid #eee; }
-            th { font-weight: 600; }
-            .total-row td { font-weight: bold; border-top: 2px solid #333; }
-            .amount { text-align: right; }
-            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
-            @media print {
-              body { padding: 0; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <img
-              src="/images/samrat-market-logo.png"
-              alt="Samrat Market"
-              style="width:72px;height:72px;object-fit:cover;border-radius:12px;display:block;margin:0 auto 8px auto;"
-            />
-            <h1 style="margin:0;font-size:22px;">Samrat Market</h1>
-            <p>Tax Invoice</p>
-          </div>
-          
-          <div class="info">
-            <div class="info-row">
-              <span>Bill No:</span>
-              <span>${sale.billNo}</span>
-            </div>
-            <div class="info-row">
-              <span>Date:</span>
-              <span>${format(sale.createdAt, "MMM dd, yyyy h:mm a")}</span>
-            </div>
-            <div class="info-row">
-              <span>Customer:</span>
-              <span>${sale.customerName || "Walk-in Customer"}</span>
-            </div>
-            <div class="info-row">
-              <span>Phone:</span>
-              <span>${sale.customerPhone || "NA"}</span>
-            </div>
-            <div class="info-row">
-              <span>Payment:</span>
-              <span>${sale.paymentMethod.toUpperCase()}</span>
-            </div>
-          </div>
-          
-          <table>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th class="amount">Qty</th>
-                <th class="amount">Price</th>
-                <th class="amount">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${sale.items.map(item => {
-                const mrpNote =
-                  item.mrp && item.mrp > item.price
-                    ? `<br /><small>MRP ${formatCurrency(item.mrp)} (−${mrpDiscountPercent(item.mrp, item.price)}%)</small>`
-                    : ""
-                const priceCell =
-                  item.mrp && item.mrp > item.price
-                    ? `<s>${formatCurrency(item.mrp)}</s> ${formatCurrency(item.price)}`
-                    : formatCurrency(item.price)
-                return `
-                <tr>
-                  <td>${item.productName}${mrpNote}</td>
-                  <td class="amount">${item.quantity}</td>
-                  <td class="amount">${priceCell}</td>
-                  <td class="amount">${formatCurrency(item.total)}</td>
-                </tr>`
-              }).join("")}
-              <tr>
-                <td colspan="3">Subtotal</td>
-                <td class="amount">${formatCurrency(sale.subtotal)}</td>
-              </tr>
-              ${mrpSavingsTotal > 0 ? `
-                <tr>
-                  <td colspan="3">MRP Savings</td>
-                  <td class="amount">-${formatCurrency(mrpSavingsTotal)}</td>
-                </tr>
-              ` : ""}
-              ${sale.discount > 0 ? `
-                <tr>
-                  <td colspan="3">Bill Discount</td>
-                  <td class="amount">-${formatCurrency(sale.discount)}</td>
-                </tr>
-              ` : ""}
-              ${sale.tax > 0 ? `
-                <tr>
-                  <td colspan="3">Tax</td>
-                  <td class="amount">${formatCurrency(sale.tax)}</td>
-                </tr>
-              ` : ""}
-              <tr class="total-row">
-                <td colspan="3">Total</td>
-                <td class="amount">${formatCurrency(sale.total)}</td>
-              </tr>
-            </tbody>
-          </table>
-          
-          <div class="footer">
-            <p>Thank you for shopping with us!</p>
-          </div>
-          
-          <script>
-            window.onload = function() {
-              window.print();
-              window.close();
-            }
-          </script>
-        </body>
-      </html>
-    `)
-    printWindow.document.close()
+    printReceiptInBrowser({
+      billNo: sale.billNo,
+      date: sale.createdAt,
+      customerName: sale.customerName,
+      customerPhone: sale.customerPhone,
+      items: items.map((item) => ({
+        name: item.productName,
+        quantity: item.quantity,
+        price: item.price,
+        total: item.total,
+        mrp: item.mrp,
+        discountPercent: item.discountPercent,
+      })),
+      subtotal: sale.subtotal,
+      discount: sale.discount,
+      mrpSavings: mrpSavingsTotal,
+      tax: sale.tax,
+      total: sale.total,
+      paymentMethod: sale.paymentMethod,
+      amountPaid: sale.amountPaid,
+      change: sale.change,
+    })
   }
 
   return (
@@ -234,7 +139,7 @@ export function SaleDetailDialog({ open, onOpenChange, sale, onEdit }: SaleDetai
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sale.items.map((item, index) => (
+                {items.map((item, index) => (
                   <TableRow key={index}>
                     <TableCell className="font-medium">
                       {item.productName}
