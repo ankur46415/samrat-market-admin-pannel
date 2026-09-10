@@ -992,6 +992,7 @@ function CatalogDetailView({
   const [jsonImportOpen, setJsonImportOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<{ product: CatalogProduct; index: number } | null>(null)
   const [deletingIndex, setDeletingIndex] = useState<number | null>(null)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [orderTagFilter, setOrderTagFilter] = useState("all")
   const [selectedIndexes, setSelectedIndexes] = useState<Set<number>>(new Set())
@@ -1064,6 +1065,14 @@ function CatalogDetailView({
       return next
     })
     setDeletingIndex(null)
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedIndexes.size === 0) return
+    const updated = products.filter((_, i) => !selectedIndexes.has(i))
+    await syncProducts(updated)
+    setSelectedIndexes(new Set())
+    setBulkDeleteOpen(false)
   }
 
   const handleJsonImport = async (imported: CatalogProduct[]) => {
@@ -1385,6 +1394,15 @@ function CatalogDetailView({
                 </Button>
                 <Button
                   size="sm"
+                  variant="outline"
+                  className="gap-1.5 border-red-200 bg-white text-red-700 hover:bg-red-50 hover:text-red-800"
+                  onClick={() => setBulkDeleteOpen(true)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete selected
+                </Button>
+                <Button
+                  size="sm"
                   variant="ghost"
                   onClick={() => setSelectedIndexes(new Set())}
                 >
@@ -1526,6 +1544,16 @@ function CatalogDetailView({
           message={`Delete "${products[deletingIndex]?.product_name}"? This cannot be undone.`}
           onConfirm={() => handleDeleteProduct(deletingIndex)}
           onClose={() => setDeletingIndex(null)}
+        />
+      )}
+
+      {bulkDeleteOpen && (
+        <ConfirmDeleteDialog
+          open
+          title="Delete selected products"
+          message={`Delete ${selectedIndexes.size} selected item${selectedIndexes.size === 1 ? "" : "s"}? This cannot be undone.`}
+          onConfirm={handleBulkDelete}
+          onClose={() => setBulkDeleteOpen(false)}
         />
       )}
     </div>

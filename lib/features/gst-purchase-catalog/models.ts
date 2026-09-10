@@ -19,6 +19,8 @@ export interface GstCatalogProduct {
   unit?: string
   notes?: string
   order_tag?: string
+  /** Order ID — grouping / filter key (e.g. PO number) */
+  order_id?: string
   /** Selling / sale price shown to customers — same as Purchase Catalog */
   sale_price?: number
   /** GST % chosen from dropdown only */
@@ -40,6 +42,12 @@ export function catalogProductOrderTag(product: GstCatalogProduct): string {
   const tag = String(product.order_tag ?? "").trim()
   return tag || "NA"
 }
+
+export function catalogProductOrderId(product: GstCatalogProduct): string {
+  return String(product.order_id ?? "").trim()
+}
+
+export const NO_ORDER_ID = "none"
 
 export function catalogProductGstPercent(product: GstCatalogProduct): number | undefined {
   const n = Number(product.gst_percent)
@@ -74,6 +82,8 @@ export function sanitizeGstCatalogProduct(product: GstCatalogProduct): GstCatalo
   if (brand) next.brand = brand
   if (unit) next.unit = unit
   if (notes) next.notes = notes
+  const orderId = catalogProductOrderId(product)
+  if (orderId) next.order_id = orderId
   if (sale != null) next.sale_price = sale
   if (gst != null) next.gst_percent = gst
   return next

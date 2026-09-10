@@ -23,6 +23,7 @@ import {
   Download,
   Tags,
   Percent,
+  Hash,
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -31,11 +32,13 @@ import type { GstCatalogProduct, GstPurchaseCatalog } from "@/lib/features/gst-p
 import {
   catalogProductOrderTag,
   catalogProductGstPercent,
+  catalogProductOrderId,
   catalogProductSalePrice,
   formatMarginPercent,
   gstLabel,
   marginPercentFromPrices,
   matchingSaleMarginPercent,
+  NO_ORDER_ID,
   normalizeGstPercents,
   normalizeSaleMarginPercents,
   priceWithGst,
@@ -190,6 +193,7 @@ function GstPercentSelect({
 
 type BulkEditFields = {
   order_tag: boolean
+  order_id: boolean
   brand: boolean
   unit: boolean
   notes: boolean
@@ -201,6 +205,7 @@ type BulkEditFields = {
 
 const EMPTY_BULK_FIELDS: BulkEditFields = {
   order_tag: true,
+  order_id: false,
   brand: false,
   unit: false,
   notes: false,
@@ -381,11 +386,12 @@ function ProductRow({
   onDelete: () => void
 }) {
   const tag = catalogProductOrderTag(product)
+  const orderId = catalogProductOrderId(product)
   const gst = catalogProductGstPercent(product)
   const salePrice = catalogProductSalePrice(product)
   const livePercent = salePrice == null ? null : marginPercentFromPrices(product.price, salePrice)
   const inclGst = priceWithGst(product.price, gst)
-  const lineTotal = inclGst * (Number(product.moq) || 0)
+  const lineTotal = (Number(product.price) || 0) * (Number(product.moq) || 0)
   const cellInput = "h-8 min-w-[4.5rem] text-sm"
   return (
     <tr className={cn("group border-b border-slate-100 hover:bg-indigo-50/40 transition-colors", selected && "bg-indigo-50/70")}>
@@ -420,6 +426,22 @@ function ProductRow({
           <span className="inline-flex rounded-md bg-indigo-50 px-2 py-0.5 font-mono text-xs font-semibold text-indigo-700">
             {tag}
           </span>
+        )}
+      </td>
+      <td className="py-3 px-3">
+        {editing ? (
+          <Input
+            className={cn(cellInput, "font-mono")}
+            value={product.order_id ?? ""}
+            placeholder="Order ID"
+            onChange={(e) => onChange({ order_id: e.target.value })}
+          />
+        ) : orderId ? (
+          <span className="inline-flex rounded-md bg-teal-50 px-2 py-0.5 font-mono text-xs font-semibold text-teal-800">
+            {orderId}
+          </span>
+        ) : (
+          "—"
         )}
       </td>
       <td className="py-3 px-3 text-sm text-slate-600">
@@ -656,6 +678,7 @@ function ProductDialog({
 }) {
   const [productName, setProductName] = useState(initial?.product_name ?? "")
   const [orderTag, setOrderTag] = useState(initial?.order_tag ?? "NA")
+  const [orderId, setOrderId] = useState(initial?.order_id ?? "")
   const [price, setPrice] = useState(initial?.price?.toString() ?? "")
   const [salePrice, setSalePrice] = useState(initial?.sale_price?.toString() ?? "")
   const [gstPercent, setGstPercent] = useState<number | undefined>(catalogProductGstPercent(initial ?? {} as GstCatalogProduct))
@@ -670,6 +693,7 @@ function ProductDialog({
     if (!open) return
     setProductName(initial?.product_name ?? "")
     setOrderTag(initial ? catalogProductOrderTag(initial) : "NA")
+    setOrderId(initial ? catalogProductOrderId(initial) : "")
     setPrice(initial?.price?.toString() ?? "")
     setSalePrice(initial?.sale_price != null ? String(initial.sale_price) : "")
     setGstPercent(catalogProductGstPercent(initial ?? ({} as GstCatalogProduct)))
@@ -701,6 +725,7 @@ function ProductDialog({
         unit: unit.trim() || undefined,
         notes: notes.trim() || undefined,
         order_tag: orderTag.trim() || "NA",
+        ...(orderId.trim() ? { order_id: orderId.trim() } : {}),
         ...(salePrice !== "" && !Number.isNaN(Number(salePrice))
           ? { sale_price: Number(salePrice) }
           : {}),
@@ -740,6 +765,16 @@ function ProductDialog({
               onChange={(e) => setOrderTag(e.target.value)}
             />
             <p className="text-[11px] text-slate-400">Use the same tag for all products from one order so you can filter them later.</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="prod-order-id">Order ID</Label>
+            <Input
+              id="prod-order-id"
+              placeholder="e.g. PO-1045"
+              value={orderId}
+              onChange={(e) => setOrderId(e.target.value)}
+            />
+            <p className="text-[11px] text-slate-400">Used to group and filter products. Select one or more Order IDs above the list, or ALL.</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -874,6 +909,7 @@ function JsonImportDialog({
           return
         }
         const tag = jsonPickString(rec, ["order_tag", "orderTag", "order_no", "orderNo"]) || wrapperTag
+        const orderId = jsonPickString(rec, ["order_id", "orderId", "orderID", "po", "PO"])
         const brand = jsonPickString(rec, ["brand", "manufacturer", "Brand"]) || wrapperBrand
         const unit = jsonPickString(rec, ["unit", "units", "Unit"]) || wrapperUnit
         const notes = jsonPickString(rec, ["notes", "note", "remark", "remarks"])
@@ -889,6 +925,7 @@ function JsonImportDialog({
           price,
           moq,
           order_tag: tag || "NA",
+          ...(orderId ? { order_id: orderId } : {}),
           ...(brand ? { brand } : {}),
           ...(unit ? { unit } : {}),
           ...(notes ? { notes } : {}),
@@ -938,7 +975,7 @@ function JsonImportDialog({
         <div className="flex-1 overflow-y-auto space-y-4 py-2 pr-1">
           {/* Format hint */}
           <div className="rounded-xl bg-indigo-50 border border-indigo-100 px-4 py-3 text-xs text-indigo-700 font-mono leading-relaxed">
-            {`[ { "product_name": "Cup Shape Pencil Sharpener", "brand": "Apsara", "price": 18, "sale_price": 22, "gst_percent": 18, "moq": 24, "unit": "pcs", "order_tag": "TATA" }, ... ]`}
+            {`[ { "product_name": "Cup Shape Pencil Sharpener", "brand": "Apsara", "price": 18, "sale_price": 22, "gst_percent": 18, "moq": 24, "unit": "pcs", "order_tag": "TATA", "order_id": "PO-1045" }, ... ]`}
           </div>
 
           <div className="flex items-center gap-2">
@@ -992,6 +1029,7 @@ function JsonImportDialog({
                     {p.brand ? ` · ${p.brand}` : ""}
                     {` — ₹${p.price} × MOQ ${p.moq}`}
                     {p.sale_price != null ? ` · sale ₹${p.sale_price}` : ""}
+                    {p.order_id ? ` · ID ${p.order_id}` : ""}
                     {p.gst_percent != null ? ` · GST ${gstLabel(p.gst_percent)}` : ""}
                     {p.unit ? ` · ${p.unit}` : ""}
                     {` · ${p.order_tag || "NA"}`}
@@ -1090,14 +1128,18 @@ function CatalogDetailView({
   const [jsonImportOpen, setJsonImportOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<{ product: GstCatalogProduct; index: number } | null>(null)
   const [deletingIndex, setDeletingIndex] = useState<number | null>(null)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [orderTagFilter, setOrderTagFilter] = useState("all")
+  const [orderIdFilter, setOrderIdFilter] = useState<Set<string>>(new Set())
+  const [discountPercent, setDiscountPercent] = useState("")
   const [gstFilter, setGstFilter] = useState("all")
   const [selectedIndexes, setSelectedIndexes] = useState<Set<number>>(new Set())
   const [bulkEditDialogOpen, setBulkEditDialogOpen] = useState(false)
   const [bulkFields, setBulkFields] = useState<BulkEditFields>(EMPTY_BULK_FIELDS)
   const [bulkValues, setBulkValues] = useState({
     order_tag: "NA",
+    order_id: "",
     brand: "",
     unit: "",
     notes: "",
@@ -1119,7 +1161,22 @@ function CatalogDetailView({
   const handleDownloadPdf = async () => {
     setDownloadingPdf(true)
     try {
-      await downloadCatalogGroupPdf({ ...catalog, products })
+      const visible = products.filter((product) => {
+        const tag = catalogProductOrderTag(product)
+        const orderId = catalogProductOrderId(product) || NO_ORDER_ID
+        const gst = catalogProductGstPercent(product)
+        if (orderTagFilter !== "all" && tag !== orderTagFilter) return false
+        if (orderIdFilter.size > 0 && !orderIdFilter.has(orderId)) return false
+        if (gstFilter === "all") return true
+        if (gstFilter === "none") return gst == null
+        return gst != null && String(gst) === gstFilter
+      })
+      const pct = Number(discountPercent)
+      const discount = Number.isFinite(pct) && pct > 0 ? Math.min(pct, 100) : 0
+      await downloadCatalogGroupPdf(
+        { ...catalog, products: visible },
+        { discountPercent: discount }
+      )
     } finally {
       setDownloadingPdf(false)
     }
@@ -1166,6 +1223,14 @@ function CatalogDetailView({
     setDeletingIndex(null)
   }
 
+  const handleBulkDelete = async () => {
+    if (selectedIndexes.size === 0) return
+    const updated = products.filter((_, i) => !selectedIndexes.has(i))
+    await syncProducts(updated)
+    setSelectedIndexes(new Set())
+    setBulkDeleteOpen(false)
+  }
+
   const handleJsonImport = async (imported: GstCatalogProduct[]) => {
     // Merge: avoid exact duplicates by product_name
     const existing = new Set(products.map((p) => p.product_name.toLowerCase()))
@@ -1179,6 +1244,37 @@ function CatalogDetailView({
     products.forEach((p) => tags.add(catalogProductOrderTag(p)))
     return [...tags].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
   }, [products])
+
+  const availableOrderIds = useMemo(() => {
+    const ids = new Set<string>()
+    products.forEach((p) => {
+      const id = catalogProductOrderId(p)
+      ids.add(id || NO_ORDER_ID)
+    })
+    return [...ids].sort((a, b) => {
+      if (a === NO_ORDER_ID) return 1
+      if (b === NO_ORDER_ID) return -1
+      return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+    })
+  }, [products])
+
+  const orderIdAllSelected = orderIdFilter.size === 0
+
+  const toggleOrderIdFilter = (value: string) => {
+    if (value === "all") {
+      setOrderIdFilter(new Set())
+      return
+    }
+    setOrderIdFilter((prev) => {
+      const next = new Set(prev)
+      if (orderIdAllSelected) {
+        return new Set([value])
+      }
+      if (next.has(value)) next.delete(value)
+      else next.add(value)
+      return next
+    })
+  }
 
   const availableGstPercents = useMemo(() => {
     const values = new Set<string>(["none"])
@@ -1199,14 +1295,17 @@ function CatalogDetailView({
     .filter(({ product }) => {
       const q = search.toLowerCase()
       const tag = catalogProductOrderTag(product)
+      const orderId = catalogProductOrderId(product) || NO_ORDER_ID
       const gst = catalogProductGstPercent(product)
       const matchesSearch =
         product.product_name.toLowerCase().includes(q) ||
         (product.brand ?? "").toLowerCase().includes(q) ||
         tag.toLowerCase().includes(q) ||
+        orderId.toLowerCase().includes(q) ||
         gstLabel(gst).toLowerCase().includes(q)
       if (!matchesSearch) return false
       if (orderTagFilter !== "all" && tag !== orderTagFilter) return false
+      if (!orderIdAllSelected && !orderIdFilter.has(orderId)) return false
       if (gstFilter === "all") return true
       if (gstFilter === "none") return gst == null
       return gst != null && String(gst) === gstFilter
@@ -1248,6 +1347,10 @@ function CatalogDetailView({
       if (!selectedIndexes.has(i)) return p
       const next: GstCatalogProduct = { ...p }
       if (bulkFields.order_tag) next.order_tag = bulkValues.order_tag.trim() || "NA"
+      if (bulkFields.order_id) {
+        if (bulkValues.order_id.trim() === "") delete next.order_id
+        else next.order_id = bulkValues.order_id.trim()
+      }
       if (bulkFields.brand) next.brand = bulkValues.brand.trim() || undefined
       if (bulkFields.unit) next.unit = bulkValues.unit.trim() || undefined
       if (bulkFields.notes) next.notes = bulkValues.notes.trim() || undefined
@@ -1272,6 +1375,7 @@ function CatalogDetailView({
     setBulkFields({ ...EMPTY_BULK_FIELDS })
     setBulkValues({
       order_tag: "NA",
+      order_id: "",
       brand: "",
       unit: "",
       notes: "",
@@ -1301,6 +1405,8 @@ function CatalogDetailView({
         moq: Number.isFinite(Number(p.moq)) && Number(p.moq) > 0 ? Number(p.moq) : 1,
         order_tag: catalogProductOrderTag(p),
       }
+      const oid = catalogProductOrderId(p)
+      if (oid) next.order_id = oid
       if (p.brand?.trim()) next.brand = p.brand.trim()
       if (p.unit?.trim()) next.unit = p.unit.trim()
       if (p.notes?.trim()) next.notes = p.notes.trim()
@@ -1325,6 +1431,7 @@ function CatalogDetailView({
         if ("sale_price" in patch && (patch.sale_price === undefined || Number.isNaN(Number(patch.sale_price)))) {
           delete next.sale_price
         }
+        if ("order_id" in patch && !String(patch.order_id ?? "").trim()) delete next.order_id
         if ("brand" in patch && !String(patch.brand ?? "").trim()) delete next.brand
         if ("unit" in patch && !String(patch.unit ?? "").trim()) delete next.unit
         return next
@@ -1332,10 +1439,11 @@ function CatalogDetailView({
     )
   }
 
-  const totalMOQValue = products.reduce(
-    (sum, p) => sum + priceWithGst(p.price, catalogProductGstPercent(p)) * p.moq,
-    0
-  )
+  const filteredMoqTotal = filtered.reduce((sum, { product }) => sum + product.price * product.moq, 0)
+  const discountPct = Number(discountPercent)
+  const validDiscount = Number.isFinite(discountPct) && discountPct > 0 ? Math.min(discountPct, 100) : 0
+  const discountAmount = Math.round(filteredMoqTotal * (validDiscount / 100) * 100) / 100
+  const discountedBalance = Math.round((filteredMoqTotal - discountAmount) * 100) / 100
 
   return (
     <div className="space-y-6">
@@ -1400,13 +1508,58 @@ function CatalogDetailView({
         </div>
       </div>
 
+      {/* Order ID chips */}
+      {availableOrderIds.length > 0 && (
+        <div className="rounded-xl border border-teal-100 bg-teal-50/40 px-4 py-3 space-y-2">
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-teal-800">
+            <Hash className="h-3.5 w-3.5" />
+            Order ID
+            <span className="font-medium normal-case tracking-normal text-teal-600">
+              — tap ALL, or one / several IDs
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => toggleOrderIdFilter("all")}
+              className={cn(
+                "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
+                orderIdAllSelected
+                  ? "border-teal-600 bg-teal-600 text-white"
+                  : "border-teal-200 bg-white text-teal-800 hover:bg-teal-50"
+              )}
+            >
+              ALL
+            </button>
+            {availableOrderIds.map((id) => {
+              const selected = !orderIdAllSelected && orderIdFilter.has(id)
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => toggleOrderIdFilter(id)}
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-xs font-semibold font-mono transition-colors",
+                    selected
+                      ? "border-teal-600 bg-teal-600 text-white"
+                      : "border-teal-200 bg-white text-teal-800 hover:bg-teal-50"
+                  )}
+                >
+                  {id === NO_ORDER_ID ? "No ID" : id}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* KPI bar */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {[
-          { label: "Total Products", value: products.length, icon: Package, color: "#0d9488" },
+          { label: "Total Products", value: String(orderIdAllSelected ? products.length : filtered.length), icon: Package, color: "#0d9488" },
           { label: "Min Price", value: products.length > 0 ? `₹${Math.min(...products.map((p) => p.price))}` : "—", icon: IndianRupee, color: "#10b981" },
           { label: "Max Price", value: products.length > 0 ? `₹${Math.max(...products.map((p) => p.price))}` : "—", icon: IndianRupee, color: "#f97316" },
-          { label: "MOQ × Price + GST", value: `₹${totalMOQValue.toLocaleString("en-IN")}`, icon: Layers, color: color },
+          { label: "MOQ × Price Total", value: `₹${filteredMoqTotal.toLocaleString("en-IN")}`, icon: Layers, color: color },
         ].map((kpi) => {
           const Icon = kpi.icon
           return (
@@ -1419,6 +1572,30 @@ function CatalogDetailView({
             </div>
           )
         })}
+        <div className="rounded-xl border border-amber-100 bg-amber-50/50 p-4 shadow-sm col-span-2 lg:col-span-1">
+          <div className="flex items-center gap-2 mb-2">
+            <Percent className="h-3.5 w-3.5 text-amber-600" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Discount</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              placeholder="0"
+              className="h-8 bg-white"
+              value={discountPercent}
+              onChange={(e) => setDiscountPercent(e.target.value)}
+            />
+            <span className="text-sm font-semibold text-slate-500 shrink-0">%</span>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Off: ₹{discountAmount.toLocaleString("en-IN")}
+          </p>
+          <p className="text-lg font-black text-amber-900">
+            Balance ₹{discountedBalance.toLocaleString("en-IN")}
+          </p>
+        </div>
       </div>
 
       {/* Search + order tag filter */}
@@ -1426,7 +1603,7 @@ function CatalogDetailView({
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <Input
-            placeholder="Search products, brand, order tag, or GST…"
+            placeholder="Search products, brand, order tag, order ID, or GST…"
             className="pl-9"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -1530,6 +1707,15 @@ function CatalogDetailView({
                 </Button>
                 <Button
                   size="sm"
+                  variant="outline"
+                  className="gap-1.5 border-red-200 bg-white text-red-700 hover:bg-red-50 hover:text-red-800"
+                  onClick={() => setBulkDeleteOpen(true)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete selected
+                </Button>
+                <Button
+                  size="sm"
                   variant="ghost"
                   onClick={() => setSelectedIndexes(new Set())}
                 >
@@ -1551,6 +1737,7 @@ function CatalogDetailView({
                   <th className="py-3 pr-2 text-xs font-bold uppercase tracking-wider text-slate-400 w-10">#</th>
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Product Name</th>
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Order Tag / No</th>
+                  <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Order ID</th>
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Brand</th>
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Price</th>
                   <th className="py-3 px-3 text-xs font-bold uppercase tracking-wider text-slate-500">Sale Price</th>
@@ -1620,6 +1807,7 @@ function CatalogDetailView({
             {(
               [
                 { key: "order_tag", label: "Order Tag / No", placeholder: "e.g. 123456 or TATA" },
+                { key: "order_id", label: "Order ID", placeholder: "e.g. PO-1045" },
                 { key: "brand", label: "Brand", placeholder: "e.g. Apsara" },
                 { key: "unit", label: "Unit", placeholder: "e.g. pcs, box" },
                 { key: "notes", label: "Notes", placeholder: "Any extra info" },
@@ -1692,6 +1880,16 @@ function CatalogDetailView({
           message={`Delete "${products[deletingIndex]?.product_name}"? This cannot be undone.`}
           onConfirm={() => handleDeleteProduct(deletingIndex)}
           onClose={() => setDeletingIndex(null)}
+        />
+      )}
+
+      {bulkDeleteOpen && (
+        <ConfirmDeleteDialog
+          open
+          title="Delete selected products"
+          message={`Delete ${selectedIndexes.size} selected item${selectedIndexes.size === 1 ? "" : "s"}? This cannot be undone.`}
+          onConfirm={handleBulkDelete}
+          onClose={() => setBulkDeleteOpen(false)}
         />
       )}
     </div>

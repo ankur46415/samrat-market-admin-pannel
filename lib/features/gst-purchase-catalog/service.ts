@@ -24,6 +24,8 @@ import { DEFAULT_GST_PERCENTS, DEFAULT_SALE_MARGIN_PERCENTS, normalizeGstPercent
 function normalizeGstCatalogProduct(p: GstCatalogProduct): GstCatalogProduct {
   const raw = p as GstCatalogProduct & {
     orderTag?: string
+    orderId?: string
+    order_ID?: string
     gst?: number
     gstPercent?: number
     GST?: number
@@ -31,6 +33,7 @@ function normalizeGstCatalogProduct(p: GstCatalogProduct): GstCatalogProduct {
     selling_price?: number
   }
   const order_tag = String(p.order_tag ?? raw.orderTag ?? "").trim() || "NA"
+  const orderId = String(p.order_id ?? raw.orderId ?? raw.order_ID ?? "").trim()
   const gstRaw = p.gst_percent ?? raw.gstPercent ?? raw.gst ?? raw.GST
   const gstNum = Number(gstRaw)
   const saleRaw = p.sale_price ?? raw.salePrice ?? raw.selling_price
@@ -38,6 +41,7 @@ function normalizeGstCatalogProduct(p: GstCatalogProduct): GstCatalogProduct {
   return {
     ...p,
     order_tag,
+    ...(orderId ? { order_id: orderId } : {}),
     ...(Number.isFinite(gstNum) && gstNum >= 0 ? { gst_percent: gstNum } : {}),
     ...(Number.isFinite(saleNum) && saleNum >= 0 ? { sale_price: saleNum } : {}),
   }

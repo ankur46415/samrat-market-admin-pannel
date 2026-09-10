@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
 import type { GstPurchaseCatalog } from "./models"
-import { catalogProductGstPercent, catalogProductSalePrice, gstLabel, priceWithGst } from "./models"
+import { catalogProductGstPercent, catalogProductOrderId, catalogProductSalePrice, gstLabel, priceWithGst } from "./models"
 
 /** jsPDF default font (Helvetica) does not support ₹, •, ×, em-dash — use ASCII-safe text */
 function pdfSafe(text: string): string {
@@ -34,8 +34,11 @@ function safeFileName(name: string): string {
   return name.replace(/[^\w\s-]/g, "").replace(/\s+/g, "_").slice(0, 60)
 }
 
-/** Download PDF for a single catalog group with all its products */
-export async function downloadCatalogGroupPdf(catalog: GstPurchaseCatalog): Promise<void> {
+/** Download PDF for a catalog group (optionally filtered products + discount). */
+export async function downloadCatalogGroupPdf(
+  catalog: GstPurchaseCatalog,
+  options?: { discountPercent?: number }
+): Promise<void> {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" })
   const pageW = doc.internal.pageSize.getWidth()
   const pageH = doc.internal.pageSize.getHeight()
@@ -83,14 +86,17 @@ export async function downloadCatalogGroupPdf(catalog: GstPurchaseCatalog): Prom
   doc.text(pdfSafe(metaParts.join("  |  ")), 14, 43)
   doc.setTextColor(0)
 
-  const totalMoqValue = catalog.products.reduce(
-    (sum, p) => sum + priceWithGst(p.price, catalogProductGstPercent(p)) * p.moq,
-    0
-  )
+  const totalMoqValue = catalog.products.reduce((sum, p) => sum + p.price * p.moq, 0)
+  const discountPct =
+    options?.discountPercent && Number.isFinite(options.discountPercent) && options.discountPercent > 0
+      ? Math.min(options.discountPercent, 100)
+      : 0
+  const discountAmount = Math.round(totalMoqValue * (discountPct / 100) * 100) / 100
+  const balance = Math.round((totalMoqValue - discountAmount) * 100) / 100
 
   autoTable(doc, {
     startY: 49,
-    head: [["#", "Product Name", "Order Tag", "Brand", "Price", "Sale Price", "GST", "Price + GST", "MOQ", "Total", "Unit"]],
+    head: [["#", "Product Name", "Order Tag", "Order ID", "Brand", "Price", "Sale Price", "GST", "Price + GST", "MOQ", "Total", "Unit"]],
     body: catalog.products.map((p, idx) => {
       const gst = catalogProductGstPercent(p)
       const sale = catalogProductSalePrice(p)
@@ -98,13 +104,14 @@ export async function downloadCatalogGroupPdf(catalog: GstPurchaseCatalog): Prom
         idx + 1,
         pdfSafe(p.product_name),
         pdfSafe(String(p.order_tag ?? "").trim() || "NA"),
+        pdfSafe(catalogProductOrderId(p) || "-"),
         pdfSafe(p.brand ?? "-"),
         formatPdfPrice(p.price),
         sale != null ? formatPdfPrice(sale) : "-",
         pdfSafe(gstLabel(gst)),
         formatPdfPrice(priceWithGst(p.price, gst)),
         String(p.moq),
-        formatPdfPrice(priceWithGst(p.price, gst) * p.moq),
+        formatPdfPrice(p.price * p.moq),
         pdfSafe(p.unit ?? "-"),
       ]
     }),
@@ -117,12 +124,12 @@ export async function downloadCatalogGroupPdf(catalog: GstPurchaseCatalog): Prom
     },
     columnStyles: {
       0: { halign: "center", cellWidth: 8 },
-      4: { halign: "right" },
       5: { halign: "right" },
-      6: { halign: "center" },
-      7: { halign: "right" },
-      8: { halign: "center" },
-      9: { halign: "right" },
+      6: { halign: "right" },
+      7: { halign: "center" },
+      8: { halign: "right" },
+      9: { halign: "center" },
+      10: { halign: "right" },
     },
     alternateRowStyles: { fillColor: [248, 248, 250] },
     margin: { left: 14, right: 14 },
@@ -138,6 +145,22 @@ export async function downloadCatalogGroupPdf(catalog: GstPurchaseCatalog): Prom
       tableEndY,
       { align: "right" }
     )
+    if (discountPct > 0) {
+      doc.setFont("helvetica", "normal")
+      doc.text(
+        pdfSafe(`Discount ${discountPct}%: -${formatPdfPrice(discountAmount)}`),
+        pageW - 14,
+        tableEndY + 6,
+        { align: "right" }
+      )
+      doc.setFont("helvetica", "bold")
+      doc.text(
+        pdfSafe(`Balance: ${formatPdfPrice(balance)}`),
+        pageW - 14,
+        tableEndY + 12,
+        { align: "right" }
+      )
+    }
   }
 
   const totalPages = doc.getNumberOfPages()
