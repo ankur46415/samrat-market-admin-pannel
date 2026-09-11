@@ -133,18 +133,32 @@ export function resolvedOrderDiscount(
   return { percent, off, roundOff, balance: applyRound(total - off) }
 }
 
-export function catalogDiscountedBalance(catalog: GstPurchaseCatalog, incGst = true): number {
+export function catalogOrderDiscountTotals(
+  catalog: GstPurchaseCatalog,
+  incGst = true
+): { itemsTotal: number; off: number; roundOff: number; balance: number } {
   const orderById = new Map((catalog.orders ?? []).map((order) => [order.order_id, order]))
   const totalsByOrder = new Map<string, number>()
   catalog.products.forEach((product) => {
     const id = catalogProductOrderId(product) || NO_ORDER_ID
     totalsByOrder.set(id, (totalsByOrder.get(id) ?? 0) + catalogProductLineTotal(product, incGst))
   })
-  return roundMoney(
-    [...totalsByOrder.entries()].reduce((sum, [id, total]) => {
-      return sum + resolvedOrderDiscount(orderById.get(id), total).balance
-    }, 0)
-  )
+  let itemsTotal = 0
+  let off = 0
+  let roundOff = 0
+  let balance = 0
+  for (const [id, total] of totalsByOrder.entries()) {
+    const resolved = resolvedOrderDiscount(orderById.get(id), total)
+    itemsTotal = roundMoney(itemsTotal + total)
+    off = roundMoney(off + resolved.off)
+    roundOff = roundMoney(roundOff + resolved.roundOff)
+    balance = roundMoney(balance + resolved.balance)
+  }
+  return { itemsTotal, off, roundOff, balance }
+}
+
+export function catalogDiscountedBalance(catalog: GstPurchaseCatalog, incGst = true): number {
+  return catalogOrderDiscountTotals(catalog, incGst).balance
 }
 
 export function catalogProductGstPercent(product: GstCatalogProduct): number | undefined {
@@ -500,6 +514,7 @@ export function gstWiseCatalogCards(
       const activeSlabs = slabs.filter((row) => row.items > 0)
       const includingGst = roundMoney(activeSlabs.reduce((sum, row) => sum + row.taxable, 0))
       const gstAmount = roundMoney(activeSlabs.reduce((sum, row) => sum + row.gstAmount, 0))
+      const discount = catalogOrderDiscountTotals(tagged, true)
       return {
         name: catalog.name,
         source: catalog.source ?? "",
@@ -509,7 +524,9 @@ export function gstWiseCatalogCards(
         gstAmount,
         taxable: roundMoney(includingGst - gstAmount),
         saleValue: roundMoney(activeSlabs.reduce((sum, row) => sum + row.saleValue, 0)),
-        balance: catalogDiscountedBalance(tagged, true),
+        discountOff: discount.off,
+        roundOff: discount.roundOff,
+        balance: discount.balance,
       }
     })
     .filter((card) => card.items > 0)

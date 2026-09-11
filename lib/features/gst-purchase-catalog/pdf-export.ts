@@ -367,16 +367,18 @@ export async function downloadGstWiseSaleReport(
         pdfSafe(gstLabels),
         String(card.items),
         formatPdfPrice(card.includingGst),
+        formatPdfPrice(card.discountOff),
+        formatPdfPrice(card.roundOff),
+        formatPdfPrice(card.balance),
         formatPdfPrice(card.taxable),
         formatPdfPrice(card.gstAmount),
         formatPdfPrice(card.saleValue),
-        formatPdfPrice(card.balance),
       ]]
     })
 
     autoTable(doc, {
       startY: nextY,
-      head: [["Catalog group", "Source", "GST %", "Items", "Including GST", "Taxable", "GST Amt", "MRP Sale", "Balance"]],
+      head: [["Catalog group", "Source", "GST %", "Items", "Including GST", "Discount", "Round off", "Balance", "Taxable", "GST Amt", "MRP Sale"]],
       body: cardRows,
       foot: [[
         "Total",
@@ -384,14 +386,16 @@ export async function downloadGstWiseSaleReport(
         "",
         String(cards.reduce((sum, card) => sum + card.items, 0)),
         formatPdfPrice(roundMoney(cards.reduce((sum, card) => sum + card.includingGst, 0))),
+        formatPdfPrice(roundMoney(cards.reduce((sum, card) => sum + card.discountOff, 0))),
+        formatPdfPrice(roundMoney(cards.reduce((sum, card) => sum + card.roundOff, 0))),
+        formatPdfPrice(roundMoney(cards.reduce((sum, card) => sum + card.balance, 0))),
         formatPdfPrice(roundMoney(cards.reduce((sum, card) => sum + card.taxable, 0))),
         formatPdfPrice(roundMoney(cards.reduce((sum, card) => sum + card.gstAmount, 0))),
         formatPdfPrice(roundMoney(cards.reduce((sum, card) => sum + card.saleValue, 0))),
-        formatPdfPrice(roundMoney(cards.reduce((sum, card) => sum + card.balance, 0))),
       ]],
-      styles: { fontSize: 7.5, cellPadding: 1.8, lineColor: [220, 220, 220], lineWidth: 0.2 },
-      headStyles: { fillColor: [15, 118, 110], textColor: 255, fontStyle: "bold", fontSize: 8 },
-      footStyles: { fillColor: [240, 253, 250], textColor: [15, 118, 110], fontStyle: "bold", fontSize: 7.5 },
+      styles: { fontSize: 7, cellPadding: 1.5, lineColor: [220, 220, 220], lineWidth: 0.2 },
+      headStyles: { fillColor: [15, 118, 110], textColor: 255, fontStyle: "bold", fontSize: 7.5 },
+      footStyles: { fillColor: [240, 253, 250], textColor: [15, 118, 110], fontStyle: "bold", fontSize: 7 },
       columnStyles: {
         3: { halign: "center" },
         4: { halign: "right" },
@@ -399,10 +403,23 @@ export async function downloadGstWiseSaleReport(
         6: { halign: "right" },
         7: { halign: "right" },
         8: { halign: "right" },
+        9: { halign: "right" },
+        10: { halign: "right" },
       },
       alternateRowStyles: { fillColor: [248, 248, 250] },
       margin: { left: 14, right: 14 },
     })
+
+    const noteY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6
+    doc.setFontSize(8)
+    doc.setFont("helvetica", "italic")
+    doc.setTextColor(82, 82, 91)
+    doc.text(
+      "Balance is Including GST after saved order discounts and round-off. GST summary Including GST is before discount, so the two totals will not match when discounts exist.",
+      14,
+      noteY,
+      { maxWidth: 269 }
+    )
 
     addPdfFooter(doc, logoDataUrl, "Samrat Market | Card-wise GST report")
     const tagFile = orderTag === ALL_ORDER_TAGS ? "All_Tags" : safeFileName(orderTag)
