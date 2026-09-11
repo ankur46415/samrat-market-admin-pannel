@@ -24,9 +24,13 @@ import {
   DEFAULT_SALE_MARGIN_PERCENTS,
   normalizeGstPercents,
   normalizeSaleMarginPercents,
+  normalizeGstSaleRecordPercents,
   sanitizeGstCatalogOrder,
   sanitizeGstCatalogProduct,
+  catalogProductGstPercent,
+  catalogProductSalePrice,
 } from "./models"
+import type { GstSaleRecordPercents } from "./models"
 
 function normalizeGstCatalogProduct(p: GstCatalogProduct): GstCatalogProduct {
   const raw = p as GstCatalogProduct & {
@@ -39,19 +43,13 @@ function normalizeGstCatalogProduct(p: GstCatalogProduct): GstCatalogProduct {
     salePrice?: number
     selling_price?: number
   }
-  const order_tag = String(p.order_tag ?? raw.orderTag ?? "").trim() || "NA"
-  const orderId = String(p.order_id ?? raw.orderId ?? raw.order_ID ?? "").trim()
-  const gstRaw = p.gst_percent ?? raw.gstPercent ?? raw.gst ?? raw.GST
-  const gstNum = Number(gstRaw)
-  const saleRaw = p.sale_price ?? raw.salePrice ?? raw.selling_price
-  const saleNum = Number(saleRaw)
-  return {
+  return sanitizeGstCatalogProduct({
     ...p,
-    order_tag,
-    ...(orderId ? { order_id: orderId } : {}),
-    ...(Number.isFinite(gstNum) && gstNum >= 0 ? { gst_percent: gstNum } : {}),
-    ...(Number.isFinite(saleNum) && saleNum >= 0 ? { sale_price: saleNum } : {}),
-  }
+    order_tag: String(p.order_tag ?? raw.orderTag ?? "").trim() || "NA",
+    order_id: String(p.order_id ?? raw.orderId ?? raw.order_ID ?? "").trim() || undefined,
+    gst_percent: catalogProductGstPercent(p),
+    sale_price: catalogProductSalePrice(p),
+  })
 }
 
 const COL = "gst_purchase_catalogs"
@@ -191,6 +189,39 @@ export async function saveGstSaleMarginPercents(percents: number[]): Promise<voi
     doc(db, SETTINGS_COL, MARGIN_DOC),
     {
       percents: normalizeSaleMarginPercents(percents),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  )
+}
+
+const SALE_RECORD_DOC = "gst_sale_record"
+
+export function subscribeGstSaleRecordPercents(
+  onData: (percents: GstSaleRecordPercents) => void,
+  onError?: (error: Error) => void
+) {
+  return onSnapshot(
+    doc(db, SETTINGS_COL, SALE_RECORD_DOC),
+    (snap) => {
+      if (!snap.exists()) {
+        onData({})
+        return
+      }
+      onData(normalizeGstSaleRecordPercents(snap.data()?.percentsByTag))
+    },
+    (err) => {
+      console.error("GST sale record percents subscribe error:", err)
+      onError?.(err)
+    }
+  )
+}
+
+export async function saveGstSaleRecordPercents(percentsByTag: GstSaleRecordPercents): Promise<void> {
+  await setDoc(
+    doc(db, SETTINGS_COL, SALE_RECORD_DOC),
+    {
+      percentsByTag: normalizeGstSaleRecordPercents(percentsByTag),
       updatedAt: serverTimestamp(),
     },
     { merge: true }

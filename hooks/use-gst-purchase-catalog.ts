@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import type { GstPurchaseCatalog, GstCatalogProduct, GstCatalogOrder } from "@/lib/features/gst-purchase-catalog/models"
+import type { GstPurchaseCatalog, GstCatalogProduct, GstCatalogOrder, GstSaleRecordPercents } from "@/lib/features/gst-purchase-catalog/models"
 import { DEFAULT_GST_PERCENTS, DEFAULT_SALE_MARGIN_PERCENTS } from "@/lib/features/gst-purchase-catalog/models"
 import {
   subscribeGstPurchaseCatalogs,
@@ -12,6 +12,8 @@ import {
   saveGstPercents,
   subscribeGstSaleMarginPercents,
   saveGstSaleMarginPercents,
+  subscribeGstSaleRecordPercents,
+  saveGstSaleRecordPercents,
 } from "@/lib/features/gst-purchase-catalog/service"
 
 export type CatalogSyncStatus = "connecting" | "synced" | "error" | "offline"
@@ -22,6 +24,7 @@ export function useGstPurchaseCatalog() {
   const [syncStatus, setSyncStatus] = useState<CatalogSyncStatus>("connecting")
   const [gstPercents, setGstPercents] = useState<number[]>([...DEFAULT_GST_PERCENTS])
   const [saleMarginPercents, setSaleMarginPercents] = useState<number[]>([...DEFAULT_SALE_MARGIN_PERCENTS])
+  const [gstSaleRecordPercents, setGstSaleRecordPercents] = useState<GstSaleRecordPercents>({})
 
   useEffect(() => {
     setSyncStatus("connecting")
@@ -49,12 +52,21 @@ export function useGstPurchaseCatalog() {
     return () => unsub()
   }, [])
 
+  useEffect(() => {
+    const unsub = subscribeGstSaleRecordPercents(setGstSaleRecordPercents)
+    return () => unsub()
+  }, [])
+
   const updateGstPercents = useCallback(async (next: number[]) => {
     await saveGstPercents(next)
   }, [])
 
   const updateSaleMarginPercents = useCallback(async (next: number[]) => {
     await saveGstSaleMarginPercents(next)
+  }, [])
+
+  const updateGstSaleRecordPercents = useCallback(async (next: GstSaleRecordPercents) => {
+    await saveGstSaleRecordPercents(next)
   }, [])
 
   const createCatalog = useCallback(
@@ -96,5 +108,7 @@ export function useGstPurchaseCatalog() {
     updateGstPercents,
     saleMarginPercents,
     updateSaleMarginPercents,
+    gstSaleRecordPercents,
+    updateGstSaleRecordPercents,
   }
 }

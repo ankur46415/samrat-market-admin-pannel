@@ -174,14 +174,14 @@ function GstPercentSelect({
   disabled?: boolean
 }) {
   const listed = value != null && percents.some((p) => Math.abs(p - value) < 0.051)
-  const selectValue = value == null ? "none" : String(value)
+  const selectValue = value == null ? "none" : String(Math.round(value * 10) / 10)
   return (
     <Select
       disabled={disabled}
       value={selectValue}
       onValueChange={(next) => {
         if (next === "none") onChange(undefined)
-        else onChange(Number(next))
+        else onChange(Math.round(Number(next) * 10) / 10)
       }}
     >
       <SelectTrigger className={cn("h-8 w-[7.25rem] shrink-0 px-2 text-xs font-semibold", className)}>
@@ -541,7 +541,7 @@ function ProductRow({
         </span>
       </td>
       <td className="py-3 px-3 text-sm font-bold text-teal-700">
-        {editing ? (
+        {canEdit ? (
           <GstPercentSelect
             value={gst}
             percents={gstPercents}
@@ -1937,8 +1937,8 @@ function CatalogDetailView({
   }
 
   const patchProductAt = (index: number, patch: Partial<GstCatalogProduct>) => {
-    setProducts((prev) =>
-      prev.map((p, i) => {
+    setProducts((prev) => {
+      const updated = prev.map((p, i) => {
         if (i !== index) return p
         const next: GstCatalogProduct = { ...p, ...patch }
         if ("gst_percent" in patch && (patch.gst_percent === undefined || Number.isNaN(Number(patch.gst_percent)))) {
@@ -1952,7 +1952,11 @@ function CatalogDetailView({
         if ("unit" in patch && !String(patch.unit ?? "").trim()) delete next.unit
         return next
       })
-    )
+      if ("gst_percent" in patch) {
+        void syncProducts(updated)
+      }
+      return updated
+    })
   }
 
   const saveOrderDiscount = async (
@@ -2718,6 +2722,8 @@ export function GstPurchaseCatalogDashboard() {
     updateGstPercents,
     saleMarginPercents,
     updateSaleMarginPercents,
+    gstSaleRecordPercents,
+    updateGstSaleRecordPercents,
   } = useGstPurchaseCatalog()
 
   const [selectedCatalog, setSelectedCatalog] = useState<GstPurchaseCatalog | null>(null)
@@ -2825,7 +2831,12 @@ export function GstPurchaseCatalogDashboard() {
         </div>
       </div>
 
-      <GstOrderTagPurchaseChart catalogs={catalogs} />
+      <GstOrderTagPurchaseChart
+        catalogs={catalogs}
+        gstPercents={gstPercents}
+        saleRecordPercents={gstSaleRecordPercents}
+        onSaveSaleRecordPercents={updateGstSaleRecordPercents}
+      />
 
       <SaleMarginPercentsCard percents={saleMarginPercents} onSave={updateSaleMarginPercents} canEdit={canEdit} />
       <GstPercentsCard percents={gstPercents} onSave={updateGstPercents} canEdit={canEdit} />
