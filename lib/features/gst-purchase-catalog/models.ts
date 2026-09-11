@@ -481,3 +481,36 @@ export function gstWiseReportData(
 
   return { slabs, lines }
 }
+
+export function gstWiseCatalogCards(
+  catalogs: GstPurchaseCatalog[],
+  orderTag: string,
+  configuredPercents: number[] = DEFAULT_GST_PERCENTS
+) {
+  return catalogs
+    .map((catalog) => {
+      const tagged: GstPurchaseCatalog = {
+        ...catalog,
+        products:
+          orderTag === ALL_ORDER_TAGS
+            ? catalog.products
+            : catalog.products.filter((product) => catalogProductOrderTag(product) === orderTag),
+      }
+      const { slabs } = gstWiseReportData([tagged], ALL_ORDER_TAGS, configuredPercents)
+      const activeSlabs = slabs.filter((row) => row.items > 0)
+      const includingGst = roundMoney(activeSlabs.reduce((sum, row) => sum + row.taxable, 0))
+      const gstAmount = roundMoney(activeSlabs.reduce((sum, row) => sum + row.gstAmount, 0))
+      return {
+        name: catalog.name,
+        source: catalog.source ?? "",
+        items: tagged.products.length,
+        slabs: activeSlabs,
+        includingGst,
+        gstAmount,
+        taxable: roundMoney(includingGst - gstAmount),
+        saleValue: roundMoney(activeSlabs.reduce((sum, row) => sum + row.saleValue, 0)),
+        balance: catalogDiscountedBalance(tagged, true),
+      }
+    })
+    .filter((card) => card.items > 0)
+}

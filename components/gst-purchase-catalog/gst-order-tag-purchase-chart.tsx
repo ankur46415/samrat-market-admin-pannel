@@ -12,6 +12,7 @@ import {
   gstFilterLabel,
   gstWiseReportData,
   purchaseTotalsByCatalogGroup,
+  roundMoney,
   saleAmountFromMrp,
   uniqueCatalogGstFilters,
   uniqueCatalogOrderTags,
@@ -20,6 +21,13 @@ import { downloadGstSaleRecordReport, downloadGstWiseSaleReport, downloadGstWise
 import { chartFillAt } from "@/lib/chart-colors"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -58,6 +66,7 @@ export function GstOrderTagPurchaseChart({
   const [selectedTag, setSelectedTag] = useState(() => defaultCatalogOrderTag(tags) || ALL_ORDER_TAGS)
   const [selectedGst, setSelectedGst] = useState(ALL_GST_FILTER)
   const [exporting, setExporting] = useState<"summary" | "full" | "record" | null>(null)
+  const [fullReportOpen, setFullReportOpen] = useState(false)
   const [salePercentDrafts, setSalePercentDrafts] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -104,6 +113,10 @@ export function GstOrderTagPurchaseChart({
     () => gstRows.reduce((sum, row) => sum + row.gstAmount, 0),
     [gstRows]
   )
+  const exclusiveTaxableTotal = useMemo(
+    () => roundMoney(grandTotal - (showGstWise ? gstAmountTotal : 0)),
+    [grandTotal, showGstWise, gstAmountTotal]
+  )
   const saleTotal = useMemo(
     () => gstRows.reduce((sum, row) => sum + row.saleValue, 0),
     [gstRows]
@@ -146,7 +159,7 @@ export function GstOrderTagPurchaseChart({
   const gstLabelText = gstFilterLabel(selectedGst)
   const filterLabel = `${tagLabel} · ${gstLabelText}`
 
-  const exportReport = async (kind: "summary" | "full" | "record") => {
+  const exportReport = async (kind: "summary" | "full" | "record", fullDetail?: "cards" | "products") => {
     setExporting(kind)
     try {
       if (kind === "summary") {
@@ -154,7 +167,7 @@ export function GstOrderTagPurchaseChart({
       } else if (kind === "record") {
         await downloadGstSaleRecordReport(catalogs, selectedTag, gstPercents, saleRecordPercents)
       } else {
-        await downloadGstWiseSaleReport(catalogs, selectedTag, gstPercents)
+        await downloadGstWiseSaleReport(catalogs, selectedTag, gstPercents, fullDetail ?? "products")
       }
     } finally {
       setExporting(null)
@@ -190,7 +203,7 @@ export function GstOrderTagPurchaseChart({
           </CardTitle>
           <CardDescription>
             {showGstWise
-              ? "All GST selected — totals by GST slab (0, 5, 12, 18, 28…). Taxable is qty × rate; GST is added separately."
+              ? "All GST selected — totals by GST slab. Including GST is qty × rate; Taxable is Including GST minus GST amount."
               : "Filtered by GST %. Total purchase is price × MOQ (GST not included)."}
           </CardDescription>
         </div>
@@ -244,7 +257,7 @@ export function GstOrderTagPurchaseChart({
             variant="outline"
             className="gap-2"
             disabled={exporting != null || gstReport.lines.length === 0}
-            onClick={() => void exportReport("full")}
+            onClick={() => setFullReportOpen(true)}
           >
             {exporting === "full" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
             Full Report
@@ -252,21 +265,26 @@ export function GstOrderTagPurchaseChart({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <div className="rounded-xl border border-teal-100 bg-teal-50/60 px-4 py-3">
             <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-teal-700">
               <IndianRupee className="h-3.5 w-3.5" />
-              {showGstWise ? "Taxable" : "Total purchase"}
+              {showGstWise ? "Including GST" : "Total purchase"}
             </p>
             <p className="mt-1 text-2xl font-black tabular-nums text-teal-900">{formatInr(grandTotal)}</p>
             <p className="text-xs text-teal-700/80">{filterLabel}</p>
           </div>
           {showGstWise ? (
             <>
+              <div className="rounded-xl border border-teal-100 bg-white px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-teal-800">Taxable</p>
+                <p className="mt-1 text-2xl font-black tabular-nums text-teal-900">{formatInr(exclusiveTaxableTotal)}</p>
+                <p className="text-xs text-teal-700/80">Including GST − GST amt</p>
+              </div>
               <div className="rounded-xl border border-amber-100 bg-amber-50/60 px-4 py-3">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">GST amount</p>
                 <p className="mt-1 text-2xl font-black tabular-nums text-amber-900">{formatInr(gstAmountTotal)}</p>
-                <p className="text-xs text-amber-700/80">On taxable value</p>
+                <p className="text-xs text-amber-700/80">On including GST</p>
               </div>
               <div className="rounded-xl border border-sky-100 bg-sky-50/60 px-4 py-3">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-sky-700">MRP</p>
@@ -291,8 +309,8 @@ export function GstOrderTagPurchaseChart({
               No purchase for {filterLabel}.
             </div>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-5">
-              <div className="h-[300px] lg:col-span-3">
+            <div className="space-y-4">
+              <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={gstRows} margin={{ top: 8, right: 8, left: 4, bottom: 8 }}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
@@ -315,12 +333,15 @@ export function GstOrderTagPurchaseChart({
                       content={({ active, payload }) => {
                         if (!active || !payload?.length) return null
                         const row = payload[0].payload as (typeof gstRows)[number]
+                        const exclusive = roundMoney(row.taxable - row.gstAmount)
                         return (
                           <div className="rounded-lg border bg-white p-3 shadow-lg">
                             <p className="text-sm font-semibold text-slate-800">GST {row.label}</p>
                             <p className="text-lg font-black text-teal-800">{formatInr(row.taxable)}</p>
+                            <p className="text-xs text-slate-500">Including GST</p>
+                            <p className="text-xs text-slate-500">Taxable {formatInr(exclusive)}</p>
                             <p className="text-xs text-slate-500">GST amt {formatInr(row.gstAmount)}</p>
-                            <p className="text-xs text-slate-500">Total {formatInr(row.total)} · MRP Sale {formatInr(row.saleValue)}</p>
+                            <p className="text-xs text-slate-500">MRP Sale {formatInr(row.saleValue)}</p>
                             <p className="text-xs text-slate-400">{row.items} products · {tagLabel}</p>
                           </div>
                         )
@@ -334,14 +355,15 @@ export function GstOrderTagPurchaseChart({
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-              <div className="max-h-[300px] overflow-y-auto rounded-xl border border-slate-100 lg:col-span-2">
+              <div className="overflow-x-auto rounded-xl border border-slate-100">
                 <table className="w-full text-left text-sm">
-                  <thead className="sticky top-0 bg-slate-50">
+                  <thead className="bg-slate-50">
                     <tr className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      <th className="px-3 py-2">GST %</th>
+                      <th className="px-3 py-2">GST</th>
+                      <th className="px-3 py-2 text-right">Including GST</th>
                       <th className="px-3 py-2 text-right">Taxable</th>
-                      <th className="px-3 py-2 text-right">Amount</th>
-                      <th className="px-3 py-2 text-right">MRP</th>
+                      <th className="px-3 py-2 text-right">GST Amt</th>
+                      <th className="px-3 py-2 text-right">MRP Sale</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -356,6 +378,9 @@ export function GstOrderTagPurchaseChart({
                         <td className="px-3 py-2 text-right font-bold tabular-nums text-slate-900">
                           {formatInr(row.taxable)}
                         </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-teal-800">
+                          {formatInr(roundMoney(row.taxable - row.gstAmount))}
+                        </td>
                         <td className="px-3 py-2 text-right tabular-nums text-slate-600">
                           {formatInr(row.gstAmount)}
                         </td>
@@ -365,6 +390,15 @@ export function GstOrderTagPurchaseChart({
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr className="border-t border-slate-200 bg-teal-50/70">
+                      <td className="px-3 py-2 font-bold text-teal-900">Total</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums text-teal-900">{formatInr(grandTotal)}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums text-teal-900">{formatInr(exclusiveTaxableTotal)}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums text-teal-900">{formatInr(gstAmountTotal)}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums text-teal-900">{formatInr(saleTotal)}</td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </div>
@@ -542,6 +576,51 @@ export function GstOrderTagPurchaseChart({
         </CardContent>
       </Card>
     ) : null}
+
+    <Dialog open={fullReportOpen} onOpenChange={setFullReportOpen}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Full Report</DialogTitle>
+          <DialogDescription>
+            GST slab totals are in both PDFs. Pick the detail a CA should see after that summary.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            className="rounded-xl border border-teal-200 bg-teal-50/50 p-4 text-left transition-colors hover:border-teal-400 hover:bg-teal-50"
+            onClick={() => {
+              setFullReportOpen(false)
+              void exportReport("full", "cards")
+            }}
+          >
+            <p className="flex items-center gap-2 text-sm font-bold text-teal-900">
+              <Package className="h-4 w-4" />
+              Card wise
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-slate-600">
+              Each catalog group with GST %, Including GST, Taxable, GST Amt, MRP Sale, and Balance. No product list.
+            </p>
+          </button>
+          <button
+            type="button"
+            className="rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-slate-400 hover:bg-slate-50"
+            onClick={() => {
+              setFullReportOpen(false)
+              void exportReport("full", "products")
+            }}
+          >
+            <p className="flex items-center gap-2 text-sm font-bold text-slate-900">
+              <Download className="h-4 w-4" />
+              Full product list
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-slate-600">
+              Every product line after the GST summary — name, catalog, qty, rate, and amounts.
+            </p>
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
     </div>
   )
 }

@@ -8,6 +8,7 @@ import {
   catalogProductLineTotal,
   catalogProductOrderTag,
   gstLabel,
+  gstWiseCatalogCards,
   gstWiseReportData,
   saleAmountFromMrp,
   ALL_ORDER_TAGS,
@@ -285,13 +286,15 @@ function addPdfFooter(doc: jsPDF, logoDataUrl: string | null, note: string) {
   }
 }
 
-/** GST-wise sale / purchase report for the main catalog page. */
+/** GST-wise full report: GST summary, then either catalog cards or the product list. */
 export async function downloadGstWiseSaleReport(
   catalogs: GstPurchaseCatalog[],
   orderTag: string,
-  configuredPercents: number[]
+  configuredPercents: number[],
+  detail: "cards" | "products" = "products"
 ): Promise<void> {
   const { slabs, lines } = gstWiseReportData(catalogs, orderTag, configuredPercents)
+  const cards = detail === "cards" ? gstWiseCatalogCards(catalogs, orderTag, configuredPercents) : []
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" })
   const logoDataUrl = await loadLogoDataUrl()
   const dateStr = new Date().toLocaleDateString("en-IN", {
@@ -300,61 +303,121 @@ export async function downloadGstWiseSaleReport(
     year: "numeric",
   })
   const tagLabel = orderTag === ALL_ORDER_TAGS ? "All order tags" : orderTag
-  const taxableTotal = roundMoney(slabs.reduce((sum, row) => sum + row.taxable, 0))
+  const includingGstTotal = roundMoney(slabs.reduce((sum, row) => sum + row.taxable, 0))
   const gstTotal = roundMoney(slabs.reduce((sum, row) => sum + row.gstAmount, 0))
-  const withGstTotal = roundMoney(slabs.reduce((sum, row) => sum + row.total, 0))
+  const taxableTotal = roundMoney(includingGstTotal - gstTotal)
   const saleTotal = roundMoney(slabs.reduce((sum, row) => sum + row.saleValue, 0))
+  const subtitle = detail === "cards" ? "Card-wise GST report" : "GST-wise full report"
+  const detailNote = detail === "cards"
+    ? `${cards.length} catalog groups`
+    : `${lines.length} products`
 
   addPdfHeader(
     doc,
     logoDataUrl,
     "GST Purchase Catalog",
-    "GST-wise Sale Report",
-    `Order tag: ${tagLabel}  |  ${lines.length} products  |  ${dateStr}`
+    subtitle,
+    `Order tag: ${tagLabel}  |  ${detailNote}  |  ${dateStr}`
   )
 
   autoTable(doc, {
     startY: 49,
-    head: [["GST %", "Items", "Taxable (Qty x Rate)", "GST Amt", "Total + GST", "Sale value"]],
+    head: [["GST", "Including GST", "Taxable", "GST Amt", "MRP Sale"]],
     body: slabs.map((row) => [
       pdfSafe(row.label),
-      String(row.items),
       formatPdfPrice(row.taxable),
+      formatPdfPrice(roundMoney(row.taxable - row.gstAmount)),
       formatPdfPrice(row.gstAmount),
-      formatPdfPrice(row.total),
       formatPdfPrice(row.saleValue),
     ]),
     foot: [[
       "Total",
-      String(lines.length),
+      formatPdfPrice(includingGstTotal),
       formatPdfPrice(taxableTotal),
       formatPdfPrice(gstTotal),
-      formatPdfPrice(withGstTotal),
       formatPdfPrice(saleTotal),
     ]],
     styles: { fontSize: 8, cellPadding: 2, lineColor: [220, 220, 220], lineWidth: 0.2 },
     headStyles: { fillColor: [13, 148, 136], textColor: 255, fontStyle: "bold", fontSize: 9 },
     footStyles: { fillColor: [240, 253, 250], textColor: [15, 118, 110], fontStyle: "bold", fontSize: 8 },
     columnStyles: {
-      1: { halign: "center" },
+      1: { halign: "right" },
       2: { halign: "right" },
       3: { halign: "right" },
       4: { halign: "right" },
-      5: { halign: "right" },
     },
     alternateRowStyles: { fillColor: [248, 248, 250] },
     margin: { left: 14, right: 14 },
   })
 
-  const summaryEndY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10
+  let nextY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10
+
+  if (detail === "cards") {
+    doc.setFontSize(11)
+    doc.setFont("helvetica", "bold")
+    doc.setTextColor(39, 39, 42)
+    doc.text("Catalog group details", 14, nextY)
+    nextY += 3
+
+    const cardRows = cards.flatMap((card) => {
+      const gstLabels = card.slabs.map((row) => row.label).join(", ") || "-"
+      return [[
+        pdfSafe(card.name),
+        pdfSafe(card.source || "-"),
+        pdfSafe(gstLabels),
+        String(card.items),
+        formatPdfPrice(card.includingGst),
+        formatPdfPrice(card.taxable),
+        formatPdfPrice(card.gstAmount),
+        formatPdfPrice(card.saleValue),
+        formatPdfPrice(card.balance),
+      ]]
+    })
+
+    autoTable(doc, {
+      startY: nextY,
+      head: [["Catalog group", "Source", "GST %", "Items", "Including GST", "Taxable", "GST Amt", "MRP Sale", "Balance"]],
+      body: cardRows,
+      foot: [[
+        "Total",
+        "",
+        "",
+        String(cards.reduce((sum, card) => sum + card.items, 0)),
+        formatPdfPrice(roundMoney(cards.reduce((sum, card) => sum + card.includingGst, 0))),
+        formatPdfPrice(roundMoney(cards.reduce((sum, card) => sum + card.taxable, 0))),
+        formatPdfPrice(roundMoney(cards.reduce((sum, card) => sum + card.gstAmount, 0))),
+        formatPdfPrice(roundMoney(cards.reduce((sum, card) => sum + card.saleValue, 0))),
+        formatPdfPrice(roundMoney(cards.reduce((sum, card) => sum + card.balance, 0))),
+      ]],
+      styles: { fontSize: 7.5, cellPadding: 1.8, lineColor: [220, 220, 220], lineWidth: 0.2 },
+      headStyles: { fillColor: [15, 118, 110], textColor: 255, fontStyle: "bold", fontSize: 8 },
+      footStyles: { fillColor: [240, 253, 250], textColor: [15, 118, 110], fontStyle: "bold", fontSize: 7.5 },
+      columnStyles: {
+        3: { halign: "center" },
+        4: { halign: "right" },
+        5: { halign: "right" },
+        6: { halign: "right" },
+        7: { halign: "right" },
+        8: { halign: "right" },
+      },
+      alternateRowStyles: { fillColor: [248, 248, 250] },
+      margin: { left: 14, right: 14 },
+    })
+
+    addPdfFooter(doc, logoDataUrl, "Samrat Market | Card-wise GST report")
+    const tagFile = orderTag === ALL_ORDER_TAGS ? "All_Tags" : safeFileName(orderTag)
+    doc.save(`Samrat_GST_Card_Wise_${tagFile}_${new Date().toISOString().slice(0, 10)}.pdf`)
+    return
+  }
+
   doc.setFontSize(11)
   doc.setFont("helvetica", "bold")
   doc.setTextColor(39, 39, 42)
-  doc.text("Product-wise details", 14, summaryEndY)
+  doc.text("Product-wise details", 14, nextY)
 
   autoTable(doc, {
-    startY: summaryEndY + 3,
-    head: [["#", "Product", "Catalog", "Order Tag", "GST", "Qty", "Rate", "Taxable", "GST Amt", "Total", "Sale"]],
+    startY: nextY + 3,
+    head: [["#", "Product", "Catalog", "Order Tag", "GST", "Qty", "Rate", "Including GST", "Taxable", "GST Amt", "MRP Sale"]],
     body: lines.map((line, idx) => {
       const p = line.product
       return [
@@ -366,8 +429,8 @@ export async function downloadGstWiseSaleReport(
         String(p.moq),
         formatPdfPrice(p.price),
         formatPdfPrice(line.taxable),
+        formatPdfPrice(roundMoney(line.taxable - line.gstAmount)),
         formatPdfPrice(line.gstAmount),
-        formatPdfPrice(line.total),
         formatPdfPrice(line.saleValue),
       ]
     }),
@@ -386,9 +449,9 @@ export async function downloadGstWiseSaleReport(
     margin: { left: 14, right: 14 },
   })
 
-  addPdfFooter(doc, logoDataUrl, "Samrat Market | GST-wise Sale Report")
+  addPdfFooter(doc, logoDataUrl, "Samrat Market | GST-wise full report")
   const tagFile = orderTag === ALL_ORDER_TAGS ? "All_Tags" : safeFileName(orderTag)
-  doc.save(`Samrat_GST_Wise_Sale_${tagFile}_${new Date().toISOString().slice(0, 10)}.pdf`)
+  doc.save(`Samrat_GST_Full_Products_${tagFile}_${new Date().toISOString().slice(0, 10)}.pdf`)
 }
 
 export function gstReportTitle(orderTag: string): string {
@@ -396,7 +459,7 @@ export function gstReportTitle(orderTag: string): string {
   return `Samrat Market GST report of ${tag}`
 }
 
-/** Summary PDF matching the GST / Taxable / GST Amt / Sale table. */
+/** Summary PDF: GST / Including GST / Taxable (incl. GST − GST amt) / GST Amt / MRP Sale. */
 export async function downloadGstWiseSummaryReport(
   catalogs: GstPurchaseCatalog[],
   orderTag: string,
@@ -411,8 +474,9 @@ export async function downloadGstWiseSummaryReport(
     year: "numeric",
   })
   const title = gstReportTitle(orderTag)
-  const taxableTotal = roundMoney(slabs.reduce((sum, row) => sum + row.taxable, 0))
+  const includingGstTotal = roundMoney(slabs.reduce((sum, row) => sum + row.taxable, 0))
   const gstTotal = roundMoney(slabs.reduce((sum, row) => sum + row.gstAmount, 0))
+  const taxableTotal = roundMoney(includingGstTotal - gstTotal)
   const saleTotal = roundMoney(slabs.reduce((sum, row) => sum + row.saleValue, 0))
 
   addPdfHeader(
@@ -425,26 +489,29 @@ export async function downloadGstWiseSummaryReport(
 
   autoTable(doc, {
     startY: 49,
-    head: [["GST", "Taxable", "GST Amt", "MRP Sale"]],
+    head: [["GST", "Including GST", "Taxable", "GST Amt", "MRP Sale"]],
     body: slabs.map((row) => [
       pdfSafe(row.label),
       formatPdfPrice(row.taxable),
+      formatPdfPrice(roundMoney(row.taxable - row.gstAmount)),
       formatPdfPrice(row.gstAmount),
       formatPdfPrice(row.saleValue),
     ]),
     foot: [[
       "Total",
+      formatPdfPrice(includingGstTotal),
       formatPdfPrice(taxableTotal),
       formatPdfPrice(gstTotal),
       formatPdfPrice(saleTotal),
     ]],
-    styles: { fontSize: 10, cellPadding: 3, lineColor: [220, 220, 220], lineWidth: 0.2 },
-    headStyles: { fillColor: [13, 148, 136], textColor: 255, fontStyle: "bold", fontSize: 10 },
-    footStyles: { fillColor: [240, 253, 250], textColor: [15, 118, 110], fontStyle: "bold", fontSize: 10 },
+    styles: { fontSize: 9, cellPadding: 2.5, lineColor: [220, 220, 220], lineWidth: 0.2 },
+    headStyles: { fillColor: [13, 148, 136], textColor: 255, fontStyle: "bold", fontSize: 9 },
+    footStyles: { fillColor: [240, 253, 250], textColor: [15, 118, 110], fontStyle: "bold", fontSize: 9 },
     columnStyles: {
       1: { halign: "right" },
       2: { halign: "right" },
       3: { halign: "right" },
+      4: { halign: "right" },
     },
     alternateRowStyles: { fillColor: [248, 248, 250] },
     margin: { left: 14, right: 14 },
