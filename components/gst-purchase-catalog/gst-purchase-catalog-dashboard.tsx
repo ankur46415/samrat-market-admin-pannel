@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils"
 import { useGstPurchaseCatalog } from "@/hooks/use-gst-purchase-catalog"
 import type { GstCatalogProduct, GstCatalogOrder, GstPurchaseCatalog } from "@/lib/features/gst-purchase-catalog/models"
 import {
+  ALL_ORDER_TAGS,
   catalogProductOrderTag,
   catalogProductGstPercent,
   catalogProductOrderId,
@@ -39,6 +40,8 @@ import {
   catalogProductLineTotal,
   formatMarginPercent,
   gstLabel,
+  catalogDiscountedBalance,
+  gstWiseReportData,
   itemsTotalForOrder,
   marginPercentFromPrices,
   matchingSaleMarginPercent,
@@ -259,8 +262,13 @@ function SyncBadge({ status }: { status: CatalogSyncStatus }) {
 // ─── Catalog Group Card ───────────────────────────────────────────────────────
 const GST_CATALOG_EDIT_PASSWORD = "7269"
 
+function formatCardInr(n: number): string {
+  return `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
+}
+
 function CatalogCard({
   catalog,
+  gstPercents,
   onClick,
   onEdit,
   onDelete,
@@ -268,6 +276,7 @@ function CatalogCard({
   canEdit,
 }: {
   catalog: GstPurchaseCatalog
+  gstPercents: number[]
   onClick: () => void
   onEdit: () => void
   onDelete: () => void
@@ -275,6 +284,14 @@ function CatalogCard({
   canEdit: boolean
 }) {
   const color = catalog.color ?? "#0d9488"
+  const gstSlabs = gstWiseReportData([catalog], ALL_ORDER_TAGS, gstPercents).slabs.filter((row) => row.items > 0)
+  const gstLabelText = gstSlabs
+    .map((row) => row.label)
+    .filter((label) => label && label !== "No GST" && label !== "—")
+    .join(" · ") || "—"
+  const mrpTotal = roundMoney(gstSlabs.reduce((sum, row) => sum + row.saleValue, 0))
+  const balance = catalogDiscountedBalance(catalog, true)
+  const itemCount = catalog.products.length
   return (
     <div
       className="group relative rounded-2xl border border-slate-200 bg-white shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden"
@@ -337,22 +354,21 @@ function CatalogCard({
           </div>
         </div>
 
-        {/* Stats row */}
         <div className="mt-4 grid grid-cols-3 gap-2">
           <div className="rounded-lg bg-slate-50 px-3 py-2 text-center border border-slate-100">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Items</p>
-            <p className="text-lg font-black text-slate-800">{catalog.products.length}</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">GST %</p>
+            <p className="text-sm font-black leading-tight text-slate-800">{gstLabelText}</p>
           </div>
           <div className="rounded-lg px-3 py-2 text-center border" style={{ backgroundColor: `${color}11`, borderColor: `${color}33` }}>
-            <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color }}>Min Price</p>
-            <p className="text-sm font-black text-slate-800">
-              ₹{catalog.products.length > 0 ? Math.min(...catalog.products.map((p) => p.price)) : "—"}
+            <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Balance</p>
+            <p className="text-sm font-black tabular-nums text-amber-900">
+              {formatCardInr(balance)}
             </p>
           </div>
           <div className="rounded-lg px-3 py-2 text-center border" style={{ backgroundColor: `${color}11`, borderColor: `${color}33` }}>
-            <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color }}>Max Price</p>
-            <p className="text-sm font-black text-slate-800">
-              ₹{catalog.products.length > 0 ? Math.max(...catalog.products.map((p) => p.price)) : "—"}
+            <p className="text-[10px] font-bold uppercase tracking-wider text-sky-700">MRP</p>
+            <p className="text-sm font-black tabular-nums text-sky-900">
+              {formatCardInr(mrpTotal)}
             </p>
           </div>
         </div>
@@ -360,7 +376,7 @@ function CatalogCard({
         {/* Footer */}
         <div className="mt-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-1 text-xs font-semibold" style={{ color }}>
-            <span>View all products</span>
+            <span>{itemCount} items · View all products</span>
             <ChevronRight className="h-3.5 w-3.5" />
           </div>
           <button
@@ -1996,6 +2012,13 @@ function CatalogDetailView({
   const filteredMoqTotal = roundMoney(orderSummaries.reduce((sum, o) => sum + o.total, 0))
   const discountAmount = roundMoney(orderSummaries.reduce((sum, o) => sum + o.off, 0))
   const discountedBalance = roundMoney(orderSummaries.reduce((sum, o) => sum + o.balance, 0))
+  const filteredMrpTotal = roundMoney(
+    filtered.reduce((sum, { product }) => {
+      const sale = catalogProductSalePrice(product)
+      if (sale == null) return sum
+      return sum + sale * (Number(product.moq) || 0)
+    }, 0)
+  )
 
   return (
     <div className="space-y-6">
@@ -2127,12 +2150,14 @@ function CatalogDetailView({
       </div>
 
       {/* KPI bar */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         {[
           { label: "Visible products", value: String(filtered.length), icon: Package, color: "#0d9488" },
           { label: "Min Price", value: products.length > 0 ? `₹${Math.min(...products.map((p) => p.price))}` : "—", icon: IndianRupee, color: "#10b981" },
           { label: "Max Price", value: products.length > 0 ? `₹${Math.max(...products.map((p) => p.price))}` : "—", icon: IndianRupee, color: "#f97316" },
           { label: incGst ? "MOQ × Price Total" : "(Qty × Rate) + GST", value: `₹${filteredMoqTotal.toLocaleString("en-IN")}`, icon: Layers, color: color },
+          { label: "MRP", value: `₹${filteredMrpTotal.toLocaleString("en-IN")}`, icon: IndianRupee, color: "#0369a1" },
+          { label: "Balance", value: `₹${discountedBalance.toLocaleString("en-IN")}`, icon: IndianRupee, color: "#b45309" },
         ].map((kpi) => {
           const Icon = kpi.icon
           return (
@@ -2887,6 +2912,7 @@ export function GstPurchaseCatalogDashboard() {
             <CatalogCard
               key={catalog.id}
               catalog={catalog}
+              gstPercents={gstPercents}
               onClick={() => setSelectedCatalog(catalog)}
               onEdit={() => {
                 setEditingCatalog(catalog)

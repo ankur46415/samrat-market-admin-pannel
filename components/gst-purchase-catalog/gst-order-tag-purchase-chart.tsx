@@ -46,17 +46,23 @@ export function GstOrderTagPurchaseChart({
   gstPercents = DEFAULT_GST_PERCENTS,
   saleRecordPercents = {},
   onSaveSaleRecordPercents,
+  onSelectedTagChange,
 }: {
   catalogs: GstPurchaseCatalog[]
   gstPercents?: number[]
   saleRecordPercents?: GstSaleRecordPercents
   onSaveSaleRecordPercents?: (next: GstSaleRecordPercents) => Promise<void>
+  onSelectedTagChange?: (tag: string) => void
 }) {
   const tags = useMemo(() => uniqueCatalogOrderTags(catalogs), [catalogs])
   const [selectedTag, setSelectedTag] = useState(() => defaultCatalogOrderTag(tags) || ALL_ORDER_TAGS)
   const [selectedGst, setSelectedGst] = useState(ALL_GST_FILTER)
   const [exporting, setExporting] = useState<"summary" | "full" | "record" | null>(null)
   const [salePercentDrafts, setSalePercentDrafts] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    onSelectedTagChange?.(selectedTag)
+  }, [selectedTag, onSelectedTagChange])
 
   useEffect(() => {
     if (selectedTag === ALL_ORDER_TAGS) return
@@ -263,7 +269,7 @@ export function GstOrderTagPurchaseChart({
                 <p className="text-xs text-amber-700/80">On taxable value</p>
               </div>
               <div className="rounded-xl border border-sky-100 bg-sky-50/60 px-4 py-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-sky-700">MRP Sale</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-sky-700">MRP</p>
                 <p className="mt-1 text-2xl font-black tabular-nums text-sky-900">{formatInr(saleTotal)}</p>
                 <p className="text-xs text-sky-700/80">Qty × sale price</p>
               </div>
@@ -332,10 +338,10 @@ export function GstOrderTagPurchaseChart({
                 <table className="w-full text-left text-sm">
                   <thead className="sticky top-0 bg-slate-50">
                     <tr className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      <th className="px-3 py-2">GST</th>
+                      <th className="px-3 py-2">GST %</th>
                       <th className="px-3 py-2 text-right">Taxable</th>
-                      <th className="px-3 py-2 text-right">GST amt</th>
-                      <th className="px-3 py-2 text-right">MRP Sale</th>
+                      <th className="px-3 py-2 text-right">Amount</th>
+                      <th className="px-3 py-2 text-right">MRP</th>
                     </tr>
                   </thead>
                   <tbody>

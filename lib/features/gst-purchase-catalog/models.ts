@@ -133,6 +133,20 @@ export function resolvedOrderDiscount(
   return { percent, off, roundOff, balance: applyRound(total - off) }
 }
 
+export function catalogDiscountedBalance(catalog: GstPurchaseCatalog, incGst = true): number {
+  const orderById = new Map((catalog.orders ?? []).map((order) => [order.order_id, order]))
+  const totalsByOrder = new Map<string, number>()
+  catalog.products.forEach((product) => {
+    const id = catalogProductOrderId(product) || NO_ORDER_ID
+    totalsByOrder.set(id, (totalsByOrder.get(id) ?? 0) + catalogProductLineTotal(product, incGst))
+  })
+  return roundMoney(
+    [...totalsByOrder.entries()].reduce((sum, [id, total]) => {
+      return sum + resolvedOrderDiscount(orderById.get(id), total).balance
+    }, 0)
+  )
+}
+
 export function catalogProductGstPercent(product: GstCatalogProduct): number | undefined {
   const raw = product as GstCatalogProduct & {
     gstPercent?: unknown
