@@ -160,6 +160,7 @@ export async function writeSaleFromLineItems(input: {
   customer?: CheckoutCustomerInfo
   source?: string
   billNo?: string
+  paymentMethod?: "cash" | "upi"
 }): Promise<CompleteSessionResult> {
   const soldAt = new Date().toISOString()
   const resolvedCustomer = await ensureCustomerForBilling(input.customer)
@@ -204,7 +205,7 @@ export async function writeSaleFromLineItems(input: {
       ),
       tax: 0,
       total,
-      paymentMethod: "cash",
+      paymentMethod: input.paymentMethod === "upi" ? "upi" : "cash",
       amountPaid: total,
       change: 0,
       soldAt,
@@ -328,7 +329,8 @@ export async function forceNewScannerBillingSession(cashierLabel?: string): Prom
  */
 export async function completeLiveBillingSession(
   sessionId: string,
-  customer?: CheckoutCustomerInfo
+  customer?: CheckoutCustomerInfo,
+  paymentMethod?: "cash" | "upi"
 ): Promise<CompleteSessionResult> {
   const liveSessionRef = doc(db, "live_sessions", sessionId)
   const liveSnap = await getDoc(liveSessionRef)
@@ -364,6 +366,7 @@ export async function completeLiveBillingSession(
     lineItems,
     customer,
     source: "admin_billing",
+    paymentMethod,
   })
 
   const customerPhone = customer?.customerPhone?.trim() || "NA"

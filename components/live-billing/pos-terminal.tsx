@@ -35,10 +35,18 @@ import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import {
   cancelLiveBillingSession,
@@ -183,6 +191,11 @@ export function PosTerminal({
   const [printing, setPrinting] = useState(false)
   const [manualDialogOpen, setManualDialogOpen] = useState(false)
   const [phoneDialogOpen, setPhoneDialogOpen] = useState(false)
+  const [printDialogOpen, setPrintDialogOpen] = useState(false)
+  const [printPhoneDraft, setPrintPhoneDraft] = useState("")
+  const [printNameDraft, setPrintNameDraft] = useState("")
+  const [printPaymentType, setPrintPaymentType] = useState<"" | "cash" | "online">("")
+  const [billPaymentMethod, setBillPaymentMethod] = useState<"cash" | "upi">("cash")
   const [nameDraft, setNameDraft] = useState("")
   const [phoneDraft, setPhoneDraft] = useState("NA")
   const [savingCustomer, setSavingCustomer] = useState(false)
@@ -223,12 +236,12 @@ export function PosTerminal({
   const scanner = usePosScanner({
     sessionId,
     productCache,
-    enabled: isActive && view === "billing" && !manualDialogOpen && !editingItemId,
+    enabled: isActive && view === "billing" && !manualDialogOpen && !phoneDialogOpen && !printDialogOpen && !editingItemId,
     scanItem: offlineMode ? (_id, barcode, cache) => localCart.scanProduct(barcode, cache) : undefined,
   })
 
   const scannerFocusPaused =
-    manualDialogOpen || phoneDialogOpen || editingItemId != null || view !== "billing" || itemsLoading || booting
+    manualDialogOpen || phoneDialogOpen || printDialogOpen || editingItemId != null || view !== "billing" || itemsLoading || booting
 
   const focusScanInput = useCallback(() => {
     if (!scannerFocusPaused && isActive) {
@@ -349,28 +362,87 @@ export function PosTerminal({
       discount: totals.discountSaved,
       mrpSavings: totals.mrpSaved,
       total: totals.total,
-      paymentMethod: "cash",
+      paymentMethod: billPaymentMethod === "upi" ? "online" : "cash",
       amountPaid: totals.total,
       change: 0,
     }
-  }, [currentBillNo, items, normalizedCustomerPhone, pendingCustomerName, products, selectedCustomer, totals.discountSaved, totals.mrpSaved, totals.total])
+  }, [billPaymentMethod, currentBillNo, items, normalizedCustomerPhone, pendingCustomerName, products, selectedCustomer, totals.discountSaved, totals.mrpSaved, totals.total])
 
-  const handlePrintBill = useCallback(() => {
+  const printPhoneOk = normalizePosPhone(printPhoneDraft).length === 10
+  const printFoundCustomer = printPhoneOk
+    ? customers.find((c) => normalizePosPhone(c.phone) === normalizePosPhone(printPhoneDraft)) ?? null
+    : null
+  const printCanProceed =
+    printPhoneOk && printNameDraft.trim().length > 0 && (printPaymentType === "cash" || printPaymentType === "online")
+
+  const openPrintDialog = () => {
+    if (items.length === 0) {
+      toast.error("Scan at least one product first")
+      return
+    }
+    const phone = isWalkInPhone ? "" : normalizedCustomerPhone
+    setPrintPhoneDraft(phone)
+    const found = phone
+      ? customers.find((c) => normalizePosPhone(c.phone) === phone) ?? null
+      : null
+    setPrintNameDraft(found?.name || selectedCustomer?.name || pendingCustomerName || "")
+    setPrintPaymentType("")
+    setPrintDialogOpen(true)
+  }
+
+  const confirmPrintBill = async () => {
+    if (!printCanProceed) return
+    const digits = normalizePosPhone(printPhoneDraft)
+    const name = printNameDraft.trim()
+    const found = customers.find((c) => normalizePosPhone(c.phone) === digits)
+    if (!found && !name) {
+      toast.error("Enter customer name")
+      return
+    }
+    try {
+      setSavingCustomer(true)
+      if (found) {
+        applyCustomerPhone(digits, found.name, found.id)
+      } else {
+        const newId = await addCustomer({
+          name,
+          phone: digits,
+          balance: 0,
+          totalPurchases: 0,
+        })
+        applyCustomerPhone(digits, name, newId)
+      }
+      setBillPaymentMethod(printPaymentType === "online" ? "upi" : "cash")
+      setPrintDialogOpen(false)
+    } catch (e) {
+      console.error(e)
+      toast.error("Failed to save customer")
+      return
+    } finally {
+      setSavingCustomer(false)
+    }
+
     const receipt = buildCurrentReceipt()
     if (!receipt) {
       toast.error("Scan at least one product first")
       return
     }
+    const paymentLabel = printPaymentType === "online" ? "online" : "cash"
     try {
       setPrinting(true)
-      printReceiptInBrowser(receipt)
+      printReceiptInBrowser({
+        ...receipt,
+        paymentMethod: paymentLabel,
+        customerName: found?.name || name,
+        customerPhone: digits,
+      })
     } catch (e) {
       console.error(e)
       toast.error(e instanceof Error ? e.message : "Print failed")
     } finally {
       setPrinting(false)
     }
-  }, [buildCurrentReceipt])
+  }
 
   useEffect(() => {
     const t = setInterval(() => setClock(new Date()), 1000)
@@ -697,7 +769,7 @@ export function PosTerminal({
       }
 
       try {
-        const result = await completeLiveBillingSession(sessionId, customer)
+        const result = await completeLiveBillingSession(sessionId, customer, billPaymentMethod)
         toast.success(result.billNo ? `Bill ${result.billNo} completed` : "Bill completed")
       } catch (e) {
         console.error(e)
@@ -736,6 +808,7 @@ export function PosTerminal({
     selectedCustomerId,
     sessionId,
     totals.lines,
+    billPaymentMethod,
   ])
 
   const goFinalize = useCallback(() => {
@@ -960,6 +1033,88 @@ export function PosTerminal({
             <Button type="button" disabled={savingCustomer} onClick={() => void saveCustomerPhone()}>
               {savingCustomer ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={printDialogOpen} onOpenChange={setPrintDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Print bill</DialogTitle>
+            <DialogDescription>
+              Enter customer phone and name, and choose payment type. Proceed stays disabled until all fields are filled.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="print-bill-phone">Phone *</Label>
+              <Input
+                id="print-bill-phone"
+                type="tel"
+                inputMode="numeric"
+                maxLength={10}
+                placeholder="9876543210"
+                value={printPhoneDraft}
+                onChange={(e) => {
+                  const next = e.target.value.replace(/\D/g, "").slice(0, 10)
+                  setPrintPhoneDraft(next)
+                  if (next.length === 10) {
+                    const found = customers.find((c) => normalizePosPhone(c.phone) === next)
+                    setPrintNameDraft(found?.name ?? "")
+                  }
+                }}
+                autoFocus
+              />
+              {printPhoneOk ? (
+                <p className="text-xs text-muted-foreground">
+                  {printFoundCustomer
+                    ? `Existing customer: ${printFoundCustomer.name}`
+                    : "New customer — enter name to continue."}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">10-digit mobile number required.</p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="print-bill-name">Name *</Label>
+              <Input
+                id="print-bill-name"
+                placeholder="Customer name"
+                value={printNameDraft}
+                onChange={(e) => setPrintNameDraft(e.target.value)}
+              />
+              {!printFoundCustomer && printPhoneOk && !printNameDraft.trim() ? (
+                <p className="text-xs text-amber-700">Name is required for a new customer.</p>
+              ) : null}
+            </div>
+            <div className="space-y-1.5">
+              <Label>Payment type *</Label>
+              <Select
+                value={printPaymentType || undefined}
+                onValueChange={(value) => setPrintPaymentType(value as "cash" | "online")}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select payment type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="online">Online</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={() => setPrintDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={!printCanProceed || savingCustomer || printing}
+              onClick={() => void confirmPrintBill()}
+            >
+              {savingCustomer || printing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Proceed
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1387,7 +1542,7 @@ export function PosTerminal({
               variant="secondary"
               className="h-12 w-full text-base font-semibold"
               disabled={totals.lines === 0 || printing || acting}
-              onClick={handlePrintBill}
+              onClick={openPrintDialog}
             >
               {printing ? (
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
