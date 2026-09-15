@@ -192,6 +192,8 @@ export default function EditProductPage({
       if (mrpVal != null && Number.isFinite(mrpVal) && mrpVal > 0) {
         updatePayload.mrp = mrpVal
       }
+      const disc = parseDiscountInput(formData.discountPercent) ?? 0
+      updatePayload.discountPercent = disc
 
       await updateProduct(id, updatePayload as Partial<Product>)
 

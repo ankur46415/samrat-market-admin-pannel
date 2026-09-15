@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { findCachedProductByBarcode, normalizeScannedBarcode, type BarcodeProductRef } from "@/lib/stock"
-import { clampDiscountPercent, lineItemAmount, mrpLineSaved } from "@/lib/billing/line-discount"
+import { clampDiscountPercent, lineItemAmount, mrpLineSaved, billingLineFromCatalog } from "@/lib/billing/line-discount"
 import type { EditableLiveItem } from "@/components/live-billing/live-bill-items-editor"
 import type { LiveBillingLineItem } from "@/lib/features/live_billing_admin/services/live_billing_admin_service"
 import { idbDelete, idbGet, idbPut, STORE_KV } from "./idb"
@@ -73,8 +73,14 @@ export function useLocalPosCart(active: boolean, sessionId: string | null) {
     }
     const resolvedBarcode = normalizeScannedBarcode(product.barcode ?? "") || product.id
     const name = product.name
-    const price = product.price
-    const mrp = product.mrp && product.mrp > 0 ? product.mrp : undefined
+    const billed = billingLineFromCatalog({
+      price: product.price,
+      mrp: product.mrp,
+      discountPercent: product.discountPercent,
+    })
+    const price = billed.price
+    const mrp = billed.mrp
+    const discountPercent = billed.discountPercent
 
     let nextQty = 1
     setItems((prev) => {
@@ -91,7 +97,7 @@ export function useLocalPosCart(active: boolean, sessionId: string | null) {
         name,
         price,
         quantity: 1,
-        discountPercent: 0,
+        discountPercent,
         ...(mrp ? { mrp } : {}),
       }
       return [...prev, line]
@@ -101,6 +107,7 @@ export function useLocalPosCart(active: boolean, sessionId: string | null) {
       name,
       price,
       quantity: nextQty,
+      discountPercent,
       ...(mrp ? { mrp } : {}),
     } satisfies LiveBillingLineItem
   }, [])

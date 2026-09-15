@@ -161,21 +161,44 @@ export function buildReceiptPrintHtml(receipt: ReceiptData, paperWidthMm: 58 | 8
     </table>
     <div class="divider"></div>
     <p class="center footer">Thank you! Visit again</p>
-    <script>
-      window.onload = function () {
-        setTimeout(function () { window.print(); }, 250);
-      };
-    </script>
   </body>
 </html>`
 }
 
 export function printReceiptInBrowser(receipt: ReceiptData, paperWidthMm: 58 | 80 = 80): void {
   const html = buildReceiptPrintHtml(receipt, paperWidthMm)
-  const printWindow = window.open("", "_blank", "width=400,height=700")
-  if (!printWindow) {
-    throw new Error("Pop-up blocked. Allow pop-ups to print the bill.")
+  const iframe = document.createElement("iframe")
+  iframe.setAttribute("aria-hidden", "true")
+  iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;"
+  document.body.appendChild(iframe)
+
+  const win = iframe.contentWindow
+  const doc = iframe.contentDocument
+  if (!win || !doc) {
+    iframe.remove()
+    throw new Error("Could not open the print dialog.")
   }
-  printWindow.document.write(html)
-  printWindow.document.close()
+
+  let cleaned = false
+  const cleanup = () => {
+    if (cleaned) return
+    cleaned = true
+    window.clearTimeout(timeout)
+    win.removeEventListener("afterprint", cleanup)
+    iframe.remove()
+  }
+  const timeout = window.setTimeout(cleanup, 60_000)
+  win.addEventListener("afterprint", cleanup)
+
+  doc.open()
+  doc.write(html)
+  doc.close()
+
+  try {
+    win.focus()
+    win.print()
+  } catch {
+    cleanup()
+    throw new Error("Could not open the print dialog.")
+  }
 }

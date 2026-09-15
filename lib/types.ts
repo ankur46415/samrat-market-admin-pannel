@@ -33,6 +33,8 @@ export interface Product {
   brand?: string
   /** Maximum retail price (MRP) when set at product creation */
   mrp?: number
+  /** MRP discount % from product details (drives selling price). */
+  discountPercent?: number
   minStock: number
   expiry?: string
   /** Derived from subcollection; may be empty for legacy docs without batches. */

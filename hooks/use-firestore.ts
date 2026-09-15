@@ -120,6 +120,11 @@ function productFromData(id: string, data: Record<string, unknown>): Product {
       const n = firestoreNumber((data as any).mrp, NaN)
       return Number.isFinite(n) && n > 0 ? n : undefined
     })(),
+    discountPercent: (() => {
+      const n = firestoreNumber((data as { discountPercent?: unknown }).discountPercent, NaN)
+      if (!Number.isFinite(n) || n <= 0) return undefined
+      return Math.min(100, Math.max(0, Math.round(n * 100) / 100))
+    })(),
     stock: Number.isFinite(totalStock) ? totalStock : coerceProductStockFromFirestore(data),
     batches,
     minStock: (() => {
@@ -314,6 +319,10 @@ export function useProducts() {
       expiryDate: expiryDate ?? null,
       quantity: Number.isFinite(quantity) && quantity > 0 ? Math.floor(quantity) : undefined,
       mrp,
+      discountPercent:
+        product.discountPercent != null && Number(product.discountPercent) > 0
+          ? Number(product.discountPercent)
+          : undefined,
     })
 
     return result.productId

@@ -175,6 +175,7 @@ export type BarcodeProductRef = {
   price: number
   barcode?: string
   mrp?: number
+  discountPercent?: number
   barcodeKeys?: string[]
 }
 

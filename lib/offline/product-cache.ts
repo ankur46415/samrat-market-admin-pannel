@@ -9,6 +9,7 @@ export type CachedBillingProduct = {
   barcodeKeys?: string[]
   price: number
   mrp?: number
+  discountPercent?: number
   stock: number
   unit: string
   category: string
@@ -31,6 +32,7 @@ export function productToCached(product: Product): CachedBillingProduct {
     barcodeKeys,
     price: product.price,
     mrp: product.mrp,
+    discountPercent: product.discountPercent,
     stock: product.stock,
     unit: product.unit,
     category: product.category,
@@ -45,6 +47,7 @@ export function cachedToProduct(cached: CachedBillingProduct): Product {
     barcodeKeys: cached.barcodeKeys,
     price: cached.price,
     mrp: cached.mrp,
+    discountPercent: cached.discountPercent,
     stock: cached.stock,
     unit: cached.unit || "pcs",
     category: cached.category || "",
@@ -66,6 +69,7 @@ export function cachedToBarcodeRef(cached: CachedBillingProduct): BarcodeProduct
     price: cached.price,
     barcode: cached.barcode,
     mrp: cached.mrp,
+    discountPercent: cached.discountPercent,
     barcodeKeys: cached.barcodeKeys,
   }
 }

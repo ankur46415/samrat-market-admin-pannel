@@ -144,6 +144,7 @@ export default function AddProductPage() {
         price: parseFloat(formData.price),
         costPrice: formData.costPrice.trim() ? parseFloat(formData.costPrice) : 0,
         mrp: formData.mrp.trim() ? parseFloat(formData.mrp) : undefined,
+        discountPercent: parseDiscountInput(formData.discountPercent) || undefined,
         stock: Number.isFinite(stockNum) && stockNum > 0 ? stockNum : 0,
         unit: normalizeProductUnit(formData.unit),
         barcode: formData.barcode || undefined,

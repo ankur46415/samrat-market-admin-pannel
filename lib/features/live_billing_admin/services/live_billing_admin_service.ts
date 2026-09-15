@@ -7,6 +7,7 @@ import {
   lineDiscountSaved,
   lineItemAmount,
   mrpLineSaved,
+  billingLineFromCatalog,
 } from "@/lib/billing/line-discount"
 import {
   addDoc,
@@ -413,32 +414,43 @@ function toBillingProduct(
   docId: string,
   data: Record<string, unknown>,
   scanned: string
-): { barcode: string; name: string; price: number; mrp?: number } {
+): { barcode: string; name: string; price: number; mrp?: number; discountPercent?: number } {
   const storedBarcode = normalizeScannedBarcode(String(data.barcode ?? ""))
-  const mrpRaw = firestoreNumber(data.mrp, 0)
+  const billed = billingLineFromCatalog({
+    price: firestoreNumber(data.price, 0),
+    mrp: firestoreNumber(data.mrp, 0),
+    discountPercent: firestoreNumber(data.discountPercent, 0),
+  })
   return {
     barcode: storedBarcode || scanned || docId,
     name: String(data.name ?? "").trim() || storedBarcode || scanned || docId,
-    price: firestoreNumber(data.price, 0),
-    ...(mrpRaw > 0 ? { mrp: mrpRaw } : {}),
+    price: billed.price,
+    discountPercent: billed.discountPercent,
+    ...(billed.mrp && billed.mrp > 0 ? { mrp: billed.mrp } : {}),
   }
 }
 
 export async function lookupProductForBilling(
   barcode: string,
   cachedProducts?: BarcodeProductRef[]
-): Promise<{ barcode: string; name: string; price: number; mrp?: number } | null> {
+): Promise<{ barcode: string; name: string; price: number; mrp?: number; discountPercent?: number } | null> {
   const scanned = normalizeScannedBarcode(barcode)
   if (!scanned) return null
 
   const cached = cachedProducts ? findCachedProductByBarcode(cachedProducts, scanned) : null
   if (cached) {
     const storedBarcode = normalizeScannedBarcode(cached.barcode ?? "")
+    const billed = billingLineFromCatalog({
+      price: cached.price,
+      mrp: cached.mrp,
+      discountPercent: cached.discountPercent,
+    })
     return {
       barcode: storedBarcode || cached.id,
       name: cached.name,
-      price: cached.price,
-      ...(cached.mrp && cached.mrp > 0 ? { mrp: cached.mrp } : {}),
+      price: billed.price,
+      discountPercent: billed.discountPercent,
+      ...(billed.mrp && billed.mrp > 0 ? { mrp: billed.mrp } : {}),
     }
   }
 
@@ -499,37 +511,52 @@ export async function scanItemIntoSession(
   }
 
   const existingRef = await findSessionItemRef(sessionId, product.barcode, cleaned)
-  const itemRef =
-    existingRef ?? doc(db, "live_sessions", sessionId, "items", toSessionItemDocId(product.barcode))
+  const billedDiscount = clampDiscountPercent(product.discountPercent ?? 0)
 
-  // Atomic server-side increment — avoids stale cache resetting qty to 1.
-  await setDoc(
-    itemRef,
-    {
+  if (existingRef) {
+    await setDoc(
+      existingRef,
+      {
+        quantity: increment(1),
+        qty: increment(1),
+      },
+      { merge: true }
+    )
+    let updatedSnap
+    try {
+      updatedSnap = await getDocFromServer(existingRef)
+    } catch {
+      updatedSnap = await getDoc(existingRef)
+    }
+    const qty = liveSessionItemQuantity(updatedSnap.data() as Record<string, unknown>)
+    const data = (updatedSnap.data() ?? {}) as Record<string, unknown>
+    return {
       barcode: product.barcode,
       name: product.name,
-      price: product.price,
+      price: firestoreNumber(data.price, product.price),
+      quantity: qty > 0 ? qty : 1,
+      discountPercent: clampDiscountPercent(firestoreNumber(data.discountPercent, billedDiscount)),
       ...(product.mrp && product.mrp > 0 ? { mrp: product.mrp } : {}),
-      quantity: increment(1),
-      qty: increment(1),
-    },
-    { merge: true }
-  )
-
-  let updatedSnap
-  try {
-    updatedSnap = await getDocFromServer(itemRef)
-  } catch {
-    updatedSnap = await getDoc(itemRef)
+    }
   }
 
-  const qty = liveSessionItemQuantity(updatedSnap.data() as Record<string, unknown>)
+  const itemRef = doc(db, "live_sessions", sessionId, "items", toSessionItemDocId(product.barcode))
+  await setDoc(itemRef, {
+    barcode: product.barcode,
+    name: product.name,
+    price: product.price,
+    ...(product.mrp && product.mrp > 0 ? { mrp: product.mrp } : {}),
+    ...(billedDiscount > 0 ? { discountPercent: billedDiscount } : {}),
+    quantity: 1,
+    qty: 1,
+  })
 
   return {
     barcode: product.barcode,
     name: product.name,
     price: product.price,
-    quantity: qty > 0 ? qty : 1,
+    quantity: 1,
+    discountPercent: billedDiscount,
     ...(product.mrp && product.mrp > 0 ? { mrp: product.mrp } : {}),
   }
 }
