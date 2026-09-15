@@ -7,6 +7,8 @@ export type ReceiptLineItem = {
   discountPercent?: number
   /** Product MRP when set in inventory */
   mrp?: number
+  /** Receipt qty unit, e.g. pc */
+  unit?: string
 }
 
 export type ReceiptData = {

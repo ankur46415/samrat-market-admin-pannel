@@ -18,6 +18,12 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;")
 }
 
+function formatReceiptQty(quantity: number, unit?: string): string {
+  const raw = String(unit ?? "pc").trim() || "pc"
+  const short = /^(pcs?|pieces?)$/i.test(raw) ? "pc" : raw
+  return `${quantity} ${short}`
+}
+
 function lineDiscountNote(item: ReceiptLineItem): string {
   const finalUnit = item.price
   const saved = lineYouSaved(item)
@@ -58,7 +64,7 @@ export function buildReceiptPrintHtml(receipt: ReceiptData, paperWidthMm: 58 | 8
     .map((item) => {
       return `
       <tr>
-        <td>${escapeHtml(item.name)}${lineDiscountNote(item)}<br /><span class="qty">x${item.quantity} @ ${lineRateHtml(item)}</span></td>
+        <td>${escapeHtml(item.name)}${lineDiscountNote(item)}<br /><span class="qty">${escapeHtml(formatReceiptQty(item.quantity, item.unit))} @ ${lineRateHtml(item)}</span></td>
         <td class="right">${formatInr(item.total)}</td>
       </tr>`
     })

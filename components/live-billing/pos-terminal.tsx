@@ -319,18 +319,24 @@ export function PosTerminal({
   const buildCurrentReceipt = useCallback((): ReceiptData | null => {
     if (items.length === 0) return null
     const phone = selectedCustomer?.phone ?? normalizedCustomerPhone
-    const catalog = products.map((p) => ({ id: p.id, barcode: p.barcode, mrp: p.mrp }))
+    const catalog = products.map((p) => ({ id: p.id, barcode: p.barcode, mrp: p.mrp, unit: p.unit }))
     const receiptItems = attachCatalogMrp(
-      items.map((i) => ({
-        name: i.name,
-        quantity: i.quantity,
-        price: discountedUnitPrice(i.price, i.discountPercent),
-        basePrice: i.price,
-        discountPercent: i.discountPercent,
-        mrp: i.mrp,
-        total: lineItemAmount(i.quantity, i.price, i.discountPercent),
-        barcode: i.barcode,
-      })),
+      items.map((i) => {
+        const match = products.find(
+          (p) => p.id === i.barcode || (p.barcode && p.barcode === i.barcode)
+        )
+        return {
+          name: i.name,
+          quantity: i.quantity,
+          price: discountedUnitPrice(i.price, i.discountPercent),
+          basePrice: i.price,
+          discountPercent: i.discountPercent,
+          mrp: i.mrp,
+          unit: match?.unit,
+          total: lineItemAmount(i.quantity, i.price, i.discountPercent),
+          barcode: i.barcode,
+        }
+      }),
       catalog
     )
     return {
