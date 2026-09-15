@@ -6,6 +6,8 @@ import Link from "next/link"
 import { collection, onSnapshot, query, where } from "firebase/firestore"
 import { Monitor, Receipt, ScanBarcode } from "lucide-react"
 import { db } from "@/lib/firebase"
+import { col } from "@/lib/account-mode"
+import { useAccountModeScope } from "@/components/account-mode-provider"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -38,6 +40,7 @@ function toDate(value: unknown): Date | undefined {
 
 export default function GenerateBillPage() {
   const router = useRouter()
+  const accountMode = useAccountModeScope()
   const [sessions, setSessions] = useState<LiveBillingSession[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
@@ -51,7 +54,7 @@ export default function GenerateBillPage() {
     }
 
     setLoading(true)
-    const q = query(collection(db, "live_sessions"), where("status", "==", "active"))
+    const q = query(collection(db, col("live_sessions")), where("status", "==", "active"))
 
     const unsubscribe = onSnapshot(
       q,
@@ -84,7 +87,7 @@ export default function GenerateBillPage() {
       window.clearTimeout(timeout)
       unsubscribe()
     }
-  }, [])
+  }, [accountMode])
 
   const selectedSession = useMemo(
     () => sessions.find((s) => s.sessionId === selectedSessionId) ?? null,

@@ -1,5 +1,6 @@
 import { deleteDoc, doc, Timestamp, updateDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
+import { col } from "@/lib/account-mode"
 import { omitUndefinedFields } from "@/lib/utils"
 import { lineDiscountSaved, lineItemAmount } from "@/lib/billing/line-discount"
 import type { Sale, SaleItem } from "@/lib/types"
@@ -69,7 +70,7 @@ export async function saveEditedSale(input: {
 
   const reason = input.reason?.trim()
   await updateDoc(
-    doc(db, "sales", input.sale.id),
+    doc(db, col("sales"), input.sale.id),
     omitUndefinedFields({
       items: next.items,
       subtotal: next.subtotal,
@@ -88,5 +89,5 @@ export async function deleteSale(sale: Sale): Promise<void> {
   for (const [key, qty] of prevQty) {
     if (qty) await adjustProductStockByBarcode(key, -qty)
   }
-  await deleteDoc(doc(db, "sales", sale.id))
+  await deleteDoc(doc(db, col("sales"), sale.id))
 }

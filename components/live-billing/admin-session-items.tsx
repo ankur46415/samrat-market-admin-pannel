@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react"
 import { collection, onSnapshot } from "firebase/firestore"
 import { db } from "@/lib/firebase"
+import { col } from "@/lib/account-mode"
+import { useAccountModeScope } from "@/components/account-mode-provider"
 import { firestoreNumber, liveSessionItemQuantity } from "@/lib/stock"
 import { clampDiscountPercent, lineItemAmount } from "@/lib/billing/line-discount"
 import type { LiveBillingLineItem } from "@/lib/features/live_billing_admin/services/live_billing_admin_service"
@@ -36,10 +38,11 @@ export function AdminSessionItems({
 }) {
   const [items, setItems] = useState<LiveBillingLineItem[]>([])
   const [loading, setLoading] = useState(true)
+  const accountMode = useAccountModeScope()
 
   useEffect(() => {
     setLoading(true)
-    const itemsCol = collection(db, "live_sessions", sessionId, "items")
+    const itemsCol = collection(db, col("live_sessions"), sessionId, "items")
 
     const unsubscribe = onSnapshot(
       itemsCol,
@@ -67,7 +70,7 @@ export function AdminSessionItems({
     )
 
     return () => unsubscribe()
-  }, [sessionId])
+  }, [accountMode, sessionId])
 
   const totals = useMemo(() => {
     const lineCount = items.length

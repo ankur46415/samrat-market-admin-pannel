@@ -17,6 +17,7 @@ import {
   setDoc,
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
+import { col } from "@/lib/account-mode"
 import type { PurchaseCatalog, CatalogProduct } from "./models"
 import { DEFAULT_SALE_MARGIN_PERCENTS, normalizeSaleMarginPercents, sanitizeCatalogProduct } from "./models"
 
@@ -63,7 +64,7 @@ export function subscribePurchaseCatalogs(
   onData: (catalogs: PurchaseCatalog[]) => void,
   onError?: (error: Error) => void
 ) {
-  const q = query(collection(db, COL), orderBy("createdAt", "asc"))
+  const q = query(collection(db, col(COL)), orderBy("createdAt", "asc"))
   return onSnapshot(
     q,
     (snap) => {
@@ -82,7 +83,7 @@ export function subscribePurchaseCatalogs(
 export async function addPurchaseCatalog(
   data: Omit<PurchaseCatalog, "id" | "createdAt" | "updatedAt">
 ): Promise<string> {
-  const ref = await addDoc(collection(db, COL), {
+  const ref = await addDoc(collection(db, col(COL)), {
     ...data,
     products: (data.products ?? []).map(sanitizeCatalogProduct),
     createdAt: serverTimestamp(),
@@ -102,11 +103,11 @@ export async function updatePurchaseCatalog(
   if (data.products) {
     payload.products = data.products.map(sanitizeCatalogProduct)
   }
-  await updateDoc(doc(db, COL, id), payload)
+  await updateDoc(doc(db, col(COL), id), payload)
 }
 
 export async function deletePurchaseCatalog(id: string): Promise<void> {
-  await deleteDoc(doc(db, COL, id))
+  await deleteDoc(doc(db, col(COL), id))
 }
 
 const SETTINGS_COL = "purchase_catalog_settings"
@@ -117,7 +118,7 @@ export function subscribeSaleMarginPercents(
   onError?: (error: Error) => void
 ) {
   return onSnapshot(
-    doc(db, SETTINGS_COL, MARGIN_DOC),
+    doc(db, col(SETTINGS_COL), MARGIN_DOC),
     (snap) => {
       if (!snap.exists()) {
         onData([...DEFAULT_SALE_MARGIN_PERCENTS])
@@ -134,7 +135,7 @@ export function subscribeSaleMarginPercents(
 
 export async function saveSaleMarginPercents(percents: number[]): Promise<void> {
   await setDoc(
-    doc(db, SETTINGS_COL, MARGIN_DOC),
+    doc(db, col(SETTINGS_COL), MARGIN_DOC),
     {
       percents: normalizeSaleMarginPercents(percents),
       updatedAt: serverTimestamp(),

@@ -13,6 +13,7 @@ import {
   writeBatch,
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
+import { col } from "@/lib/account-mode"
 import { omitUndefinedFields } from "@/lib/utils"
 import type { PaymentLedgerEntry, PaymentPayee } from "./models"
 
@@ -55,7 +56,7 @@ export function subscribePaymentPayees(
   onData: (payees: PaymentPayee[]) => void,
   onError?: (error: Error) => void
 ) {
-  const q = query(collection(db, PAYEES_COL), orderBy("name", "asc"))
+  const q = query(collection(db, col(PAYEES_COL)), orderBy("name", "asc"))
   return onSnapshot(
     q,
     (snap) => {
@@ -73,7 +74,7 @@ export function subscribePaymentLedger(
   onError?: (error: Error) => void
 ) {
   return onSnapshot(
-    collection(db, ENTRIES_COL),
+    collection(db, col(ENTRIES_COL)),
     (snap) => {
       const rows = snap.docs.map((d) => entryFromFirestore(d.id, d.data() as Record<string, unknown>))
       rows.sort((a, b) => b.date.getTime() - a.date.getTime() || b.createdAt.getTime() - a.createdAt.getTime())
@@ -88,7 +89,7 @@ export function subscribePaymentLedger(
 
 export async function addPaymentPayee(input: { name: string; phone?: string; notes?: string }): Promise<string> {
   const ref = await addDoc(
-    collection(db, PAYEES_COL),
+    collection(db, col(PAYEES_COL)),
     omitUndefinedFields({
       name: input.name.trim(),
       phone: input.phone?.trim() || undefined,
@@ -105,7 +106,7 @@ export async function updatePaymentPayee(
   input: { name: string; phone?: string; notes?: string }
 ): Promise<void> {
   await updateDoc(
-    doc(db, PAYEES_COL, id),
+    doc(db, col(PAYEES_COL), id),
     omitUndefinedFields({
       name: input.name.trim(),
       phone: input.phone?.trim() || "",
@@ -116,8 +117,8 @@ export async function updatePaymentPayee(
 }
 
 export async function deletePaymentPayee(id: string): Promise<void> {
-  const entriesSnap = await getDocs(query(collection(db, ENTRIES_COL), where("payeeId", "==", id)))
-  const docs = [doc(db, PAYEES_COL, id), ...entriesSnap.docs.map((d) => d.ref)]
+  const entriesSnap = await getDocs(query(collection(db, col(ENTRIES_COL)), where("payeeId", "==", id)))
+  const docs = [doc(db, col(PAYEES_COL), id), ...entriesSnap.docs.map((d) => d.ref)]
   for (let i = 0; i < docs.length; i += 450) {
     const batch = writeBatch(db)
     docs.slice(i, i + 450).forEach((ref) => batch.delete(ref))
@@ -135,7 +136,7 @@ export async function addPaymentLedgerEntry(input: {
   const amount = Number(input.amount)
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter a valid amount")
   const ref = await addDoc(
-    collection(db, ENTRIES_COL),
+    collection(db, col(ENTRIES_COL)),
     omitUndefinedFields({
       payeeId: input.payeeId,
       type: input.type,
@@ -160,7 +161,7 @@ export async function updatePaymentLedgerEntry(
   const amount = Number(input.amount)
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter a valid amount")
   await updateDoc(
-    doc(db, ENTRIES_COL, id),
+    doc(db, col(ENTRIES_COL), id),
     omitUndefinedFields({
       type: input.type,
       amount,
@@ -171,5 +172,5 @@ export async function updatePaymentLedgerEntry(
 }
 
 export async function deletePaymentLedgerEntry(id: string): Promise<void> {
-  await deleteDoc(doc(db, ENTRIES_COL, id))
+  await deleteDoc(doc(db, col(ENTRIES_COL), id))
 }

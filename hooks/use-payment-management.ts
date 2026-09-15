@@ -13,8 +13,10 @@ import {
   updatePaymentLedgerEntry,
   updatePaymentPayee,
 } from "@/lib/features/payment-management/service"
+import { useAccountModeScope } from "@/components/account-mode-provider"
 
 export function usePaymentManagement() {
+  const accountMode = useAccountModeScope()
   const [payees, setPayees] = useState<PaymentPayee[]>([])
   const [entries, setEntries] = useState<PaymentLedgerEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -52,7 +54,7 @@ export function usePaymentManagement() {
       unsubPayees()
       unsubEntries()
     }
-  }, [])
+  }, [accountMode])
 
   const summaries = useMemo(() => {
     return payees.map((payee) => {

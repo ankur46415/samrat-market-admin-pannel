@@ -18,6 +18,7 @@ import {
   type UpdateData,
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
+import { col } from "@/lib/account-mode"
 import type { GstPurchaseCatalog, GstCatalogProduct } from "./models"
 import {
   DEFAULT_GST_PERCENTS,
@@ -79,7 +80,7 @@ export function subscribeGstPurchaseCatalogs(
   onData: (catalogs: GstPurchaseCatalog[]) => void,
   onError?: (error: Error) => void
 ) {
-  const q = query(collection(db, COL), orderBy("createdAt", "asc"))
+  const q = query(collection(db, col(COL)), orderBy("createdAt", "asc"))
   return onSnapshot(
     q,
     (snap) => {
@@ -98,7 +99,7 @@ export function subscribeGstPurchaseCatalogs(
 export async function addGstPurchaseCatalog(
   data: Omit<GstPurchaseCatalog, "id" | "createdAt" | "updatedAt">
 ): Promise<string> {
-  const ref = await addDoc(collection(db, COL), {
+  const ref = await addDoc(collection(db, col(COL)), {
     ...data,
     products: (data.products ?? []).map(sanitizeGstCatalogProduct),
     orders: (data.orders ?? []).map(sanitizeGstCatalogOrder).filter((o): o is NonNullable<typeof o> => o != null),
@@ -122,11 +123,11 @@ export async function updateGstPurchaseCatalog(
   if (data.orders) {
     payload.orders = data.orders.map(sanitizeGstCatalogOrder).filter((o): o is NonNullable<typeof o> => o != null)
   }
-  await updateDoc(doc(db, COL, id), payload as UpdateData<DocumentData>)
+  await updateDoc(doc(db, col(COL), id), payload as UpdateData<DocumentData>)
 }
 
 export async function deleteGstPurchaseCatalog(id: string): Promise<void> {
-  await deleteDoc(doc(db, COL, id))
+  await deleteDoc(doc(db, col(COL), id))
 }
 
 const SETTINGS_COL = "gst_purchase_catalog_settings"
@@ -138,7 +139,7 @@ export function subscribeGstPercents(
   onError?: (error: Error) => void
 ) {
   return onSnapshot(
-    doc(db, SETTINGS_COL, GST_DOC),
+    doc(db, col(SETTINGS_COL), GST_DOC),
     (snap) => {
       if (!snap.exists()) {
         onData([...DEFAULT_GST_PERCENTS])
@@ -155,7 +156,7 @@ export function subscribeGstPercents(
 
 export async function saveGstPercents(percents: number[]): Promise<void> {
   await setDoc(
-    doc(db, SETTINGS_COL, GST_DOC),
+    doc(db, col(SETTINGS_COL), GST_DOC),
     {
       percents: normalizeGstPercents(percents),
       updatedAt: serverTimestamp(),
@@ -169,7 +170,7 @@ export function subscribeGstSaleMarginPercents(
   onError?: (error: Error) => void
 ) {
   return onSnapshot(
-    doc(db, SETTINGS_COL, MARGIN_DOC),
+    doc(db, col(SETTINGS_COL), MARGIN_DOC),
     (snap) => {
       if (!snap.exists()) {
         onData([...DEFAULT_SALE_MARGIN_PERCENTS])
@@ -186,7 +187,7 @@ export function subscribeGstSaleMarginPercents(
 
 export async function saveGstSaleMarginPercents(percents: number[]): Promise<void> {
   await setDoc(
-    doc(db, SETTINGS_COL, MARGIN_DOC),
+    doc(db, col(SETTINGS_COL), MARGIN_DOC),
     {
       percents: normalizeSaleMarginPercents(percents),
       updatedAt: serverTimestamp(),
@@ -202,7 +203,7 @@ export function subscribeGstSaleRecordPercents(
   onError?: (error: Error) => void
 ) {
   return onSnapshot(
-    doc(db, SETTINGS_COL, SALE_RECORD_DOC),
+    doc(db, col(SETTINGS_COL), SALE_RECORD_DOC),
     (snap) => {
       if (!snap.exists()) {
         onData({})
@@ -219,7 +220,7 @@ export function subscribeGstSaleRecordPercents(
 
 export async function saveGstSaleRecordPercents(percentsByTag: GstSaleRecordPercents): Promise<void> {
   await setDoc(
-    doc(db, SETTINGS_COL, SALE_RECORD_DOC),
+    doc(db, col(SETTINGS_COL), SALE_RECORD_DOC),
     {
       percentsByTag: normalizeGstSaleRecordPercents(percentsByTag),
       updatedAt: serverTimestamp(),

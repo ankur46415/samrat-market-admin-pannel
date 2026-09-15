@@ -13,10 +13,12 @@ import {
   updateProductSupplier,
   updateSupplierOrderItem,
 } from "@/lib/features/product-suppliers/service"
+import { useAccountModeScope } from "@/components/account-mode-provider"
 
 export type ProductSuppliersSyncStatus = "connecting" | "synced" | "error"
 
 export function useProductSuppliers() {
+  const accountMode = useAccountModeScope()
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([])
   const [orderItems, setOrderItems] = useState<SupplierOrderItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -56,7 +58,7 @@ export function useProductSuppliers() {
       unsubSuppliers()
       unsubItems()
     }
-  }, [])
+  }, [accountMode])
 
   const createSupplier = useCallback(
     async (input: { name: string; phone?: string; email?: string; address?: string; notes?: string }) => {

@@ -12,6 +12,7 @@ import {
   type DocumentData,
   type Firestore,
 } from "firebase/firestore"
+import { col } from "@/lib/account-mode"
 import type { BatchModel } from "@/lib/features/inventory/models/batch-model"
 import type { ProductModel } from "@/lib/features/inventory/models/product-model"
 import { normalizeProductUnit } from "@/lib/stock"
@@ -39,7 +40,7 @@ export class InventoryBatchService {
   constructor(private readonly db: Firestore) {}
 
   private async sumBatchQuantities(productId: string): Promise<number> {
-    const snap = await getDocs(collection(this.db, "products", productId, "batches"))
+    const snap = await getDocs(collection(this.db, col("products"), productId, "batches"))
     return snap.docs.reduce((sum, b) => {
       const q = Number((b.data() as Record<string, unknown>).quantity ?? 0)
       return sum + (Number.isFinite(q) ? q : 0)
@@ -115,7 +116,7 @@ export class InventoryBatchService {
     discountPercent?: number
   }): Promise<string> {
     const now = Timestamp.now()
-    const ref = await addDoc(collection(this.db, "products"), {
+    const ref = await addDoc(collection(this.db, col("products")), {
       ...this.productDocPayload(fields),
       createdAt: now,
     })
@@ -124,7 +125,7 @@ export class InventoryBatchService {
 
   async getProductByBarcode(barcode: string): Promise<ProductModel | null> {
     const q = query(
-      collection(this.db, "products"),
+      collection(this.db, col("products")),
       where("barcode", "==", barcode.trim()),
       limit(1)
     )
@@ -149,7 +150,7 @@ export class InventoryBatchService {
     productId: string
     batch: BatchModel
   }): Promise<void> {
-    await addDoc(collection(this.db, "products", productId, "batches"), {
+    await addDoc(collection(this.db, col("products"), productId, "batches"), {
       expiryDate: Timestamp.fromDate(batch.expiryDate),
       quantity: batch.quantity,
       createdAt: Timestamp.now(),
@@ -209,7 +210,7 @@ export class InventoryBatchService {
       }
       const totalStock = await this.sumBatchQuantities(existing.id)
       await updateDoc(
-        doc(this.db, "products", existing.id),
+        doc(this.db, col("products"), existing.id),
         {
           ...this.productDocPayload({
             ...payloadFields,
@@ -241,7 +242,7 @@ export class InventoryBatchService {
 
   async getBatchesSortedByExpiry(productId: string): Promise<BatchModel[]> {
     const q = query(
-      collection(this.db, "products", productId, "batches"),
+      collection(this.db, col("products"), productId, "batches"),
       orderBy("expiryDate", "asc")
     )
     const snap = await getDocs(q)

@@ -14,6 +14,7 @@ import {
   writeBatch,
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
+import { col } from "@/lib/account-mode"
 import {
   computeSaleRate,
   type ProductSupplier,
@@ -78,7 +79,7 @@ export function subscribeProductSuppliers(
   onError?: (error: Error) => void
 ) {
   return onSnapshot(
-    collection(db, SUPPLIERS_COL),
+    collection(db, col(SUPPLIERS_COL)),
     (snap) => {
       const items = snap.docs
         .map((d) => supplierFromDoc(d.id, d.data() as Record<string, unknown>))
@@ -94,7 +95,7 @@ export function subscribeSupplierOrderItems(
   onError?: (error: Error) => void
 ) {
   return onSnapshot(
-    collection(db, ORDER_ITEMS_COL),
+    collection(db, col(ORDER_ITEMS_COL)),
     (snap) => {
       const items = snap.docs.map((d) =>
         orderItemFromDoc(d.id, d.data() as Record<string, unknown>)
@@ -114,7 +115,7 @@ export async function addProductSupplier(input: {
 }) {
   const name = input.name.trim()
   if (!name) throw new Error("Supplier name is required")
-  await addDoc(collection(db, SUPPLIERS_COL), {
+  await addDoc(collection(db, col(SUPPLIERS_COL)), {
     name,
     phone: input.phone?.trim() || "",
     email: input.email?.trim() || "",
@@ -135,11 +136,11 @@ export async function updateProductSupplier(
   if (input.email !== undefined) payload.email = input.email.trim()
   if (input.address !== undefined) payload.address = input.address.trim()
   if (input.notes !== undefined) payload.notes = input.notes.trim()
-  await updateDoc(doc(db, SUPPLIERS_COL, id), payload as Record<string, string | ReturnType<typeof serverTimestamp>>)
+  await updateDoc(doc(db, col(SUPPLIERS_COL), id), payload as Record<string, string | ReturnType<typeof serverTimestamp>>)
 
   if (input.name !== undefined) {
     const snap = await getDocs(
-      query(collection(db, ORDER_ITEMS_COL), where("supplierId", "==", id))
+      query(collection(db, col(ORDER_ITEMS_COL)), where("supplierId", "==", id))
     )
     if (!snap.empty) {
       const batch = writeBatch(db)
@@ -152,16 +153,16 @@ export async function updateProductSupplier(
 }
 
 export async function deleteProductSupplier(id: string) {
-  await deleteDoc(doc(db, SUPPLIERS_COL, id))
+  await deleteDoc(doc(db, col(SUPPLIERS_COL), id))
 }
 
 export async function addSupplierOrderItems(items: SupplierOrderItemInput[]) {
   if (items.length === 0) throw new Error("Add at least one product line")
   const batch = writeBatch(db)
-  const col = collection(db, ORDER_ITEMS_COL)
+  const itemsCol = collection(db, col(ORDER_ITEMS_COL))
 
   items.forEach((item) => {
-    const ref = doc(col)
+    const ref = doc(itemsCol)
     const mrp = Number(item.mrp)
     const discountPercent = Number(item.discountPercent ?? 0)
     batch.set(ref, {
@@ -225,18 +226,18 @@ export async function updateSupplierOrderItem(
   const discount =
     input.discountPercent !== undefined ? Number(input.discountPercent) : undefined
   if (mrp !== undefined || discount !== undefined) {
-    const existing = await getDoc(doc(db, ORDER_ITEMS_COL, id))
+    const existing = await getDoc(doc(db, col(ORDER_ITEMS_COL), id))
     const data = existing.data() as Record<string, unknown> | undefined
     const finalMrp = mrp ?? Number(data?.mrp ?? 0)
     const finalDiscount = discount ?? Number(data?.discountPercent ?? 0)
     payload.saleRate = computeSaleRate(finalMrp, finalDiscount)
   }
 
-  await updateDoc(doc(db, ORDER_ITEMS_COL, id), payload as Record<string, unknown>)
+  await updateDoc(doc(db, col(ORDER_ITEMS_COL), id), payload as Record<string, unknown>)
 }
 
 export async function deleteSupplierOrderItem(id: string) {
-  await deleteDoc(doc(db, ORDER_ITEMS_COL, id))
+  await deleteDoc(doc(db, col(ORDER_ITEMS_COL), id))
 }
 
 export async function deleteSupplierOrderItems(ids: string[]) {
@@ -245,7 +246,7 @@ export async function deleteSupplierOrderItems(ids: string[]) {
   for (let i = 0; i < ids.length; i += chunkSize) {
     const batch = writeBatch(db)
     ids.slice(i, i + chunkSize).forEach((id) => {
-      batch.delete(doc(db, ORDER_ITEMS_COL, id))
+      batch.delete(doc(db, col(ORDER_ITEMS_COL), id))
     })
     await batch.commit()
   }

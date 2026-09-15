@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged, type User } from "firebase/auth"
 import { doc, getDoc } from "firebase/firestore"
 import { auth, db } from "@/lib/firebase"
+import { col } from "@/lib/account-mode"
 
 export type UserRole = "admin" | "employee"
 
@@ -50,7 +51,7 @@ function writeCachedSessionUser(user: SessionUser | null): void {
 async function resolveRole(user: User): Promise<UserRole> {
   try {
     const roleDoc = await Promise.race([
-      getDoc(doc(db, "users", user.uid)),
+      getDoc(doc(db, col("users"), user.uid)),
       new Promise<never>((_, reject) => {
         window.setTimeout(() => reject(new Error("role lookup timeout")), 1500)
       }),

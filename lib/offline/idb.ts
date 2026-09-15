@@ -1,4 +1,5 @@
-const DB_NAME = "samrat-offline-v1"
+import { offlineDbName } from "@/lib/account-mode"
+
 const DB_VERSION = 1
 
 export const STORE_PRODUCTS = "products"
@@ -11,7 +12,7 @@ function openDb(): Promise<IDBDatabase> {
       reject(new Error("IndexedDB is not available"))
       return
     }
-    const req = indexedDB.open(DB_NAME, DB_VERSION)
+    const req = indexedDB.open(offlineDbName(), DB_VERSION)
     req.onupgradeneeded = () => {
       const db = req.result
       if (!db.objectStoreNames.contains(STORE_PRODUCTS)) {

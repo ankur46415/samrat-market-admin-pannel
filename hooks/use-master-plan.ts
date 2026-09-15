@@ -19,6 +19,7 @@ import type {
   MasterPlanStats,
 } from "@/lib/features/master-plan/models"
 import { masterPlanService } from "@/lib/features/master-plan/services/master_plan_service"
+import { useAccountModeScope } from "@/components/account-mode-provider"
 
 export type SyncStatus = "connecting" | "syncing" | "synced" | "error" | "offline"
 
@@ -94,6 +95,7 @@ function computeStats(
 }
 
 export function useMasterPlan() {
+  const accountMode = useAccountModeScope()
   const [branches, setBranches] = useState<MasterPlanBranch[]>([])
   const [itemsByBranch, setItemsByBranch] = useState<Record<string, MasterPlanItem[]>>({})
   const [branchCategories, setBranchCategories] = useState<MasterPlanBranchCategory[]>([])
@@ -141,7 +143,7 @@ export function useMasterPlan() {
       }
     )
     return () => unsub()
-  }, [])
+  }, [accountMode])
 
   useEffect(() => {
     if (branches.length === 0) return
@@ -159,7 +161,7 @@ export function useMasterPlan() {
       })
     )
     return () => unsubs.forEach((u) => u())
-  }, [branches])
+  }, [accountMode, branches])
 
   useEffect(() => {
     if (!activeBranchId) {
@@ -183,7 +185,7 @@ export function useMasterPlan() {
       (err) => setError(err.message)
     )
     return () => unsub()
-  }, [activeBranchId, branches])
+  }, [accountMode, activeBranchId, branches])
 
   const { stats, categories } = useMemo(
     () => computeStats(items, allCategories),

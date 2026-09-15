@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react"
 import { collection, onSnapshot } from "firebase/firestore"
 import { db } from "@/lib/firebase"
+import { col } from "@/lib/account-mode"
+import { useAccountModeScope } from "@/components/account-mode-provider"
 import { firestoreNumber, liveSessionItemQuantity } from "@/lib/stock"
 import { clampDiscountPercent } from "@/lib/billing/line-discount"
 import {
@@ -19,10 +21,11 @@ export function LiveSessionBillEditor({
 }) {
   const [items, setItems] = useState<EditableLiveItem[]>([])
   const [loading, setLoading] = useState(true)
+  const accountMode = useAccountModeScope()
 
   useEffect(() => {
     setLoading(true)
-    const itemsCol = collection(db, "live_sessions", sessionId, "items")
+    const itemsCol = collection(db, col("live_sessions"), sessionId, "items")
 
     const unsubscribe = onSnapshot(
       itemsCol,
@@ -52,7 +55,7 @@ export function LiveSessionBillEditor({
     )
 
     return () => unsubscribe()
-  }, [sessionId])
+  }, [accountMode, sessionId])
 
   return (
     <LiveBillItemsEditor

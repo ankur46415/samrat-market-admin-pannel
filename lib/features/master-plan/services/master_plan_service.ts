@@ -16,6 +16,7 @@ import {
   type Unsubscribe,
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
+import { col } from "@/lib/account-mode"
 import {
   DEFAULT_MASTER_PLAN_BRANCH,
   MASTER_PLAN_CATEGORIES,
@@ -79,7 +80,7 @@ function categoryFromDoc(id: string, data: Record<string, unknown>): MasterPlanB
 
 export class MasterPlanService {
   subscribeBranches(onData: (branches: MasterPlanBranch[]) => void, onError?: (err: Error) => void): Unsubscribe {
-    const q = query(collection(db, BRANCHES), orderBy("createdAt", "asc"))
+    const q = query(collection(db, col(BRANCHES)), orderBy("createdAt", "asc"))
     return onSnapshot(
       q,
       (snap) => {
@@ -94,7 +95,7 @@ export class MasterPlanService {
     onData: (items: MasterPlanItem[]) => void,
     onError?: (err: Error) => void
   ): Unsubscribe {
-    const q = query(collection(db, BRANCHES, branchId, "items"), orderBy("sortOrder", "asc"))
+    const q = query(collection(db, col(BRANCHES), branchId, "items"), orderBy("sortOrder", "asc"))
     return onSnapshot(
       q,
       (snap) => {
@@ -109,7 +110,7 @@ export class MasterPlanService {
     onData: (categories: MasterPlanBranchCategory[]) => void,
     onError?: (err: Error) => void
   ): Unsubscribe {
-    const q = query(collection(db, BRANCHES, branchId, "categories"), orderBy("sortOrder", "asc"))
+    const q = query(collection(db, col(BRANCHES), branchId, "categories"), orderBy("sortOrder", "asc"))
     return onSnapshot(
       q,
       (snap) => {
@@ -120,12 +121,12 @@ export class MasterPlanService {
   }
 
   async seedDefaultCategories(branchId: string): Promise<void> {
-    const existing = await getDocs(collection(db, BRANCHES, branchId, "categories"))
+    const existing = await getDocs(collection(db, col(BRANCHES), branchId, "categories"))
     if (!existing.empty) return
 
     const batch = writeBatch(db)
     MASTER_PLAN_CATEGORIES.forEach((cat, index) => {
-      const ref = doc(db, BRANCHES, branchId, "categories", cat.id)
+      const ref = doc(db, col(BRANCHES), branchId, "categories", cat.id)
       batch.set(ref, {
         name: cat.name,
         color: cat.color,
@@ -140,7 +141,7 @@ export class MasterPlanService {
     branchId: string,
     input: { id: string; name: string; color: string; sortOrder: number }
   ): Promise<string> {
-    const ref = doc(db, BRANCHES, branchId, "categories", input.id)
+    const ref = doc(db, col(BRANCHES), branchId, "categories", input.id)
     const existing = await getDoc(ref)
     if (existing.exists()) {
       throw new Error("This category already exists.")
@@ -155,21 +156,21 @@ export class MasterPlanService {
   }
 
   async updateBranchCategory(branchId: string, id: string, name: string): Promise<void> {
-    await updateDoc(doc(db, BRANCHES, branchId, "categories", id), {
+    await updateDoc(doc(db, col(BRANCHES), branchId, "categories", id), {
       name,
       updatedAt: serverTimestamp(),
     })
   }
 
   async deleteBranchCategory(branchId: string, id: string): Promise<void> {
-    await deleteDoc(doc(db, BRANCHES, branchId, "categories", id))
+    await deleteDoc(doc(db, col(BRANCHES), branchId, "categories", id))
   }
 
   async seedDefaultBranchIfEmpty(): Promise<string | null> {
-    const existing = await getDocs(collection(db, BRANCHES))
+    const existing = await getDocs(collection(db, col(BRANCHES)))
     if (!existing.empty) return null
 
-    const branchRef = await addDoc(collection(db, BRANCHES), {
+    const branchRef = await addDoc(collection(db, col(BRANCHES)), {
       ...DEFAULT_MASTER_PLAN_BRANCH,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -179,7 +180,7 @@ export class MasterPlanService {
 
     const batch = writeBatch(db)
     MASTER_PLAN_SEED_ITEMS.forEach((item, index) => {
-      const itemRef = doc(collection(db, BRANCHES, branchRef.id, "items"))
+      const itemRef = doc(collection(db, col(BRANCHES), branchRef.id, "items"))
       batch.set(itemRef, {
         ...item,
         sortOrder: index + 1,
@@ -192,7 +193,7 @@ export class MasterPlanService {
   }
 
   async createBranch(name: string): Promise<string> {
-    const ref = await addDoc(collection(db, BRANCHES), {
+    const ref = await addDoc(collection(db, col(BRANCHES)), {
       name: name.trim(),
       description: "",
       strategyLabel: "",
@@ -205,7 +206,7 @@ export class MasterPlanService {
   }
 
   async updateBranch(id: string, name: string): Promise<void> {
-    await updateDoc(doc(db, BRANCHES, id), {
+    await updateDoc(doc(db, col(BRANCHES), id), {
       name: name.trim(),
       updatedAt: serverTimestamp(),
     })
@@ -213,7 +214,7 @@ export class MasterPlanService {
 
   async deleteBranch(branchId: string): Promise<void> {
     for (const sub of ["items", "categories"] as const) {
-      const snap = await getDocs(collection(db, BRANCHES, branchId, sub))
+      const snap = await getDocs(collection(db, col(BRANCHES), branchId, sub))
       const docs = snap.docs
       for (let i = 0; i < docs.length; i += 450) {
         const batch = writeBatch(db)
@@ -221,11 +222,11 @@ export class MasterPlanService {
         await batch.commit()
       }
     }
-    await deleteDoc(doc(db, BRANCHES, branchId))
+    await deleteDoc(doc(db, col(BRANCHES), branchId))
   }
 
   async addItem(branchId: string, input: MasterPlanItemInput, sortOrder: number): Promise<string> {
-    const ref = await addDoc(collection(db, BRANCHES, branchId, "items"), {
+    const ref = await addDoc(collection(db, col(BRANCHES), branchId, "items"), {
       ...input,
       sortOrder,
       createdAt: serverTimestamp(),
@@ -237,7 +238,7 @@ export class MasterPlanService {
   async addItemsBulk(branchId: string, inputs: MasterPlanItemInput[], startSortOrder: number): Promise<void> {
     const batch = writeBatch(db)
     inputs.forEach((input, index) => {
-      const itemRef = doc(collection(db, BRANCHES, branchId, "items"))
+      const itemRef = doc(collection(db, col(BRANCHES), branchId, "items"))
       batch.set(itemRef, {
         ...input,
         sortOrder: startSortOrder + index,
@@ -249,14 +250,14 @@ export class MasterPlanService {
   }
 
   async updateItem(branchId: string, itemId: string, input: Partial<MasterPlanItemInput & { qty: number }>): Promise<void> {
-    await updateDoc(doc(db, BRANCHES, branchId, "items", itemId), {
+    await updateDoc(doc(db, col(BRANCHES), branchId, "items", itemId), {
       ...input,
       updatedAt: serverTimestamp(),
     })
   }
 
   async deleteItem(branchId: string, itemId: string): Promise<void> {
-    await deleteDoc(doc(db, BRANCHES, branchId, "items", itemId))
+    await deleteDoc(doc(db, col(BRANCHES), branchId, "items", itemId))
   }
 }
 

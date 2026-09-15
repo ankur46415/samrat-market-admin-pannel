@@ -11,10 +11,12 @@ import {
   subscribeSaleMarginPercents,
   saveSaleMarginPercents,
 } from "@/lib/features/purchase-catalog/service"
+import { useAccountModeScope } from "@/components/account-mode-provider"
 
 export type CatalogSyncStatus = "connecting" | "synced" | "error" | "offline"
 
 export function usePurchaseCatalog() {
+  const accountMode = useAccountModeScope()
   const [catalogs, setCatalogs] = useState<PurchaseCatalog[]>([])
   const [loading, setLoading] = useState(true)
   const [syncStatus, setSyncStatus] = useState<CatalogSyncStatus>("connecting")
@@ -35,12 +37,12 @@ export function usePurchaseCatalog() {
       }
     )
     return () => unsub()
-  }, [])
+  }, [accountMode])
 
   useEffect(() => {
     const unsub = subscribeSaleMarginPercents(setPercents)
     return () => unsub()
-  }, [])
+  }, [accountMode])
 
   const updateSaleMarginPercents = useCallback(async (next: number[]) => {
     await saveSaleMarginPercents(next)

@@ -26,6 +26,7 @@ import {
   increment,
 } from "firebase/firestore"
 import type { DocumentReference } from "firebase/firestore"
+import { accountScopedKey, col } from "@/lib/account-mode"
 
 export interface LiveBillingSession {
   sessionId: string
@@ -57,17 +58,21 @@ export interface CompleteSessionResult {
 
 export const ADMIN_SCAN_SESSION_STORAGE_KEY = "samrat_admin_scan_session_id"
 
+function scanSessionStorageKey(): string {
+  return accountScopedKey(ADMIN_SCAN_SESSION_STORAGE_KEY)
+}
+
 let scannerSessionCreatePromise: Promise<string> | null = null
 
 export function clearAdminScanSessionStorage(): void {
   if (typeof window !== "undefined") {
-    sessionStorage.removeItem(ADMIN_SCAN_SESSION_STORAGE_KEY)
+    sessionStorage.removeItem(scanSessionStorageKey())
   }
 }
 
 async function billNoAlreadyExists(billNo: string): Promise<boolean> {
   try {
-    const snap = await getDocs(query(collection(db, "sales"), where("billNo", "==", billNo), limit(1)))
+    const snap = await getDocs(query(collection(db, col("sales")), where("billNo", "==", billNo), limit(1)))
     return !snap.empty
   } catch {
     return false
@@ -86,7 +91,7 @@ async function resolveUniqueBillNo(preferred: string): Promise<string> {
 async function deductStockForLineItem(itemPayload: LiveBillingLineItem): Promise<void> {
   try {
     const productQuery = query(
-      collection(db, "products"),
+      collection(db, col("products")),
       where("barcode", "==", itemPayload.barcode),
       limit(1)
     )
@@ -94,7 +99,7 @@ async function deductStockForLineItem(itemPayload: LiveBillingLineItem): Promise
 
     let productDoc = productSnap.empty ? null : productSnap.docs[0]
     if (!productDoc) {
-      const directRef = doc(db, "products", itemPayload.barcode)
+      const directRef = doc(db, col("products"), itemPayload.barcode)
       const directSnap = await getDoc(directRef)
       if (directSnap.exists()) {
         productDoc = directSnap as typeof productSnap.docs[0]
@@ -108,7 +113,7 @@ async function deductStockForLineItem(itemPayload: LiveBillingLineItem): Promise
 
     const productId = productDoc.id
     const productData = productDoc.data() as Record<string, unknown>
-    const batchesCol = collection(db, "products", productId, "batches")
+    const batchesCol = collection(db, col("products"), productId, "batches")
     const batchesSnap = await getDocs(batchesCol)
 
     const batchesList = batchesSnap.docs
@@ -216,7 +221,7 @@ export async function writeSaleFromLineItems(input: {
       ...(resolvedCustomer?.customerName ? { customerName: resolvedCustomer.customerName } : {}),
     }
 
-    const saleRef = await addDoc(collection(db, "sales"), salePayload)
+    const saleRef = await addDoc(collection(db, col("sales")), salePayload)
     await setDoc(saleRef, { id: saleRef.id }, { merge: true })
     salesWritten = 1
 
@@ -248,7 +253,7 @@ async function ensureCustomerForBilling(
   if (!phone) return customer
 
   if (customer?.customerId) {
-    const existing = await getDoc(doc(db, "customers", customer.customerId))
+    const existing = await getDoc(doc(db, col("customers"), customer.customerId))
     if (existing.exists()) {
       const data = existing.data() as Record<string, unknown>
       return {
@@ -259,7 +264,7 @@ async function ensureCustomerForBilling(
     }
   }
 
-  const byPhone = await getDocs(query(collection(db, "customers"), where("phone", "==", phone), limit(1)))
+  const byPhone = await getDocs(query(collection(db, col("customers")), where("phone", "==", phone), limit(1)))
   if (!byPhone.empty) {
     const found = byPhone.docs[0]
     const data = found.data() as Record<string, unknown>
@@ -273,7 +278,7 @@ async function ensureCustomerForBilling(
   const name = (customer?.customerName || "").trim()
   if (!name) return { ...customer, customerPhone: phone }
 
-  const docRef = await addDoc(collection(db, "customers"), {
+  const docRef = await addDoc(collection(db, col("customers")), {
     name,
     phone,
     balance: 0,
@@ -292,13 +297,13 @@ async function ensureCustomerForBilling(
 /** Reuse one active scanner session per browser tab — avoids duplicate sessions on re-open / Strict Mode. */
 export async function getOrCreateScannerBillingSession(cashierLabel?: string): Promise<string> {
   if (typeof window !== "undefined") {
-    const stored = sessionStorage.getItem(ADMIN_SCAN_SESSION_STORAGE_KEY)
+    const stored = sessionStorage.getItem(scanSessionStorageKey())
     if (stored) {
-      const snap = await getDoc(doc(db, "live_sessions", stored))
+      const snap = await getDoc(doc(db, col("live_sessions"), stored))
       if (snap.exists() && String(snap.data()?.status ?? "") === "active") {
         return stored
       }
-      sessionStorage.removeItem(ADMIN_SCAN_SESSION_STORAGE_KEY)
+      sessionStorage.removeItem(scanSessionStorageKey())
     }
   }
 
@@ -311,7 +316,7 @@ export async function getOrCreateScannerBillingSession(cashierLabel?: string): P
   const id = await scannerSessionCreatePromise
 
   if (typeof window !== "undefined") {
-    sessionStorage.setItem(ADMIN_SCAN_SESSION_STORAGE_KEY, id)
+    sessionStorage.setItem(scanSessionStorageKey(), id)
   }
 
   return id
@@ -332,14 +337,14 @@ export async function completeLiveBillingSession(
   customer?: CheckoutCustomerInfo,
   paymentMethod?: "cash" | "upi"
 ): Promise<CompleteSessionResult> {
-  const liveSessionRef = doc(db, "live_sessions", sessionId)
+  const liveSessionRef = doc(db, col("live_sessions"), sessionId)
   const liveSnap = await getDoc(liveSessionRef)
   if (!liveSnap.exists()) {
     throw new Error(`Live session not found: ${sessionId}`)
   }
 
   const liveData = liveSnap.data() as Record<string, unknown>
-  const itemsSnap = await getDocs(collection(db, "live_sessions", sessionId, "items"))
+  const itemsSnap = await getDocs(collection(db, col("live_sessions"), sessionId, "items"))
 
   const lineItems: LiveBillingLineItem[] = []
 
@@ -391,7 +396,7 @@ export async function completeLiveBillingSession(
  * Only updates the session `status` to `"cancelled"`.
  */
 export async function cancelLiveBillingSession(sessionId: string): Promise<void> {
-  const liveSessionRef = doc(db, "live_sessions", sessionId)
+  const liveSessionRef = doc(db, col("live_sessions"), sessionId)
   const liveSnap = await getDoc(liveSessionRef)
   if (!liveSnap.exists()) {
     throw new Error(`Live session not found: ${sessionId}`)
@@ -403,7 +408,7 @@ export async function cancelLiveBillingSession(sessionId: string): Promise<void>
 
 /** Create a live billing session for admin barcode scanner checkout. */
 export async function createScannerBillingSession(cashierLabel?: string): Promise<string> {
-  const ref = await addDoc(collection(db, "live_sessions"), {
+  const ref = await addDoc(collection(db, col("live_sessions")), {
     status: "active",
     createdAt: Timestamp.now(),
     source: "admin_scanner",
@@ -457,13 +462,13 @@ export async function lookupProductForBilling(
     }
   }
 
-  const byId = await getDoc(doc(db, "products", scanned))
+  const byId = await getDoc(doc(db, col("products"), scanned))
   if (byId.exists()) {
     return toBillingProduct(byId.id, byId.data() as Record<string, unknown>, scanned)
   }
 
   const byBarcode = await getDocs(
-    query(collection(db, "products"), where("barcode", "==", scanned), limit(1))
+    query(collection(db, col("products")), where("barcode", "==", scanned), limit(1))
   )
   if (!byBarcode.empty) {
     const hit = byBarcode.docs[0]
@@ -484,7 +489,7 @@ async function findSessionItemRef(
   }
   if (candidates.size === 0) return null
 
-  const itemsSnap = await getDocs(collection(db, "live_sessions", sessionId, "items"))
+  const itemsSnap = await getDocs(collection(db, col("live_sessions"), sessionId, "items"))
 
   for (const itemDoc of itemsSnap.docs) {
     const data = itemDoc.data() as Record<string, unknown>
@@ -543,7 +548,7 @@ export async function scanItemIntoSession(
     }
   }
 
-  const itemRef = doc(db, "live_sessions", sessionId, "items", toSessionItemDocId(product.barcode))
+  const itemRef = doc(db, col("live_sessions"), sessionId, "items", toSessionItemDocId(product.barcode))
   await setDoc(itemRef, {
     barcode: product.barcode,
     name: product.name,
@@ -586,7 +591,7 @@ export async function addManualItemToSession(
 
   const discountPercent = clampDiscountPercent(input.discountPercent ?? 0)
   const barcode = `OTHER-${Date.now().toString(36).toUpperCase()}`
-  const itemRef = doc(db, "live_sessions", sessionId, "items", newManualItemDocId())
+  const itemRef = doc(db, col("live_sessions"), sessionId, "items", newManualItemDocId())
 
   await setDoc(itemRef, {
     barcode,
@@ -609,7 +614,7 @@ export async function addManualItemToSession(
 
 /** Remove a product line entirely from an active live session. */
 export async function removeItemFromSession(sessionId: string, itemDocId: string): Promise<void> {
-  await deleteDoc(doc(db, "live_sessions", sessionId, "items", itemDocId))
+  await deleteDoc(doc(db, col("live_sessions"), sessionId, "items", itemDocId))
 }
 
 /** Set line quantity manually (both `quantity` and `qty` for mobile compatibility). Removes line if qty ≤ 0. */
@@ -624,7 +629,7 @@ export async function updateSessionItemQuantity(
     return
   }
 
-  await updateDoc(doc(db, "live_sessions", sessionId, "items", itemDocId), {
+  await updateDoc(doc(db, col("live_sessions"), sessionId, "items", itemDocId), {
     quantity: nextQty,
     qty: nextQty,
   })
@@ -641,7 +646,7 @@ export async function updateSessionItemPrice(
     throw new Error("Invalid price")
   }
 
-  await updateDoc(doc(db, "live_sessions", sessionId, "items", itemDocId), {
+  await updateDoc(doc(db, col("live_sessions"), sessionId, "items", itemDocId), {
     price: nextPrice,
   })
 }
@@ -653,7 +658,7 @@ export async function updateSessionItemDiscount(
   discountPercent: number
 ): Promise<void> {
   const next = clampDiscountPercent(discountPercent)
-  await updateDoc(doc(db, "live_sessions", sessionId, "items", itemDocId), {
+  await updateDoc(doc(db, col("live_sessions"), sessionId, "items", itemDocId), {
     discountPercent: next,
   })
 }

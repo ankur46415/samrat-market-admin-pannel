@@ -11,17 +11,18 @@ import {
   type DocumentReference,
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
+import { col } from "@/lib/account-mode"
 import { firestoreNumber } from "@/lib/stock"
 
 async function findProductDoc(barcode: string) {
   const cleaned = barcode.trim()
   if (!cleaned || cleaned.startsWith("OTHER-")) return null
 
-  const productQuery = query(collection(db, "products"), where("barcode", "==", cleaned), limit(1))
+  const productQuery = query(collection(db, col("products")), where("barcode", "==", cleaned), limit(1))
   const productSnap = await getDocs(productQuery)
   if (!productSnap.empty) return productSnap.docs[0]
 
-  const directSnap = await getDoc(doc(db, "products", cleaned))
+  const directSnap = await getDoc(doc(db, col("products"), cleaned))
   if (directSnap.exists()) return directSnap
   return null
 }
@@ -33,7 +34,7 @@ type BatchRow = {
 }
 
 async function loadBatches(productId: string): Promise<BatchRow[]> {
-  const batchesSnap = await getDocs(collection(db, "products", productId, "batches"))
+  const batchesSnap = await getDocs(collection(db, col("products"), productId, "batches"))
   return batchesSnap.docs
     .map((d) => {
       const bd = d.data() as Record<string, unknown>

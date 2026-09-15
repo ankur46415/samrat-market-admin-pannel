@@ -18,6 +18,8 @@ import {
   QueryConstraint,
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
+import { col } from "@/lib/account-mode"
+import { useAccountModeScope } from "@/components/account-mode-provider"
 import type { Product, ProductBatch, Customer, Sale, LedgerEntry, DashboardStats, Order } from "@/lib/types"
 import { saleFromFirestoreDoc } from "@/lib/sale-from-firestore"
 import { omitUndefinedFields } from "@/lib/utils"
@@ -144,6 +146,7 @@ function productFromData(id: string, data: Record<string, unknown>): Product {
 
 // Products Hook
 export function useProducts() {
+  const accountMode = useAccountModeScope()
   const batchService = new InventoryBatchService(db)
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
@@ -152,6 +155,9 @@ export function useProducts() {
   useEffect(() => {
     let fromNetwork = false
     let cancelled = false
+    setProducts([])
+    setLoading(true)
+    setError(null)
 
     const applyCache = (cached: Product[]) => {
       if (cancelled || fromNetwork || cached.length === 0) return
@@ -167,7 +173,7 @@ export function useProducts() {
     }, 1500)
 
     const unsubscribe = onSnapshot(
-      collection(db, "products"),
+      collection(db, col("products")),
       (snapshot) => {
         fromNetwork = true
         window.clearTimeout(fallbackTimer)
@@ -191,7 +197,7 @@ export function useProducts() {
                 snapshot.docs.map(async (docSnap) => {
                   const data = docSnap.data() as Record<string, unknown>
                   try {
-                    const batchesSnap = await getDocs(collection(db, "products", docSnap.id, "batches"))
+                    const batchesSnap = await getDocs(collection(db, col("products"), docSnap.id, "batches"))
                     const batchList: ProductBatch[] = batchesSnap.docs.map((b) => {
                       const bd = b.data() as Record<string, unknown>
                       return {
@@ -251,7 +257,7 @@ export function useProducts() {
       window.clearTimeout(fallbackTimer)
       unsubscribe()
     }
-  }, [])
+  }, [accountMode])
 
   const addProduct = useCallback(async (product: Omit<Product, "id" | "createdAt" | "updatedAt" | "batches">) => {
     const barcode = String(product.barcode ?? "").trim()
@@ -348,7 +354,7 @@ export function useProducts() {
       payload.unit = u
       payload.units = u
     }
-    await updateDoc(doc(db, "products", id), {
+    await updateDoc(doc(db, col("products"), id), {
       ...payload,
       updatedAt: Timestamp.now(),
     })
@@ -365,20 +371,20 @@ export function useProducts() {
       const batch = writeBatch(db)
       const now = Timestamp.now()
       for (const id of chunk) {
-        batch.update(doc(db, "products", id), { category: nextCategory, updatedAt: now })
+        batch.update(doc(db, col("products"), id), { category: nextCategory, updatedAt: now })
       }
       await batch.commit()
     }
   }, [])
 
   const deleteProduct = useCallback(async (id: string) => {
-    await deleteDoc(doc(db, "products", id))
+    await deleteDoc(doc(db, col("products"), id))
   }, [])
 
   const bulkAddProducts = useCallback(async (productsData: Omit<Product, "id" | "createdAt" | "updatedAt" | "batches">[]) => {
     const batch = writeBatch(db)
     productsData.forEach((product) => {
-      const docRef = doc(collection(db, "products"))
+      const docRef = doc(collection(db, col("products")))
       const u = normalizeProductUnit(product.unit)
       batch.set(docRef, {
         ...product,
@@ -396,12 +402,15 @@ export function useProducts() {
 
 // Customers Hook
 export function useCustomers() {
+  const accountMode = useAccountModeScope()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const q = query(collection(db, "customers"), orderBy("name"))
+    setCustomers([])
+    setLoading(true)
+    const q = query(collection(db, col("customers")), orderBy("name"))
     
     const unsubscribe = onSnapshot(
       q,
@@ -423,10 +432,10 @@ export function useCustomers() {
     )
 
     return () => unsubscribe()
-  }, [])
+  }, [accountMode])
 
   const addCustomer = useCallback(async (customer: Omit<Customer, "id" | "createdAt" | "updatedAt">) => {
-    const docRef = await addDoc(collection(db, "customers"), {
+    const docRef = await addDoc(collection(db, col("customers")), {
       ...omitUndefinedFields(customer as Record<string, unknown>),
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
@@ -435,14 +444,14 @@ export function useCustomers() {
   }, [])
 
   const updateCustomer = useCallback(async (id: string, data: Partial<Customer>) => {
-    await updateDoc(doc(db, "customers", id), {
+    await updateDoc(doc(db, col("customers"), id), {
       ...omitUndefinedFields(data as Record<string, unknown>),
       updatedAt: Timestamp.now(),
     })
   }, [])
 
   const deleteCustomer = useCallback(async (id: string) => {
-    await deleteDoc(doc(db, "customers", id))
+    await deleteDoc(doc(db, col("customers"), id))
   }, [])
 
   return { customers, loading, error, addCustomer, updateCustomer, deleteCustomer }
@@ -450,13 +459,16 @@ export function useCustomers() {
 
 // Sales Hook
 export function useSales(constraints?: QueryConstraint[]) {
+  const accountMode = useAccountModeScope()
   const [sales, setSales] = useState<Sale[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    setSales([])
+    setLoading(true)
     // No orderBy("createdAt"): mobile/Flutter docs use `soldAt` (string) only and would be excluded.
-    const coll = collection(db, "sales")
+    const coll = collection(db, col("sales"))
     const q = constraints?.length ? query(coll, ...constraints) : coll
 
     const unsubscribe = onSnapshot(
@@ -476,13 +488,14 @@ export function useSales(constraints?: QueryConstraint[]) {
     )
 
     return () => unsubscribe()
-  }, [constraints])
+  }, [accountMode, constraints])
 
   return { sales, loading, error }
 }
 
 // Ledger Hook
 export function useLedger(customerId?: string) {
+  const accountMode = useAccountModeScope()
   const [entries, setEntries] = useState<LedgerEntry[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -494,7 +507,7 @@ export function useLedger(customerId?: string) {
     }
 
     // Equality-only query: no composite index. Sort by createdAt in memory (same as products/sales).
-    const q = query(collection(db, "ledger"), where("customerId", "==", customerId))
+    const q = query(collection(db, col("ledger")), where("customerId", "==", customerId))
 
     const unsubscribe = onSnapshot(
       q,
@@ -517,10 +530,10 @@ export function useLedger(customerId?: string) {
     )
 
     return () => unsubscribe()
-  }, [customerId])
+  }, [accountMode, customerId])
 
   const addEntry = useCallback(async (entry: Omit<LedgerEntry, "id" | "createdAt">) => {
-    await addDoc(collection(db, "ledger"), {
+    await addDoc(collection(db, col("ledger")), {
       ...entry,
       createdAt: Timestamp.now(),
     })
@@ -531,6 +544,7 @@ export function useLedger(customerId?: string) {
 
 // Dashboard Stats Hook
 export function useDashboardStats() {
+  const accountMode = useAccountModeScope()
   const [stats, setStats] = useState<DashboardStats>({
     todaySales: 0,
     totalRevenue: 0,
@@ -545,7 +559,7 @@ export function useDashboardStats() {
     today.setHours(0, 0, 0, 0)
 
     // Listen to products for low stock
-    const productsUnsubscribe = onSnapshot(collection(db, "products"), (snapshot) => {
+    const productsUnsubscribe = onSnapshot(collection(db, col("products")), (snapshot) => {
       const lowStock = snapshot.docs.filter((doc) =>
         isLowStockFromFirestoreData(doc.data() as Record<string, unknown>)
       ).length
@@ -553,7 +567,7 @@ export function useDashboardStats() {
     })
 
     // Listen to customers for count and pending credit
-    const customersUnsubscribe = onSnapshot(collection(db, "customers"), (snapshot) => {
+    const customersUnsubscribe = onSnapshot(collection(db, col("customers")), (snapshot) => {
       const totalCredit = snapshot.docs.reduce((sum, doc) => {
         return sum + (doc.data().balance || 0)
       }, 0)
@@ -568,7 +582,7 @@ export function useDashboardStats() {
     todayEnd.setDate(todayEnd.getDate() + 1)
 
     // All sales: map Flutter line docs + web invoices; filter today client-side (soldAt / createdAt).
-    const salesUnsubscribe = onSnapshot(collection(db, "sales"), (snapshot) => {
+    const salesUnsubscribe = onSnapshot(collection(db, col("sales")), (snapshot) => {
       let todayTotal = 0
       let revenueTotal = 0
       snapshot.docs.forEach((doc) => {
@@ -587,20 +601,21 @@ export function useDashboardStats() {
       customersUnsubscribe()
       salesUnsubscribe()
     }
-  }, [])
+  }, [accountMode])
 
   return { stats, loading }
 }
 
 // Categories from `product_categories` plus names already used on products
 export function useCategories() {
+  const accountMode = useAccountModeScope()
   const { products, loading: productsLoading, bulkUpdateProductCategory } = useProducts()
   const [stored, setStored] = useState<{ id: string; name: string }[]>([])
   const [storedLoading, setStoredLoading] = useState(true)
 
   useEffect(() => {
     const unsub = onSnapshot(
-      collection(db, "product_categories"),
+      collection(db, col("product_categories")),
       (snapshot) => {
         setStored(
           snapshot.docs
@@ -618,7 +633,7 @@ export function useCategories() {
       }
     )
     return () => unsub()
-  }, [])
+  }, [accountMode])
 
   const categories = useMemo(() => {
     const counts = new Map<string, number>()
@@ -659,7 +674,7 @@ export function useCategories() {
       const next = name.trim()
       if (!next) throw new Error("Category name is required")
       if (hasCategoryName(next)) throw new Error("That category already exists")
-      await addDoc(collection(db, "product_categories"), {
+      await addDoc(collection(db, col("product_categories")), {
         name: next,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
@@ -689,11 +704,11 @@ export function useCategories() {
         const now = Timestamp.now()
         await Promise.all(
           matchingDocs.map((c) =>
-            updateDoc(doc(db, "product_categories", c.id), { name: to, updatedAt: now })
+            updateDoc(doc(db, col("product_categories"), c.id), { name: to, updatedAt: now })
           )
         )
       } else {
-        await addDoc(collection(db, "product_categories"), {
+        await addDoc(collection(db, col("product_categories")), {
           name: to,
           createdAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
@@ -713,12 +728,13 @@ export function useCategories() {
 
 // Orders Hook
 export function useOrders() {
+  const accountMode = useAccountModeScope()
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const q = query(collection(db, "orders"), orderBy("orderDate", "desc"))
+    const q = query(collection(db, col("orders")), orderBy("orderDate", "desc"))
     
     const unsubscribe = onSnapshot(
       q,
@@ -742,16 +758,16 @@ export function useOrders() {
     )
 
     return () => unsubscribe()
-  }, [])
+  }, [accountMode])
 
   const updateOrderStatus = useCallback(async (id: string, status: string) => {
-    await updateDoc(doc(db, "orders", id), {
+    await updateDoc(doc(db, col("orders"), id), {
       status,
     })
   }, [])
 
   const deleteOrder = useCallback(async (id: string) => {
-    await deleteDoc(doc(db, "orders", id))
+    await deleteDoc(doc(db, col("orders"), id))
   }, [])
 
   return { orders, loading, error, updateOrderStatus, deleteOrder }

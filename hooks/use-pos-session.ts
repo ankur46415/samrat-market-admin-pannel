@@ -3,11 +3,14 @@
 import { useEffect, useMemo, useState } from "react"
 import { collection, doc, onSnapshot } from "firebase/firestore"
 import { db } from "@/lib/firebase"
+import { col } from "@/lib/account-mode"
+import { useAccountModeScope } from "@/components/account-mode-provider"
 import { firestoreNumber, liveSessionItemQuantity } from "@/lib/stock"
 import { clampDiscountPercent, lineItemAmount, mrpLineSaved } from "@/lib/billing/line-discount"
 import type { EditableLiveItem } from "@/components/live-billing/live-bill-items-editor"
 
 export function usePosSession(sessionId: string | null) {
+  const accountMode = useAccountModeScope()
   const [items, setItems] = useState<EditableLiveItem[]>([])
   const [loading, setLoading] = useState(true)
   const [sessionStatus, setSessionStatus] = useState<string>("active")
@@ -21,7 +24,7 @@ export function usePosSession(sessionId: string | null) {
 
     setLoading(true)
 
-    const sessionRef = doc(db, "live_sessions", sessionId)
+    const sessionRef = doc(db, col("live_sessions"), sessionId)
     const unsubSession = onSnapshot(
       sessionRef,
       (snap) => {
@@ -35,7 +38,7 @@ export function usePosSession(sessionId: string | null) {
       () => setSessionStatus("unknown")
     )
 
-    const itemsCol = collection(db, "live_sessions", sessionId, "items")
+    const itemsCol = collection(db, col("live_sessions"), sessionId, "items")
     const unsubItems = onSnapshot(
       itemsCol,
       (snapshot) => {
@@ -67,7 +70,7 @@ export function usePosSession(sessionId: string | null) {
       unsubSession()
       unsubItems()
     }
-  }, [sessionId])
+  }, [accountMode, sessionId])
 
   const totals = useMemo(() => {
     const lines = items.length

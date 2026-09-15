@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
 import { canAccessPath, logoutFirebase, useSessionUser } from "@/lib/auth-session"
+import { AccountModeSwitcher } from "@/components/account-mode-switcher"
 
 const mainNavItems = [
   {
@@ -252,6 +253,7 @@ export function AdminSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border">
+        <AccountModeSwitcher />
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
