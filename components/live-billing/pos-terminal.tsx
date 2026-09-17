@@ -194,7 +194,7 @@ export function PosTerminal({
   const [printDialogOpen, setPrintDialogOpen] = useState(false)
   const [printPhoneDraft, setPrintPhoneDraft] = useState("")
   const [printNameDraft, setPrintNameDraft] = useState("")
-  const [printPaymentType, setPrintPaymentType] = useState<"" | "cash" | "online">("")
+  const [printPaymentType, setPrintPaymentType] = useState<"cash" | "online">("cash")
   const [billPaymentMethod, setBillPaymentMethod] = useState<"cash" | "upi">("cash")
   const [nameDraft, setNameDraft] = useState("")
   const [phoneDraft, setPhoneDraft] = useState("NA")
@@ -386,7 +386,7 @@ export function PosTerminal({
       ? customers.find((c) => normalizePosPhone(c.phone) === phone) ?? null
       : null
     setPrintNameDraft(found?.name || selectedCustomer?.name || pendingCustomerName || "")
-    setPrintPaymentType("")
+    setPrintPaymentType("cash")
     setPrintDialogOpen(true)
   }
 
@@ -435,6 +435,34 @@ export function PosTerminal({
         paymentMethod: paymentLabel,
         customerName: found?.name || name,
         customerPhone: digits,
+      })
+    } catch (e) {
+      console.error(e)
+      toast.error(e instanceof Error ? e.message : "Print failed")
+    } finally {
+      setPrinting(false)
+    }
+  }
+
+  const skipPrintBill = async () => {
+    applyCustomerPhone("")
+    setPendingCustomerName("NA")
+    setBillPaymentMethod("cash")
+    setPrintPaymentType("cash")
+    setPrintDialogOpen(false)
+
+    const receipt = buildCurrentReceipt()
+    if (!receipt) {
+      toast.error("Scan at least one product first")
+      return
+    }
+    try {
+      setPrinting(true)
+      printReceiptInBrowser({
+        ...receipt,
+        paymentMethod: "cash",
+        customerName: "NA",
+        customerPhone: "NA",
       })
     } catch (e) {
       console.error(e)
@@ -702,7 +730,7 @@ export function PosTerminal({
   const billingCustomer = (): CheckoutCustomerInfo => {
     const customerName = (selectedCustomer?.name || pendingCustomerName || "").trim()
     if (isWalkInPhone) {
-      return { customerPhone: normalizedCustomerPhone }
+      return { customerPhone: normalizedCustomerPhone || "NA", customerName: customerName || "NA" }
     }
     return {
       customerPhone: selectedCustomer?.phone || normalizedCustomerPhone,
@@ -1043,7 +1071,7 @@ export function PosTerminal({
           <DialogHeader>
             <DialogTitle>Print bill</DialogTitle>
             <DialogDescription>
-              Enter customer phone and name, and choose payment type. Proceed stays disabled until all fields are filled.
+              Enter customer phone and name, or Skip to print as walk-in (name and phone NA, payment Cash).
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
@@ -1091,11 +1119,11 @@ export function PosTerminal({
             <div className="space-y-1.5">
               <Label>Payment type *</Label>
               <Select
-                value={printPaymentType || undefined}
+                value={printPaymentType}
                 onValueChange={(value) => setPrintPaymentType(value as "cash" | "online")}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select payment type" />
+                  <SelectValue placeholder="Cash" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="cash">Cash</SelectItem>
@@ -1104,18 +1132,29 @@ export function PosTerminal({
               </Select>
             </div>
           </div>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button type="button" variant="outline" onClick={() => setPrintDialogOpen(false)}>
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button type="button" variant="ghost" onClick={() => setPrintDialogOpen(false)}>
               Cancel
             </Button>
-            <Button
-              type="button"
-              disabled={!printCanProceed || savingCustomer || printing}
-              onClick={() => void confirmPrintBill()}
-            >
-              {savingCustomer || printing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Proceed
-            </Button>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={savingCustomer || printing}
+                onClick={() => void skipPrintBill()}
+              >
+                {printing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Skip
+              </Button>
+              <Button
+                type="button"
+                disabled={!printCanProceed || savingCustomer || printing}
+                onClick={() => void confirmPrintBill()}
+              >
+                {savingCustomer || printing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Proceed
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
