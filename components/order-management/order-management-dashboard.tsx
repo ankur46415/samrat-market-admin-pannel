@@ -526,6 +526,7 @@ function CreateOrderView({
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [qty, setQty] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
+  const [search, setSearch] = useState("")
 
   const rows = useMemo(() => {
     return items.map((item, index) => {
@@ -534,6 +535,19 @@ function CreateOrderView({
       return { item, index, checked, q, total: checked ? lineTotal(item.buyRate, q) : 0 }
     })
   }, [items, qty, selected])
+
+  const visibleRows = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return rows
+    return rows.filter((row) => {
+      const id = String(row.index + 1)
+      return (
+        row.item.name.toLowerCase().includes(q) ||
+        row.item.brand.toLowerCase().includes(q) ||
+        id.includes(q)
+      )
+    })
+  }, [rows, search])
 
   const balance = roundMoney(rows.reduce((sum, row) => sum + row.total, 0))
   const selectedCount = rows.filter((row) => row.checked && row.q > 0).length
@@ -599,7 +613,18 @@ function CreateOrderView({
           Add items in Catalog first.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border bg-card">
+        <>
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              autoFocus
+              className="pl-9"
+              placeholder="Search by name, brand, or ID…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div className="overflow-x-auto rounded-xl border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
@@ -614,7 +639,14 @@ function CreateOrderView({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((row) => (
+              {visibleRows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
+                    No items match “{search.trim()}”
+                  </TableCell>
+                </TableRow>
+              ) : (
+                visibleRows.map((row) => (
                 <TableRow key={row.item.id} className={row.checked ? "bg-primary/10" : undefined}>
                   <TableCell>
                     <Checkbox
@@ -639,10 +671,12 @@ function CreateOrderView({
                   </TableCell>
                   <TableCell className="text-right font-semibold tabular-nums">{formatInr(row.total)}</TableCell>
                 </TableRow>
-              ))}
+                ))
+              )}
             </TableBody>
           </Table>
         </div>
+        </>
       )}
     </div>
   )
