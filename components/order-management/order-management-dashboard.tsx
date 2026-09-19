@@ -515,18 +515,33 @@ function ConfirmDeleteDialog({
 function CreateOrderView({
   items,
   existingOrderIds,
+  initialOrder,
   onCancel,
   onSave,
 }: {
   items: OrderMgmtItem[]
   existingOrderIds: string[]
+  initialOrder?: OrderMgmtOrder | null
   onCancel: () => void
   onSave: (order: OrderMgmtOrder) => Promise<void>
 }) {
-  const [selected, setSelected] = useState<Record<string, boolean>>({})
-  const [qty, setQty] = useState<Record<string, string>>({})
+  const [selected, setSelected] = useState<Record<string, boolean>>(() => {
+    const next: Record<string, boolean> = {}
+    for (const line of initialOrder?.lines ?? []) {
+      if (line.itemId) next[line.itemId] = true
+    }
+    return next
+  })
+  const [qty, setQty] = useState<Record<string, string>>(() => {
+    const next: Record<string, string> = {}
+    for (const line of initialOrder?.lines ?? []) {
+      if (line.itemId) next[line.itemId] = String(line.qty)
+    }
+    return next
+  })
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState("")
+  const isEdit = Boolean(initialOrder)
 
   const rows = useMemo(() => {
     return items.map((item, index) => {
@@ -576,9 +591,9 @@ function CreateOrderView({
     setSaving(true)
     try {
       await onSave({
-        id: nextOrderId(existingOrderIds),
-        status: "pending",
-        createdAt: new Date().toISOString(),
+        id: initialOrder?.id ?? nextOrderId(existingOrderIds),
+        status: initialOrder?.status ?? "pending",
+        createdAt: initialOrder?.createdAt ?? new Date().toISOString(),
         lines,
       })
     } finally {
@@ -590,8 +605,14 @@ function CreateOrderView({
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-bold text-foreground">Create Order</h2>
-          <p className="text-sm text-muted-foreground">Select catalog items, enter qty. Total uses Buy Rate × Qty.</p>
+          <h2 className="text-xl font-bold text-foreground">
+            {isEdit ? `Add items to ${initialOrder?.id}` : "Create Order"}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {isEdit
+              ? "Select more catalog items or change qty. Existing selections are kept."
+              : "Select catalog items, enter qty. Total uses Buy Rate × Qty."}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 dark:border-amber-800 dark:bg-amber-950/40">
@@ -603,7 +624,7 @@ function CreateOrderView({
           </Button>
           <Button disabled={saving || selectedCount === 0} onClick={() => void handleSave()}>
             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Save
+            {isEdit ? "Update order" : "Save"}
           </Button>
         </div>
       </div>
@@ -695,6 +716,10 @@ function GroupDetail({
 }) {
   const [tab, setTab] = useState("orders")
   const [creating, setCreating] = useState(false)
+  const [editingOrder, setEditingOrder] = useState<OrderMgmtOrder | null>(null)
+  const [qtyEditMode, setQtyEditMode] = useState(false)
+  const [qtyDraft, setQtyDraft] = useState<Record<number, string>>({})
+  const [savingQty, setSavingQty] = useState(false)
   const [itemDialogOpen, setItemDialogOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<OrderMgmtItem | null>(null)
   const [jsonOpen, setJsonOpen] = useState(false)
@@ -709,6 +734,7 @@ function GroupDetail({
     setSelectedOrderId((current) =>
       current && group.orders.some((o) => o.id === current) ? current : group.orders[group.orders.length - 1].id
     )
+    setQtyEditMode(false)
   }, [group.orders])
 
   const selectedOrder = group.orders.find((o) => o.id === selectedOrderId) ?? null
@@ -735,8 +761,44 @@ function GroupDetail({
     await onUpdateOrders([...group.orders, order])
     setSelectedOrderId(order.id)
     setCreating(false)
+    setEditingOrder(null)
     setTab("orders")
     toast.success(`Order ${order.id} created`)
+  }
+
+  const saveEditedOrder = async (order: OrderMgmtOrder) => {
+    await onUpdateOrders(group.orders.map((o) => (o.id === order.id ? order : o)))
+    setSelectedOrderId(order.id)
+    setCreating(false)
+    setEditingOrder(null)
+    setTab("orders")
+    toast.success(`Order ${order.id} updated`)
+  }
+
+  const startQtyEdit = (order: OrderMgmtOrder) => {
+    const next: Record<number, string> = {}
+    order.lines.forEach((line, index) => {
+      next[index] = String(line.qty)
+    })
+    setQtyDraft(next)
+    setQtyEditMode(true)
+  }
+
+  const saveQtyEdit = async (order: OrderMgmtOrder) => {
+    const lines = order.lines
+      .map((line, index) => {
+        const q = Math.max(0, Math.floor(Number(qtyDraft[index]) || 0))
+        return { ...line, qty: q, total: lineTotal(line.buyRate, q) }
+      })
+      .filter((line) => line.qty > 0)
+    setSavingQty(true)
+    try {
+      await onUpdateOrders(group.orders.map((o) => (o.id === order.id ? { ...o, lines } : o)))
+      setQtyEditMode(false)
+      toast.success("Quantities updated")
+    } finally {
+      setSavingQty(false)
+    }
   }
 
   const setOrderStatus = async (orderId: string, status: OrderMgmtStatus) => {
@@ -744,18 +806,29 @@ function GroupDetail({
     toast.success(`Order ${orderId} marked ${status}`)
   }
 
-  if (creating) {
+  if (creating || editingOrder) {
     return (
       <div className="space-y-6">
-        <Button variant="ghost" className="gap-2 px-0" onClick={() => setCreating(false)}>
+        <Button
+          variant="ghost"
+          className="gap-2 px-0"
+          onClick={() => {
+            setCreating(false)
+            setEditingOrder(null)
+          }}
+        >
           <ArrowLeft className="h-4 w-4" />
           Back
         </Button>
         <CreateOrderView
           items={group.items}
           existingOrderIds={group.orders.map((o) => o.id)}
-          onCancel={() => setCreating(false)}
-          onSave={saveNewOrder}
+          initialOrder={editingOrder}
+          onCancel={() => {
+            setCreating(false)
+            setEditingOrder(null)
+          }}
+          onSave={editingOrder ? saveEditedOrder : saveNewOrder}
         />
       </div>
     )
@@ -869,10 +942,8 @@ function GroupDetail({
                 {[...group.orders].reverse().map((order) => {
                   const active = order.id === selectedOrderId
                   return (
-                    <button
+                    <div
                       key={order.id}
-                      type="button"
-                      onClick={() => setSelectedOrderId(order.id)}
                       className={cn(
                         "rounded-2xl border bg-card p-4 text-left shadow-sm transition-all",
                         active
@@ -880,19 +951,43 @@ function GroupDetail({
                           : "border-border hover:border-primary/40 hover:shadow-md"
                       )}
                     >
-                      <p className="font-bold text-foreground">{order.id}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{formatInr(orderAmount(order))}</p>
-                      <Badge
-                        className={cn(
-                          "mt-2",
-                          order.status === "delivered"
-                            ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:bg-emerald-950"
-                            : "bg-amber-100 text-amber-800 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-950"
-                        )}
+                      <button
+                        type="button"
+                        className="w-full text-left"
+                        onClick={() => {
+                          setSelectedOrderId(order.id)
+                          setQtyEditMode(false)
+                        }}
                       >
-                        {order.status === "delivered" ? "Delivered" : "Pending"}
-                      </Badge>
-                    </button>
+                        <p className="font-bold text-foreground">{order.id}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{formatInr(orderAmount(order))}</p>
+                        <Badge
+                          className={cn(
+                            "mt-2",
+                            order.status === "delivered"
+                              ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:bg-emerald-950"
+                              : "bg-amber-100 text-amber-800 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-950"
+                          )}
+                        >
+                          {order.status === "delivered" ? "Delivered" : "Pending"}
+                        </Badge>
+                      </button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="mt-3 w-full gap-1.5"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedOrderId(order.id)
+                          setQtyEditMode(false)
+                          setEditingOrder(order)
+                        }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        Edit order
+                      </Button>
+                    </div>
                   )
                 })}
               </div>
@@ -904,20 +999,42 @@ function GroupDetail({
                       <h3 className="text-lg font-bold">Order {selectedOrder.id}</h3>
                       <p className="text-sm text-muted-foreground">Total {formatInr(orderAmount(selectedOrder))}</p>
                     </div>
-                    <div className="w-44">
-                      <Label className="mb-1 block text-xs">Status</Label>
-                      <Select
-                        value={selectedOrder.status}
-                        onValueChange={(v) => void setOrderStatus(selectedOrder.id, v as OrderMgmtStatus)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="delivered">Delivered</SelectItem>
-                        </SelectContent>
-                      </Select>
+                    <div className="flex flex-wrap items-end gap-2">
+                      {qtyEditMode ? (
+                        <>
+                          <Button type="button" variant="outline" onClick={() => setQtyEditMode(false)}>
+                            Cancel
+                          </Button>
+                          <Button
+                            type="button"
+                            disabled={savingQty}
+                            onClick={() => void saveQtyEdit(selectedOrder)}
+                          >
+                            {savingQty ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            Save quantities
+                          </Button>
+                        </>
+                      ) : (
+                        <Button type="button" variant="outline" className="gap-1.5" onClick={() => startQtyEdit(selectedOrder)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit items
+                        </Button>
+                      )}
+                      <div className="w-44">
+                        <Label className="mb-1 block text-xs">Status</Label>
+                        <Select
+                          value={selectedOrder.status}
+                          onValueChange={(v) => void setOrderStatus(selectedOrder.id, v as OrderMgmtStatus)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="delivered">Delivered</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                   </div>
                   <div className="overflow-x-auto">
@@ -929,22 +1046,44 @@ function GroupDetail({
                           <TableHead>Brand</TableHead>
                           <TableHead className="text-right">Buy rate</TableHead>
                           <TableHead className="text-right">Sale rate</TableHead>
-                          <TableHead className="text-right">Qty</TableHead>
+                          <TableHead className="w-28 text-right">Qty</TableHead>
                           <TableHead className="text-right">Total</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {selectedOrder.lines.map((line, index) => (
+                        {selectedOrder.lines.map((line, index) => {
+                          const q = qtyEditMode
+                            ? Math.max(0, Math.floor(Number(qtyDraft[index]) || 0))
+                            : line.qty
+                          const total = qtyEditMode ? lineTotal(line.buyRate, q) : line.total
+                          return (
                           <TableRow key={`${line.itemId}-${index}`}>
                             <TableCell className="font-mono text-muted-foreground">{index + 1}</TableCell>
                             <TableCell className="font-semibold">{line.name}</TableCell>
                             <TableCell>{line.brand || "—"}</TableCell>
                             <TableCell className="text-right tabular-nums">{formatInr(line.buyRate)}</TableCell>
                             <TableCell className="text-right tabular-nums">{formatInr(line.saleRate)}</TableCell>
-                            <TableCell className="text-right tabular-nums">{line.qty}</TableCell>
-                            <TableCell className="text-right font-semibold tabular-nums">{formatInr(line.total)}</TableCell>
+                            <TableCell className="text-right">
+                              {qtyEditMode ? (
+                                <Input
+                                  className="ml-auto h-8 w-24 text-right"
+                                  inputMode="numeric"
+                                  value={qtyDraft[index] ?? ""}
+                                  onChange={(e) =>
+                                    setQtyDraft((prev) => ({
+                                      ...prev,
+                                      [index]: e.target.value.replace(/\D/g, ""),
+                                    }))
+                                  }
+                                />
+                              ) : (
+                                <span className="tabular-nums">{line.qty}</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right font-semibold tabular-nums">{formatInr(total)}</TableCell>
                           </TableRow>
-                        ))}
+                          )
+                        })}
                       </TableBody>
                     </Table>
                   </div>
