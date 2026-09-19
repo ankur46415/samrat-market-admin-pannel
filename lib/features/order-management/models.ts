@@ -36,6 +36,25 @@ export interface OrderMgmtGroup {
   updatedAt: Date
 }
 
+export type OrderTableColumn = "id" | "name" | "brand" | "buyRate" | "saleRate" | "qty" | "total"
+
+export const ORDER_TABLE_COLUMNS: { key: OrderTableColumn; label: string; numeric?: boolean }[] = [
+  { key: "id", label: "ID" },
+  { key: "name", label: "Name" },
+  { key: "brand", label: "Brand" },
+  { key: "buyRate", label: "Buy rate", numeric: true },
+  { key: "saleRate", label: "Sale rate", numeric: true },
+  { key: "qty", label: "Qty", numeric: true },
+  { key: "total", label: "Total", numeric: true },
+]
+
+export const CATALOG_TABLE_COLUMNS = ORDER_TABLE_COLUMNS.filter(
+  (col) => col.key !== "qty" && col.key !== "total"
+)
+
+export const DEFAULT_ORDER_COLUMNS: OrderTableColumn[] = ORDER_TABLE_COLUMNS.map((c) => c.key)
+export const DEFAULT_CATALOG_COLUMNS: OrderTableColumn[] = CATALOG_TABLE_COLUMNS.map((c) => c.key)
+
 export function roundMoney(n: number): number {
   return Math.round((Number(n) || 0) * 100) / 100
 }

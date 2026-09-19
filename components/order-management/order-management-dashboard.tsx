@@ -8,8 +8,10 @@ import {
   ClipboardList,
   Cloud,
   Copy,
+  Download,
   FileJson,
   Loader2,
+  Columns3,
   Package,
   Pencil,
   Plus,
@@ -28,7 +30,13 @@ import {
   orderAmount,
   roundMoney,
   sanitizeItem,
+  CATALOG_TABLE_COLUMNS,
+  DEFAULT_CATALOG_COLUMNS,
+  DEFAULT_ORDER_COLUMNS,
+  ORDER_TABLE_COLUMNS,
+  type OrderTableColumn,
 } from "@/lib/features/order-management/models"
+import { downloadOrderPdf } from "@/lib/features/order-management/pdf-export"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -58,6 +66,59 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+
+function ColumnPicker({
+  columns,
+  selected,
+  onChange,
+}: {
+  columns: { key: OrderTableColumn; label: string }[]
+  selected: OrderTableColumn[]
+  onChange: (next: OrderTableColumn[]) => void
+}) {
+  const toggle = (key: OrderTableColumn, checked: boolean) => {
+    if (checked) {
+      onChange([...selected, key])
+      return
+    }
+    if (selected.length <= 1) {
+      toast.error("Keep at least one column")
+      return
+    }
+    onChange(selected.filter((col) => col !== key))
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" variant="outline" className="gap-2">
+          <Columns3 className="h-4 w-4" />
+          Columns
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuLabel>Show columns</DropdownMenuLabel>
+        {columns.map((col) => (
+          <DropdownMenuCheckboxItem
+            key={col.key}
+            checked={selected.includes(col.key)}
+            onSelect={(e) => e.preventDefault()}
+            onCheckedChange={(checked) => toggle(col.key, checked === true)}
+          >
+            {col.label}
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
 
 const SAMPLE_IMPORT_JSON = `[
   { "name": "Pen", "brand": "Cello", "buy_rate": 8, "sale_rate": 12 },
@@ -720,6 +781,9 @@ function GroupDetail({
   const [qtyEditMode, setQtyEditMode] = useState(false)
   const [qtyDraft, setQtyDraft] = useState<Record<number, string>>({})
   const [savingQty, setSavingQty] = useState(false)
+  const [orderColumns, setOrderColumns] = useState<OrderTableColumn[]>(DEFAULT_ORDER_COLUMNS)
+  const [catalogColumns, setCatalogColumns] = useState<OrderTableColumn[]>(DEFAULT_CATALOG_COLUMNS)
+  const [exportingPdf, setExportingPdf] = useState(false)
   const [itemDialogOpen, setItemDialogOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<OrderMgmtItem | null>(null)
   const [jsonOpen, setJsonOpen] = useState(false)
@@ -806,6 +870,22 @@ function GroupDetail({
     toast.success(`Order ${orderId} marked ${status}`)
   }
 
+  const showOrderCol = (key: OrderTableColumn) => orderColumns.includes(key) || (qtyEditMode && key === "qty")
+  const showCatalogCol = (key: OrderTableColumn) => catalogColumns.includes(key)
+
+  const exportSelectedOrder = async (order: OrderMgmtOrder) => {
+    setExportingPdf(true)
+    try {
+      await downloadOrderPdf(group, order, orderColumns)
+      toast.success("PDF downloaded")
+    } catch (e) {
+      console.error(e)
+      toast.error(e instanceof Error ? e.message : "PDF export failed")
+    } finally {
+      setExportingPdf(false)
+    }
+  }
+
   if (creating || editingOrder) {
     return (
       <div className="space-y-6">
@@ -859,6 +939,7 @@ function GroupDetail({
 
         <TabsContent value="catalog" className="space-y-4">
           <div className="flex flex-wrap justify-end gap-2">
+            <ColumnPicker columns={CATALOG_TABLE_COLUMNS} selected={catalogColumns} onChange={setCatalogColumns} />
             <Button variant="outline" className="gap-2" onClick={() => setJsonOpen(true)}>
               <FileJson className="h-4 w-4" />
               JSON import
@@ -883,22 +964,28 @@ function GroupDetail({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-14">ID</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Brand</TableHead>
-                    <TableHead className="text-right">Buy rate</TableHead>
-                    <TableHead className="text-right">Sale rate</TableHead>
+                    {showCatalogCol("id") ? <TableHead className="w-14">ID</TableHead> : null}
+                    {showCatalogCol("name") ? <TableHead>Name</TableHead> : null}
+                    {showCatalogCol("brand") ? <TableHead>Brand</TableHead> : null}
+                    {showCatalogCol("buyRate") ? <TableHead className="text-right">Buy rate</TableHead> : null}
+                    {showCatalogCol("saleRate") ? <TableHead className="text-right">Sale rate</TableHead> : null}
                     <TableHead className="w-24" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {group.items.map((item, index) => (
                     <TableRow key={item.id}>
-                      <TableCell className="font-mono text-muted-foreground">{index + 1}</TableCell>
-                      <TableCell className="font-semibold">{item.name}</TableCell>
-                      <TableCell>{item.brand || "—"}</TableCell>
-                      <TableCell className="text-right tabular-nums">{formatInr(item.buyRate)}</TableCell>
-                      <TableCell className="text-right tabular-nums">{formatInr(item.saleRate)}</TableCell>
+                      {showCatalogCol("id") ? (
+                        <TableCell className="font-mono text-muted-foreground">{index + 1}</TableCell>
+                      ) : null}
+                      {showCatalogCol("name") ? <TableCell className="font-semibold">{item.name}</TableCell> : null}
+                      {showCatalogCol("brand") ? <TableCell>{item.brand || "—"}</TableCell> : null}
+                      {showCatalogCol("buyRate") ? (
+                        <TableCell className="text-right tabular-nums">{formatInr(item.buyRate)}</TableCell>
+                      ) : null}
+                      {showCatalogCol("saleRate") ? (
+                        <TableCell className="text-right tabular-nums">{formatInr(item.saleRate)}</TableCell>
+                      ) : null}
                       <TableCell className="text-right">
                         <button
                           type="button"
@@ -987,6 +1074,20 @@ function GroupDetail({
                         <Pencil className="h-3.5 w-3.5" />
                         Edit order
                       </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="mt-2 w-full gap-1.5"
+                        disabled={exportingPdf}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void exportSelectedOrder(order)
+                        }}
+                      >
+                        {exportingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                        Export PDF
+                      </Button>
                     </div>
                   )
                 })}
@@ -1000,6 +1101,17 @@ function GroupDetail({
                       <p className="text-sm text-muted-foreground">Total {formatInr(orderAmount(selectedOrder))}</p>
                     </div>
                     <div className="flex flex-wrap items-end gap-2">
+                      <ColumnPicker columns={ORDER_TABLE_COLUMNS} selected={orderColumns} onChange={setOrderColumns} />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="gap-1.5"
+                        disabled={exportingPdf}
+                        onClick={() => void exportSelectedOrder(selectedOrder)}
+                      >
+                        {exportingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                        Export PDF
+                      </Button>
                       {qtyEditMode ? (
                         <>
                           <Button type="button" variant="outline" onClick={() => setQtyEditMode(false)}>
@@ -1041,13 +1153,13 @@ function GroupDetail({
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="w-14">ID</TableHead>
-                          <TableHead>Name</TableHead>
-                          <TableHead>Brand</TableHead>
-                          <TableHead className="text-right">Buy rate</TableHead>
-                          <TableHead className="text-right">Sale rate</TableHead>
-                          <TableHead className="w-28 text-right">Qty</TableHead>
-                          <TableHead className="text-right">Total</TableHead>
+                          {showOrderCol("id") ? <TableHead className="w-14">ID</TableHead> : null}
+                          {showOrderCol("name") ? <TableHead>Name</TableHead> : null}
+                          {showOrderCol("brand") ? <TableHead>Brand</TableHead> : null}
+                          {showOrderCol("buyRate") ? <TableHead className="text-right">Buy rate</TableHead> : null}
+                          {showOrderCol("saleRate") ? <TableHead className="text-right">Sale rate</TableHead> : null}
+                          {showOrderCol("qty") ? <TableHead className="w-28 text-right">Qty</TableHead> : null}
+                          {showOrderCol("total") ? <TableHead className="text-right">Total</TableHead> : null}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1058,11 +1170,18 @@ function GroupDetail({
                           const total = qtyEditMode ? lineTotal(line.buyRate, q) : line.total
                           return (
                           <TableRow key={`${line.itemId}-${index}`}>
-                            <TableCell className="font-mono text-muted-foreground">{index + 1}</TableCell>
-                            <TableCell className="font-semibold">{line.name}</TableCell>
-                            <TableCell>{line.brand || "—"}</TableCell>
-                            <TableCell className="text-right tabular-nums">{formatInr(line.buyRate)}</TableCell>
-                            <TableCell className="text-right tabular-nums">{formatInr(line.saleRate)}</TableCell>
+                            {showOrderCol("id") ? (
+                              <TableCell className="font-mono text-muted-foreground">{index + 1}</TableCell>
+                            ) : null}
+                            {showOrderCol("name") ? <TableCell className="font-semibold">{line.name}</TableCell> : null}
+                            {showOrderCol("brand") ? <TableCell>{line.brand || "—"}</TableCell> : null}
+                            {showOrderCol("buyRate") ? (
+                              <TableCell className="text-right tabular-nums">{formatInr(line.buyRate)}</TableCell>
+                            ) : null}
+                            {showOrderCol("saleRate") ? (
+                              <TableCell className="text-right tabular-nums">{formatInr(line.saleRate)}</TableCell>
+                            ) : null}
+                            {showOrderCol("qty") ? (
                             <TableCell className="text-right">
                               {qtyEditMode ? (
                                 <Input
@@ -1080,7 +1199,10 @@ function GroupDetail({
                                 <span className="tabular-nums">{line.qty}</span>
                               )}
                             </TableCell>
-                            <TableCell className="text-right font-semibold tabular-nums">{formatInr(total)}</TableCell>
+                            ) : null}
+                            {showOrderCol("total") ? (
+                              <TableCell className="text-right font-semibold tabular-nums">{formatInr(total)}</TableCell>
+                            ) : null}
                           </TableRow>
                           )
                         })}
