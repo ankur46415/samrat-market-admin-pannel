@@ -2,6 +2,7 @@ export type AccountMode = "test" | "production"
 
 export const ACCOUNT_MODE_STORAGE_KEY = "samrat_account_mode"
 export const TEST_ACCOUNT_PASSKEY = "7269"
+export const PRODUCTION_ACCOUNT_PASSKEY = "Ankit@4641"
 
 const SHARED_COLLECTIONS = new Set([
   "gst_purchase_catalogs",

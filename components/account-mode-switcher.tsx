@@ -3,7 +3,11 @@
 import { useState } from "react"
 import { Check, ChevronsUpDown, FlaskConical } from "lucide-react"
 import { toast } from "sonner"
-import { TEST_ACCOUNT_PASSKEY, type AccountMode } from "@/lib/account-mode"
+import {
+  PRODUCTION_ACCOUNT_PASSKEY,
+  TEST_ACCOUNT_PASSKEY,
+  type AccountMode,
+} from "@/lib/account-mode"
 import { useAccountMode } from "@/components/account-mode-provider"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -31,28 +35,26 @@ const OPTIONS: { value: AccountMode; label: string }[] = [
 
 export function AccountModeSwitcher() {
   const { mode, applyMode } = useAccountMode()
-  const [passOpen, setPassOpen] = useState(false)
+  const [pendingMode, setPendingMode] = useState<AccountMode | null>(null)
   const [password, setPassword] = useState("")
 
   const switchTo = (next: AccountMode) => {
     if (next === mode) return
-    if (next === "test") {
-      setPassword("")
-      setPassOpen(true)
-      return
-    }
-    applyMode("production")
-    toast.success("Switched to Production")
+    setPassword("")
+    setPendingMode(next)
   }
 
-  const confirmTest = () => {
-    if (password.trim() !== TEST_ACCOUNT_PASSKEY) {
+  const confirmSwitch = () => {
+    if (!pendingMode) return
+    const expected = pendingMode === "production" ? PRODUCTION_ACCOUNT_PASSKEY : TEST_ACCOUNT_PASSKEY
+    if (password.trim() !== expected) {
       toast.error("Wrong passkey")
       return
     }
-    setPassOpen(false)
-    applyMode("test")
-    toast.success("Switched to Test")
+    const next = pendingMode
+    setPendingMode(null)
+    applyMode(next)
+    toast.success(next === "production" ? "Switched to Production" : "Switched to Test")
   }
 
   return (
@@ -95,34 +97,36 @@ export function AccountModeSwitcher() {
         </DropdownMenu>
       </div>
 
-      <Dialog open={passOpen} onOpenChange={setPassOpen}>
+      <Dialog open={pendingMode != null} onOpenChange={(open) => !open && setPendingMode(null)}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Switch to Test</DialogTitle>
-            <DialogDescription>Enter the Test account passkey to view Test data.</DialogDescription>
+            <DialogTitle>Switch to {pendingMode === "production" ? "Production" : "Test"}</DialogTitle>
+            <DialogDescription>
+              Enter the {pendingMode === "production" ? "Production" : "Test"} account passkey to continue.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5 py-2">
             <Label htmlFor="account-mode-pass">Passkey</Label>
             <Input
               id="account-mode-pass"
               type="password"
-              inputMode="numeric"
+              inputMode={pendingMode === "test" ? "numeric" : "text"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault()
-                  confirmTest()
+                  confirmSwitch()
                 }
               }}
               autoFocus
             />
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setPassOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => setPendingMode(null)}>
               Cancel
             </Button>
-            <Button type="button" onClick={confirmTest}>
+            <Button type="button" onClick={confirmSwitch}>
               Continue
             </Button>
           </DialogFooter>
