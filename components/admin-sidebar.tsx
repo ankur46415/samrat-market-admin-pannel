@@ -15,6 +15,7 @@ import {
   ShoppingBag,
   Percent,
   Wallet,
+  ClipboardList,
 } from "lucide-react"
 import Image from "next/image"
 import {
@@ -107,6 +108,11 @@ const mainNavItems = [
     title: "GST Purchase Catalog",
     url: "/gst-purchase-catalog",
     icon: Percent,
+  },
+  {
+    title: "Order Management",
+    url: "/order-management",
+    icon: ClipboardList,
   },
   {
     title: "Payment Management",
