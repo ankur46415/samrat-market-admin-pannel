@@ -40,25 +40,20 @@ function safePdfFileName(orderId: string, hindi: boolean): string {
   return hindi ? `Order_${id}_Hindi.pdf` : `Order_${id}.pdf`
 }
 
-async function loadLogoDataUrl(): Promise<string | null> {
-  try {
-    const ctrl = new AbortController()
-    const timer = window.setTimeout(() => ctrl.abort(), 1200)
-    const resp = await fetch("/images/samrat-market-logo.png", { signal: ctrl.signal })
-    window.clearTimeout(timer)
-    if (!resp.ok) return null
-    const blob = await resp.blob()
-    return await new Promise<string | null>((res) => {
-      const reader = new FileReader()
-      const done = (value: string | null) => res(value)
-      reader.onloadend = () => done(typeof reader.result === "string" ? reader.result : null)
-      reader.onerror = () => done(null)
-      reader.readAsDataURL(blob)
-      window.setTimeout(() => done(null), 1200)
-    })
-  } catch {
-    return null
-  }
+function saveJsPdf(doc: jsPDF, filename: string): void {
+  const blob = doc.output("blob")
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = filename
+  link.rel = "noopener"
+  link.style.display = "none"
+  document.body.appendChild(link)
+  link.click()
+  window.setTimeout(() => {
+    URL.revokeObjectURL(url)
+    link.remove()
+  }, 1500)
 }
 
 function lineCell(
@@ -113,22 +108,13 @@ async function downloadOrderPdfEnglish(
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
   const pageW = doc.internal.pageSize.getWidth()
   const pageH = doc.internal.pageSize.getHeight()
-  const logoDataUrl = await loadLogoDataUrl()
 
   doc.setFillColor(15, 76, 129)
   doc.rect(0, 0, pageW, 36, "F")
   doc.setFillColor(37, 99, 235)
   doc.rect(0, 36, pageW, 3, "F")
 
-  if (logoDataUrl) {
-    try {
-      doc.addImage(logoDataUrl, "PNG", 14, 8, 20, 20)
-    } catch {
-      // skip broken logo
-    }
-  }
-
-  const textX = logoDataUrl ? 38 : 14
+  const textX = 14
   doc.setFont("helvetica", "bold")
   doc.setFontSize(18)
   doc.setTextColor(255, 255, 255)
@@ -179,7 +165,7 @@ async function downloadOrderPdfEnglish(
     doc.text(`Page ${i} of ${pageCount}`, pageW - 14, pageH - 8, { align: "right" })
   }
 
-  doc.save(safePdfFileName(order.id, false))
+  saveJsPdf(doc, safePdfFileName(order.id, false))
 }
 
 function wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
@@ -210,7 +196,6 @@ async function downloadOrderPdfHindi(
   const margin = 36
   const innerW = pageW - margin * 2
   const font = `"Nirmala UI","Noto Sans Devanagari",Mangal,sans-serif`
-  const logoDataUrl = await loadLogoDataUrl()
 
   const headerH = 88
   const colW = cols.map((col) => {
@@ -269,21 +254,7 @@ async function downloadOrderPdfHindi(
     ctx.fillStyle = "#2563eb"
     ctx.fillRect(0, 72, pageW, 6)
 
-    if (logoDataUrl) {
-      try {
-        const img = await new Promise<HTMLImageElement | null>((resolve) => {
-          const image = new Image()
-          image.onload = () => resolve(image)
-          image.onerror = () => resolve(null)
-          image.src = logoDataUrl
-        })
-        if (img) ctx.drawImage(img, 28, 14, 44, 44)
-      } catch {
-        // skip logo
-      }
-    }
-
-    const titleX = logoDataUrl ? 84 : 28
+    const titleX = 28
     ctx.fillStyle = "#ffffff"
     ctx.font = `700 22px ${font}`
     ctx.fillText("सम्राट मार्केट", titleX, 34)
@@ -376,7 +347,7 @@ async function downloadOrderPdfHindi(
     if (i > 0) doc.addPage()
     doc.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, pdfW, pdfH)
   })
-  doc.save(safePdfFileName(order.id, true))
+  saveJsPdf(doc, safePdfFileName(order.id, true))
 }
 
 export async function downloadOrderPdf(

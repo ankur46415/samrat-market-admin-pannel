@@ -8,7 +8,6 @@ import {
   ClipboardList,
   Cloud,
   Copy,
-  ChevronDown,
   Download,
   FileJson,
   Loader2,
@@ -88,40 +87,30 @@ function ExportPdfButton({
   onExport: (script: OrderPdfScript) => void
 }) {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className={cn("gap-1.5", className)}
-          disabled={disabled}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {disabled ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-          Export PDF
-          <ChevronDown className="h-3.5 w-3.5 opacity-70" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-        <DropdownMenuItem
-          onSelect={(e) => {
-            e.preventDefault()
-            onExport("en")
-          }}
-        >
-          English
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={(e) => {
-            e.preventDefault()
-            onExport("hi")
-          }}
-        >
-          Hindi (Apple → एप्पल)
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <div className={cn("grid grid-cols-2 gap-1.5", className)} onClick={(e) => e.stopPropagation()}>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="h-auto min-h-8 gap-1 px-2 py-1.5"
+        disabled={disabled}
+        onClick={() => onExport("en")}
+      >
+        {disabled ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+        English PDF
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="h-auto min-h-8 gap-1 px-2 py-1.5"
+        disabled={disabled}
+        onClick={() => onExport("hi")}
+      >
+        {disabled ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+        Hindi PDF
+      </Button>
+    </div>
   )
 }
 
@@ -949,7 +938,12 @@ function GroupDetail({
   const exportSelectedOrder = async (order: OrderMgmtOrder, script: OrderPdfScript = "en") => {
     setExportingPdf(true)
     try {
-      await downloadOrderPdf(group, order, orderColumns, script)
+      await Promise.race([
+        downloadOrderPdf(group, order, orderColumns, script),
+        new Promise<never>((_, reject) => {
+          window.setTimeout(() => reject(new Error("PDF export timed out. Try English PDF.")), 12000)
+        }),
+      ])
       toast.success(script === "hi" ? "Hindi PDF downloaded" : "PDF downloaded")
     } catch (e) {
       console.error(e)
