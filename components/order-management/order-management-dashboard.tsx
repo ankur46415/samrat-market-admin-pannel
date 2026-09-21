@@ -104,8 +104,22 @@ function ExportPdfButton({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-        <DropdownMenuItem onClick={() => onExport("en")}>English</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onExport("hi")}>Hindi (Apple → एप्पल)</DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault()
+            onExport("en")
+          }}
+        >
+          English
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault()
+            onExport("hi")
+          }}
+        >
+          Hindi (Apple → एप्पल)
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )
