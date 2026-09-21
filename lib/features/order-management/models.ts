@@ -59,8 +59,17 @@ export function roundMoney(n: number): number {
   return Math.round((Number(n) || 0) * 100) / 100
 }
 
+export function formatPcs(qty: number): string {
+  const n = Math.max(0, Math.floor(Number(qty) || 0))
+  return n === 1 ? "1 Pc" : `${n} Pcs`
+}
+
 export function lineTotal(buyRate: number, qty: number): number {
   return roundMoney(Math.max(0, Number(buyRate) || 0) * Math.max(0, Number(qty) || 0))
+}
+
+export function orderPieceCount(order: OrderMgmtOrder): number {
+  return order.lines.reduce((sum, line) => sum + Math.max(0, Math.floor(Number(line.qty) || 0)), 0)
 }
 
 export function orderAmount(order: OrderMgmtOrder): number {

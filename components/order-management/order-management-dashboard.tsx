@@ -8,6 +8,7 @@ import {
   ClipboardList,
   Cloud,
   Copy,
+  ChevronDown,
   Download,
   FileJson,
   Loader2,
@@ -24,10 +25,12 @@ import { useOrderManagement, type CatalogSyncStatus } from "@/hooks/use-order-ma
 import type { OrderMgmtGroup, OrderMgmtItem, OrderMgmtOrder, OrderMgmtStatus } from "@/lib/features/order-management/models"
 import {
   allOrdersAmount,
+  formatPcs,
   lineTotal,
   newItemId,
   nextOrderId,
   orderAmount,
+  orderPieceCount,
   roundMoney,
   sanitizeItem,
   CATALOG_TABLE_COLUMNS,
@@ -36,7 +39,7 @@ import {
   ORDER_TABLE_COLUMNS,
   type OrderTableColumn,
 } from "@/lib/features/order-management/models"
-import { downloadOrderPdf } from "@/lib/features/order-management/pdf-export"
+import { downloadOrderPdf, type OrderPdfScript } from "@/lib/features/order-management/pdf-export"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -70,9 +73,43 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+
+function ExportPdfButton({
+  disabled,
+  className,
+  onExport,
+}: {
+  disabled: boolean
+  className?: string
+  onExport: (script: OrderPdfScript) => void
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className={cn("gap-1.5", className)}
+          disabled={disabled}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {disabled ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+          Export PDF
+          <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+        <DropdownMenuItem onClick={() => onExport("en")}>English</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onExport("hi")}>Hindi (Apple → एप्पल)</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
 
 function ColumnPicker({
   columns,
@@ -750,6 +787,9 @@ function CreateOrderView({
                       value={row.checked ? (qty[row.item.id] ?? "") : ""}
                       onChange={(e) => setQty((prev) => ({ ...prev, [row.item.id]: e.target.value.replace(/\D/g, "") }))}
                     />
+                    {row.checked && row.q > 0 ? (
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">{formatPcs(row.q)}</p>
+                    ) : null}
                   </TableCell>
                   <TableCell className="text-right font-semibold tabular-nums">{formatInr(row.total)}</TableCell>
                 </TableRow>
@@ -787,7 +827,12 @@ function GroupDetail({
   const [itemDialogOpen, setItemDialogOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<OrderMgmtItem | null>(null)
   const [jsonOpen, setJsonOpen] = useState(false)
-  const [deleteItemId, setDeleteItemId] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<
+    | { type: "catalog"; id: string; name: string }
+    | { type: "order"; id: string }
+    | { type: "line"; orderId: string; index: number; name: string }
+    | null
+  >(null)
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -818,7 +863,21 @@ function GroupDetail({
 
   const removeItem = async (id: string) => {
     await onUpdateItems(group.items.filter((i) => i.id !== id))
-    toast.success("Item deleted")
+    toast.success("Catalog item deleted")
+  }
+
+  const removeOrder = async (orderId: string) => {
+    await onUpdateOrders(group.orders.filter((o) => o.id !== orderId))
+    toast.success(`Order ${orderId} deleted`)
+  }
+
+  const removeOrderLine = async (orderId: string, lineIndex: number) => {
+    const order = group.orders.find((o) => o.id === orderId)
+    if (!order) return
+    const lines = order.lines.filter((_, i) => i !== lineIndex)
+    await onUpdateOrders(group.orders.map((o) => (o.id === orderId ? { ...o, lines } : o)))
+    setQtyEditMode(false)
+    toast.success("Item removed from order")
   }
 
   const saveNewOrder = async (order: OrderMgmtOrder) => {
@@ -873,11 +932,11 @@ function GroupDetail({
   const showOrderCol = (key: OrderTableColumn) => orderColumns.includes(key) || (qtyEditMode && key === "qty")
   const showCatalogCol = (key: OrderTableColumn) => catalogColumns.includes(key)
 
-  const exportSelectedOrder = async (order: OrderMgmtOrder) => {
+  const exportSelectedOrder = async (order: OrderMgmtOrder, script: OrderPdfScript = "en") => {
     setExportingPdf(true)
     try {
-      await downloadOrderPdf(group, order, orderColumns)
-      toast.success("PDF downloaded")
+      await downloadOrderPdf(group, order, orderColumns, script)
+      toast.success(script === "hi" ? "Hindi PDF downloaded" : "PDF downloaded")
     } catch (e) {
       console.error(e)
       toast.error(e instanceof Error ? e.message : "PDF export failed")
@@ -969,7 +1028,7 @@ function GroupDetail({
                     {showCatalogCol("brand") ? <TableHead>Brand</TableHead> : null}
                     {showCatalogCol("buyRate") ? <TableHead className="text-right">Buy rate</TableHead> : null}
                     {showCatalogCol("saleRate") ? <TableHead className="text-right">Sale rate</TableHead> : null}
-                    <TableHead className="w-24" />
+                    <TableHead className="w-36 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -987,23 +1046,31 @@ function GroupDetail({
                         <TableCell className="text-right tabular-nums">{formatInr(item.saleRate)}</TableCell>
                       ) : null}
                       <TableCell className="text-right">
-                        <button
-                          type="button"
-                          className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                          onClick={() => {
-                            setEditingItem(item)
-                            setItemDialogOpen(true)
-                          }}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                          onClick={() => setDeleteItemId(item.id)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 gap-1 px-2"
+                            onClick={() => {
+                              setEditingItem(item)
+                              setItemDialogOpen(true)
+                            }}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Edit
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 gap-1 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => setPendingDelete({ type: "catalog", id: item.id, name: item.name })}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Delete
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1047,7 +1114,9 @@ function GroupDetail({
                         }}
                       >
                         <p className="font-bold text-foreground">{order.id}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">{formatInr(orderAmount(order))}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                        {formatInr(orderAmount(order))} · {formatPcs(orderPieceCount(order))}
+                      </p>
                         <Badge
                           className={cn(
                             "mt-2",
@@ -1074,19 +1143,23 @@ function GroupDetail({
                         <Pencil className="h-3.5 w-3.5" />
                         Edit order
                       </Button>
+                      <ExportPdfButton
+                        className="mt-2 w-full"
+                        disabled={exportingPdf}
+                        onExport={(script) => void exportSelectedOrder(order, script)}
+                      />
                       <Button
                         type="button"
                         size="sm"
-                        variant="outline"
-                        className="mt-2 w-full gap-1.5"
-                        disabled={exportingPdf}
+                        variant="ghost"
+                        className="mt-1 w-full gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
                         onClick={(e) => {
                           e.stopPropagation()
-                          void exportSelectedOrder(order)
+                          setPendingDelete({ type: "order", id: order.id })
                         }}
                       >
-                        {exportingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                        Export PDF
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete order
                       </Button>
                     </div>
                   )
@@ -1098,20 +1171,16 @@ function GroupDetail({
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <h3 className="text-lg font-bold">Order {selectedOrder.id}</h3>
-                      <p className="text-sm text-muted-foreground">Total {formatInr(orderAmount(selectedOrder))}</p>
+                      <p className="text-sm text-muted-foreground">
+                        Total {formatInr(orderAmount(selectedOrder))} · {formatPcs(orderPieceCount(selectedOrder))}
+                      </p>
                     </div>
                     <div className="flex flex-wrap items-end gap-2">
                       <ColumnPicker columns={ORDER_TABLE_COLUMNS} selected={orderColumns} onChange={setOrderColumns} />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="gap-1.5"
+                      <ExportPdfButton
                         disabled={exportingPdf}
-                        onClick={() => void exportSelectedOrder(selectedOrder)}
-                      >
-                        {exportingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                        Export PDF
-                      </Button>
+                        onExport={(script) => void exportSelectedOrder(selectedOrder, script)}
+                      />
                       {qtyEditMode ? (
                         <>
                           <Button type="button" variant="outline" onClick={() => setQtyEditMode(false)}>
@@ -1147,6 +1216,15 @@ function GroupDetail({
                           </SelectContent>
                         </Select>
                       </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => setPendingDelete({ type: "order", id: selectedOrder.id })}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete order
+                      </Button>
                     </div>
                   </div>
                   <div className="overflow-x-auto">
@@ -1160,10 +1238,18 @@ function GroupDetail({
                           {showOrderCol("saleRate") ? <TableHead className="text-right">Sale rate</TableHead> : null}
                           {showOrderCol("qty") ? <TableHead className="w-28 text-right">Qty</TableHead> : null}
                           {showOrderCol("total") ? <TableHead className="text-right">Total</TableHead> : null}
+                          <TableHead className="w-24 text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {selectedOrder.lines.map((line, index) => {
+                        {selectedOrder.lines.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
+                              No items on this order. Use Edit order to add items, or delete the order.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                        selectedOrder.lines.map((line, index) => {
                           const q = qtyEditMode
                             ? Math.max(0, Math.floor(Number(qtyDraft[index]) || 0))
                             : line.qty
@@ -1184,28 +1270,53 @@ function GroupDetail({
                             {showOrderCol("qty") ? (
                             <TableCell className="text-right">
                               {qtyEditMode ? (
-                                <Input
-                                  className="ml-auto h-8 w-24 text-right"
-                                  inputMode="numeric"
-                                  value={qtyDraft[index] ?? ""}
-                                  onChange={(e) =>
-                                    setQtyDraft((prev) => ({
-                                      ...prev,
-                                      [index]: e.target.value.replace(/\D/g, ""),
-                                    }))
-                                  }
-                                />
+                                <div>
+                                  <Input
+                                    className="ml-auto h-8 w-24 text-right"
+                                    inputMode="numeric"
+                                    value={qtyDraft[index] ?? ""}
+                                    onChange={(e) =>
+                                      setQtyDraft((prev) => ({
+                                        ...prev,
+                                        [index]: e.target.value.replace(/\D/g, ""),
+                                      }))
+                                    }
+                                  />
+                                  {q > 0 ? (
+                                    <p className="mt-0.5 text-[10px] text-muted-foreground">{formatPcs(q)}</p>
+                                  ) : null}
+                                </div>
                               ) : (
-                                <span className="tabular-nums">{line.qty}</span>
+                                <span className="tabular-nums">{formatPcs(line.qty)}</span>
                               )}
                             </TableCell>
                             ) : null}
                             {showOrderCol("total") ? (
                               <TableCell className="text-right font-semibold tabular-nums">{formatInr(total)}</TableCell>
                             ) : null}
+                            <TableCell className="text-right">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 gap-1 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                onClick={() =>
+                                  setPendingDelete({
+                                    type: "line",
+                                    orderId: selectedOrder.id,
+                                    index,
+                                    name: line.name,
+                                  })
+                                }
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                Delete
+                              </Button>
+                            </TableCell>
                           </TableRow>
                           )
-                        })}
+                        })
+                        )}
                       </TableBody>
                     </Table>
                   </div>
@@ -1226,13 +1337,29 @@ function GroupDetail({
         onSave={saveItem}
       />
       <JsonImportDialog open={jsonOpen} onClose={() => setJsonOpen(false)} onImport={(items) => void importItems(items)} />
-      {deleteItemId ? (
+      {pendingDelete ? (
         <ConfirmDeleteDialog
           open
-          title="Delete item"
-          message="Remove this item from the catalog?"
-          onConfirm={() => removeItem(deleteItemId)}
-          onClose={() => setDeleteItemId(null)}
+          title={
+            pendingDelete.type === "order"
+              ? "Delete order"
+              : pendingDelete.type === "line"
+                ? "Remove item from order"
+                : "Delete catalog item"
+          }
+          message={
+            pendingDelete.type === "order"
+              ? `Delete order ${pendingDelete.id}? All items on this order will be removed.`
+              : pendingDelete.type === "line"
+                ? `Remove "${pendingDelete.name}" from this order?`
+                : `Remove "${pendingDelete.name}" from the catalog? Existing orders keep their copies of this item.`
+          }
+          onConfirm={async () => {
+            if (pendingDelete.type === "order") await removeOrder(pendingDelete.id)
+            else if (pendingDelete.type === "line") await removeOrderLine(pendingDelete.orderId, pendingDelete.index)
+            else await removeItem(pendingDelete.id)
+          }}
+          onClose={() => setPendingDelete(null)}
         />
       ) : null}
     </div>
