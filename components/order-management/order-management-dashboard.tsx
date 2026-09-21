@@ -38,7 +38,7 @@ import {
   ORDER_TABLE_COLUMNS,
   type OrderTableColumn,
 } from "@/lib/features/order-management/models"
-import { downloadOrderPdf, type OrderPdfScript } from "@/lib/features/order-management/pdf-export"
+import { downloadOrderPdf } from "@/lib/features/order-management/pdf-export"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -84,33 +84,23 @@ function ExportPdfButton({
 }: {
   disabled: boolean
   className?: string
-  onExport: (script: OrderPdfScript) => void
+  onExport: () => void
 }) {
   return (
-    <div className={cn("grid grid-cols-2 gap-1.5", className)} onClick={(e) => e.stopPropagation()}>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        className="h-auto min-h-8 gap-1 px-2 py-1.5"
-        disabled={disabled}
-        onClick={() => onExport("en")}
-      >
-        {disabled ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-        English PDF
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        className="h-auto min-h-8 gap-1 px-2 py-1.5"
-        disabled={disabled}
-        onClick={() => onExport("hi")}
-      >
-        {disabled ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-        Hindi PDF
-      </Button>
-    </div>
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      className={cn("gap-1.5", className)}
+      disabled={disabled}
+      onClick={(e) => {
+        e.stopPropagation()
+        onExport()
+      }}
+    >
+      {disabled ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+      Export PDF
+    </Button>
   )
 }
 
@@ -935,16 +925,11 @@ function GroupDetail({
   const showOrderCol = (key: OrderTableColumn) => orderColumns.includes(key) || (qtyEditMode && key === "qty")
   const showCatalogCol = (key: OrderTableColumn) => catalogColumns.includes(key)
 
-  const exportSelectedOrder = async (order: OrderMgmtOrder, script: OrderPdfScript = "en") => {
+  const exportSelectedOrder = async (order: OrderMgmtOrder) => {
     setExportingPdf(true)
     try {
-      await Promise.race([
-        downloadOrderPdf(group, order, orderColumns, script),
-        new Promise<never>((_, reject) => {
-          window.setTimeout(() => reject(new Error("PDF export timed out. Try English PDF.")), 12000)
-        }),
-      ])
-      toast.success(script === "hi" ? "Hindi PDF downloaded" : "PDF downloaded")
+      downloadOrderPdf(group, order, orderColumns)
+      toast.success("PDF downloaded")
     } catch (e) {
       console.error(e)
       toast.error(e instanceof Error ? e.message : "PDF export failed")
@@ -1154,7 +1139,7 @@ function GroupDetail({
                       <ExportPdfButton
                         className="mt-2 w-full"
                         disabled={exportingPdf}
-                        onExport={(script) => void exportSelectedOrder(order, script)}
+                        onExport={() => void exportSelectedOrder(order)}
                       />
                       <Button
                         type="button"
@@ -1187,7 +1172,7 @@ function GroupDetail({
                       <ColumnPicker columns={ORDER_TABLE_COLUMNS} selected={orderColumns} onChange={setOrderColumns} />
                       <ExportPdfButton
                         disabled={exportingPdf}
-                        onExport={(script) => void exportSelectedOrder(selectedOrder, script)}
+                        onExport={() => void exportSelectedOrder(selectedOrder)}
                       />
                       {qtyEditMode ? (
                         <>

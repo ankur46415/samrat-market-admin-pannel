@@ -2,19 +2,6 @@ import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
 import type { OrderMgmtGroup, OrderMgmtOrder, OrderTableColumn } from "./models"
 import { ORDER_TABLE_COLUMNS, formatPcs, orderAmount, orderPieceCount } from "./models"
-import { formatPcsHindi, toHindiPhonetic } from "./hindi-phonetic"
-
-export type OrderPdfScript = "en" | "hi"
-
-const HINDI_COL_LABELS: Record<OrderTableColumn, string> = {
-  id: "आईडी",
-  name: "नाम",
-  brand: "ब्रांड",
-  buyRate: "खरीद दर",
-  saleRate: "बिक्री दर",
-  qty: "मात्रा",
-  total: "कुल",
-}
 
 function pdfSafe(text: string): string {
   return Array.from(String(text ?? ""))
@@ -35,9 +22,9 @@ function formatPdfAmount(amount: number): string {
   return `Rs. ${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-function safePdfFileName(orderId: string, hindi: boolean): string {
+function safePdfFileName(orderId: string): string {
   const id = String(orderId).replace(/[^\w.-]+/g, "_")
-  return hindi ? `Order_${id}_Hindi.pdf` : `Order_${id}.pdf`
+  return `Order_${id}.pdf`
 }
 
 function saveJsPdf(doc: jsPDF, filename: string): void {
@@ -56,34 +43,26 @@ function saveJsPdf(doc: jsPDF, filename: string): void {
   }, 1500)
 }
 
-function lineCell(
-  col: OrderTableColumn,
-  line: OrderMgmtOrder["lines"][number],
-  index: number,
-  script: OrderPdfScript
-): string {
+function lineCell(col: OrderTableColumn, line: OrderMgmtOrder["lines"][number], index: number): string {
   switch (col) {
     case "id":
       return String(index + 1)
     case "name":
-      return script === "hi" ? toHindiPhonetic(line.name) : pdfSafe(line.name)
+      return pdfSafe(line.name)
     case "brand":
-      return script === "hi" ? toHindiPhonetic(line.brand || "-") : pdfSafe(line.brand || "-")
+      return pdfSafe(line.brand || "-")
     case "buyRate":
       return formatPdfAmount(line.buyRate)
     case "saleRate":
       return formatPdfAmount(line.saleRate)
     case "qty":
-      return script === "hi" ? formatPcsHindi(line.qty) : formatPcs(line.qty)
+      return formatPcs(line.qty)
     case "total":
       return formatPdfAmount(line.total)
   }
 }
 
-function applyAutoTable(
-  doc: jsPDF,
-  opts: Parameters<typeof autoTable>[1]
-): void {
+function applyAutoTable(doc: jsPDF, opts: Parameters<typeof autoTable>[1]): void {
   const fn =
     typeof autoTable === "function"
       ? autoTable
@@ -94,16 +73,18 @@ function applyAutoTable(
   fn(doc, opts)
 }
 
-async function downloadOrderPdfEnglish(
+export function downloadOrderPdf(
   group: Pick<OrderMgmtGroup, "name" | "source">,
   order: OrderMgmtOrder,
-  cols: typeof ORDER_TABLE_COLUMNS
-): Promise<void> {
+  visibleColumns: OrderTableColumn[]
+): void {
+  const columns = ORDER_TABLE_COLUMNS.filter((col) => visibleColumns.includes(col.key))
+  const cols = columns.length ? columns : ORDER_TABLE_COLUMNS
   const headers = cols.map((col) => col.label)
   const body =
     order.lines.length === 0
       ? [cols.map((col) => (col.key === "name" ? "No items" : ""))]
-      : order.lines.map((line, index) => cols.map((col) => lineCell(col.key, line, index, "en")))
+      : order.lines.map((line, index) => cols.map((col) => lineCell(col.key, line, index)))
 
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
   const pageW = doc.internal.pageSize.getWidth()
@@ -114,15 +95,14 @@ async function downloadOrderPdfEnglish(
   doc.setFillColor(37, 99, 235)
   doc.rect(0, 36, pageW, 3, "F")
 
-  const textX = 14
   doc.setFont("helvetica", "bold")
   doc.setFontSize(18)
   doc.setTextColor(255, 255, 255)
-  doc.text("Samrat Market", textX, 16)
+  doc.text("Samrat Market", 14, 16)
   doc.setFont("helvetica", "normal")
   doc.setFontSize(10)
   doc.setTextColor(191, 219, 254)
-  doc.text("Order Management", textX, 24)
+  doc.text("Order Management", 14, 24)
 
   doc.setFont("helvetica", "bold")
   doc.setFontSize(14)
@@ -149,9 +129,7 @@ async function downloadOrderPdfEnglish(
     styles: { fontSize: 9, cellPadding: 2.5, textColor: [27, 27, 31], overflow: "linebreak" },
     headStyles: { fillColor: [15, 76, 129], textColor: 255, fontStyle: "bold" },
     alternateRowStyles: { fillColor: [248, 250, 255] },
-    columnStyles: Object.fromEntries(
-      cols.map((col, i) => [i, { halign: col.numeric ? "right" : "left" }])
-    ),
+    columnStyles: Object.fromEntries(cols.map((col, i) => [i, { halign: col.numeric ? "right" : "left" }])),
     margin: { left: 14, right: 14 },
   })
 
@@ -165,202 +143,5 @@ async function downloadOrderPdfEnglish(
     doc.text(`Page ${i} of ${pageCount}`, pageW - 14, pageH - 8, { align: "right" })
   }
 
-  saveJsPdf(doc, safePdfFileName(order.id, false))
-}
-
-function wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
-  const words = String(text || "").split(/\s+/).filter(Boolean)
-  if (words.length === 0) return [""]
-  const lines: string[] = []
-  let current = words[0]
-  for (let i = 1; i < words.length; i++) {
-    const trial = `${current} ${words[i]}`
-    if (ctx.measureText(trial).width <= maxWidth) current = trial
-    else {
-      lines.push(current)
-      current = words[i]
-    }
-  }
-  lines.push(current)
-  return lines
-}
-
-async function downloadOrderPdfHindi(
-  group: Pick<OrderMgmtGroup, "name" | "source">,
-  order: OrderMgmtOrder,
-  cols: typeof ORDER_TABLE_COLUMNS
-): Promise<void> {
-  const scale = 2
-  const pageW = 794
-  const pageH = 1123
-  const margin = 36
-  const innerW = pageW - margin * 2
-  const font = `"Nirmala UI","Noto Sans Devanagari",Mangal,sans-serif`
-
-  const headerH = 88
-  const colW = cols.map((col) => {
-    if (col.key === "id") return 48
-    if (col.key === "qty") return 80
-    if (col.numeric) return 110
-    if (col.key === "name") return 0
-    return 100
-  })
-  const named = cols.findIndex((c) => c.key === "name")
-  const used = colW.reduce((s, w, i) => (i === named ? s : s + w), 0)
-  if (named >= 0) colW[named] = Math.max(120, innerW - used)
-  else if (colW.length) {
-    const extra = innerW - colW.reduce((s, w) => s + w, 0)
-    colW[0] += extra
-  }
-
-  const rows = order.lines.map((line, index) => cols.map((col) => lineCell(col.key, line, index, "hi")))
-  const status = order.status === "delivered" ? "डिलीवर्ड" : "पेंडिंग"
-  const meta = [
-    `समूह: ${toHindiPhonetic(group.name)}`,
-    group.source ? `स्रोत: ${toHindiPhonetic(group.source)}` : "",
-    `स्थिति: ${status}`,
-    `कुल: ${formatPdfAmount(orderAmount(order))}`,
-    `आइटम्स: ${formatPcsHindi(orderPieceCount(order))}`,
-  ].filter(Boolean)
-
-  const measure = document.createElement("canvas")
-  const mctx = measure.getContext("2d")
-  if (!mctx) throw new Error("PDF canvas failed")
-  mctx.font = `13px ${font}`
-
-  const rowHeights = rows.map((cells) => {
-    let h = 28
-    cells.forEach((cell, i) => {
-      const lines = wrapCanvasText(mctx, cell, Math.max(24, colW[i] - 16))
-      h = Math.max(h, 16 + lines.length * 16)
-    })
-    return h
-  })
-
-  const pages: HTMLCanvasElement[] = []
-  let rowIndex = 0
-  while (rowIndex < rows.length || pages.length === 0) {
-    const canvas = document.createElement("canvas")
-    canvas.width = pageW * scale
-    canvas.height = pageH * scale
-    const ctx = canvas.getContext("2d")
-    if (!ctx) throw new Error("PDF canvas failed")
-    ctx.scale(scale, scale)
-    ctx.fillStyle = "#ffffff"
-    ctx.fillRect(0, 0, pageW, pageH)
-
-    ctx.fillStyle = "#0f4c81"
-    ctx.fillRect(0, 0, pageW, 72)
-    ctx.fillStyle = "#2563eb"
-    ctx.fillRect(0, 72, pageW, 6)
-
-    const titleX = 28
-    ctx.fillStyle = "#ffffff"
-    ctx.font = `700 22px ${font}`
-    ctx.fillText("सम्राट मार्केट", titleX, 34)
-    ctx.font = `13px ${font}`
-    ctx.fillStyle = "#bfdbfe"
-    ctx.fillText("ऑर्डर मैनेजमेंट", titleX, 54)
-
-    let y = headerH
-    ctx.fillStyle = "#1b1b1f"
-    ctx.font = `700 18px ${font}`
-    ctx.fillText(`ऑर्डर ${order.id}`, margin, y)
-    y += 22
-    ctx.font = `12px ${font}`
-    ctx.fillStyle = "#475569"
-    wrapCanvasText(ctx, meta.join("  |  "), innerW).forEach((line) => {
-      ctx.fillText(line, margin, y)
-      y += 16
-    })
-    y += 10
-
-    const drawHeader = () => {
-      ctx.fillStyle = "#0f4c81"
-      ctx.fillRect(margin, y, innerW, 28)
-      ctx.fillStyle = "#ffffff"
-      ctx.font = `700 12px ${font}`
-      let x = margin
-      cols.forEach((col, i) => {
-        const label = HINDI_COL_LABELS[col.key]
-        if (col.numeric) {
-          ctx.textAlign = "right"
-          ctx.fillText(label, x + colW[i] - 8, y + 19)
-        } else {
-          ctx.textAlign = "left"
-          ctx.fillText(label, x + 8, y + 19)
-        }
-        x += colW[i]
-      })
-      ctx.textAlign = "left"
-      y += 28
-    }
-    drawHeader()
-
-    let drew = 0
-    while (rowIndex < rows.length) {
-      const h = rowHeights[rowIndex]
-      if (drew > 0 && y + h > pageH - 40) break
-      ctx.fillStyle = rowIndex % 2 === 1 ? "#f8faff" : "#ffffff"
-      ctx.fillRect(margin, y, innerW, h)
-      ctx.strokeStyle = "#e2e8f0"
-      ctx.beginPath()
-      ctx.moveTo(margin, y + h)
-      ctx.lineTo(margin + innerW, y + h)
-      ctx.stroke()
-      ctx.fillStyle = "#1b1b1f"
-      ctx.font = `13px ${font}`
-      let x = margin
-      rows[rowIndex].forEach((cell, i) => {
-        const lines = wrapCanvasText(ctx, cell, Math.max(24, colW[i] - 16))
-        lines.forEach((line, li) => {
-          const ty = y + 18 + li * 16
-          if (cols[i].numeric) {
-            ctx.textAlign = "right"
-            ctx.fillText(line, x + colW[i] - 8, ty)
-          } else {
-            ctx.textAlign = "left"
-            ctx.fillText(line, x + 8, ty)
-          }
-        })
-        x += colW[i]
-      })
-      ctx.textAlign = "left"
-      y += h
-      rowIndex++
-      drew++
-    }
-
-    ctx.fillStyle = "#777777"
-    ctx.font = `11px ${font}`
-    ctx.textAlign = "center"
-    ctx.fillText("सम्राट मार्केट | ऑर्डर मैनेजमेंट", pageW / 2, pageH - 18)
-    ctx.textAlign = "left"
-    pages.push(canvas)
-    if (rows.length === 0) break
-  }
-
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
-  const pdfW = doc.internal.pageSize.getWidth()
-  const pdfH = doc.internal.pageSize.getHeight()
-  pages.forEach((canvas, i) => {
-    if (i > 0) doc.addPage()
-    doc.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, pdfW, pdfH)
-  })
-  saveJsPdf(doc, safePdfFileName(order.id, true))
-}
-
-export async function downloadOrderPdf(
-  group: Pick<OrderMgmtGroup, "name" | "source">,
-  order: OrderMgmtOrder,
-  visibleColumns: OrderTableColumn[],
-  script: OrderPdfScript = "en"
-): Promise<void> {
-  const columns = ORDER_TABLE_COLUMNS.filter((col) => visibleColumns.includes(col.key))
-  const cols = columns.length ? columns : ORDER_TABLE_COLUMNS
-  if (script === "hi") {
-    await downloadOrderPdfHindi(group, order, cols)
-    return
-  }
-  await downloadOrderPdfEnglish(group, order, cols)
+  saveJsPdf(doc, safePdfFileName(order.id))
 }
