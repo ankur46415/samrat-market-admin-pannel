@@ -33,6 +33,8 @@ export interface Product {
   /** Extra lookup keys (sku, ean, padded variants) for POS scan matching */
   barcodeKeys?: string[]
   brand?: string
+  /** Firebase Storage download URL — optional product photo */
+  imageUrl?: string
   /** Maximum retail price (MRP) when set at product creation */
   mrp?: number
   /** MRP discount % from product details (drives selling price). */

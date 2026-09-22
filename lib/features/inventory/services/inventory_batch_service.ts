@@ -34,6 +34,7 @@ export type ProductWithBatchInput = {
   expiryDate?: Date | null
   quantity?: number
   noExpiry?: boolean
+  imageUrl?: string
   mrp?: number
   discountPercent?: number
 }
@@ -65,6 +66,7 @@ export class InventoryBatchService {
     productExpiry?: Date
     mrp?: number
     discountPercent?: number
+    imageUrl?: string
   }): Record<string, unknown> {
     const unitStr = normalizeProductUnit(fields.unit)
     const rack = fields.rack.trim()
@@ -97,6 +99,8 @@ export class InventoryBatchService {
     }
     const b = fields.brand?.trim()
     if (b) d.brand = b
+    const imageUrl = fields.imageUrl?.trim()
+    if (imageUrl) d.imageUrl = imageUrl
     return d
   }
 
@@ -116,6 +120,7 @@ export class InventoryBatchService {
     stock: number
     mrp?: number
     discountPercent?: number
+    imageUrl?: string
   }): Promise<string> {
     const now = Timestamp.now()
     const ref = await addDoc(collection(this.db, col("products")), {
@@ -203,6 +208,7 @@ export class InventoryBatchService {
       productExpiry: hasExpiryBatch ? expiryDate! : undefined,
       mrp: input.mrp,
       discountPercent: input.discountPercent,
+      imageUrl: input.imageUrl,
     }
 
     if (existing?.id) {

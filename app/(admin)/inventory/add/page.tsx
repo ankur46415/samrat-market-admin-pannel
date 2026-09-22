@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Package, Layers } from "lucide-react"
+import { ArrowLeft, ImagePlus, Package, Layers, X } from "lucide-react"
 import { useProducts, useCategories } from "@/hooks/use-firestore"
 import { BarcodeScannerInput } from "@/components/inventory/barcode-scanner-input"
 import { Button } from "@/components/ui/button"
@@ -26,6 +26,10 @@ import { discountedUnitPrice, parseDiscountInput } from "@/lib/billing/line-disc
 import { cn } from "@/lib/utils"
 import { RACK_OPTIONS, RACK_OPTIONS_SET } from "@/lib/rack-options"
 import { STATUS_OPTIONS, STATUS_OPTIONS_SET } from "@/lib/status-options"
+import {
+  uploadProductImage,
+  validateProductImageFile,
+} from "@/lib/features/inventory/services/product_image_service"
 
 const labelClass = "text-sm font-medium text-foreground"
 const inputClass = "h-11 rounded-lg border-border/80 shadow-sm"
@@ -40,9 +44,12 @@ function sellingPriceFromMrp(mrp: string, discountPercent: string): string | nul
 
 export default function AddProductPage() {
   const router = useRouter()
-  const { addProduct, getProductByBarcode } = useProducts()
+  const { addProduct, getProductByBarcode, updateProduct } = useProducts()
   const { categories } = useCategories()
   const [loading, setLoading] = useState(false)
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const [activeTab, setActiveTab] = useState<"product" | "batch">("product")
   const [newCategory, setNewCategory] = useState("")
   const [showNewCategory, setShowNewCategory] = useState(false)
@@ -73,6 +80,34 @@ export default function AddProductPage() {
       setFormData((prev) => ({ ...prev, barcode }))
     }
   }, [])
+
+  useEffect(() => {
+    if (!imageFile) {
+      setImagePreviewUrl(null)
+      return
+    }
+    const url = URL.createObjectURL(imageFile)
+    setImagePreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [imageFile])
+
+  const handleImageSelect = (file: File | null) => {
+    if (!file) {
+      setImageFile(null)
+      return
+    }
+    const err = validateProductImageFile(file)
+    if (err) {
+      toast.error(err)
+      return
+    }
+    setImageFile(file)
+  }
+
+  const clearImage = () => {
+    setImageFile(null)
+    if (imageInputRef.current) imageInputRef.current.value = ""
+  }
 
   const handleMrpChange = (mrp: string) => {
     setFormData((prev) => {
@@ -141,7 +176,7 @@ export default function AddProductPage() {
 
     try {
       const existing = await getProductByBarcode(formData.barcode)
-      await addProduct({
+      const productId = await addProduct({
         name: formData.name || "Unnamed Product",
         category,
         rack: formData.rack,
@@ -159,6 +194,17 @@ export default function AddProductPage() {
         noExpiry: formData.noExpiry || undefined,
         minStock: parseMinStockInput(formData.minStock, 10),
       })
+
+      if (imageFile) {
+        try {
+          const imageUrl = await uploadProductImage(productId, imageFile)
+          await updateProduct(productId, { imageUrl })
+        } catch (imageError) {
+          console.error("Product image upload failed:", imageError)
+          toast.warning("Product saved, but image upload failed")
+        }
+      }
+
       if (existing) {
         toast.success("Stock added.")
       } else {
@@ -261,6 +307,67 @@ export default function AddProductPage() {
                       onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
                       className={inputClass}
                     />
+                  </div>
+
+                  <div className={cn(fieldGroup, "sm:col-span-2")}>
+                    <Label htmlFor="productImage" className={labelClass}>
+                      Product image{" "}
+                      <span className="font-normal text-muted-foreground">(optional)</span>
+                    </Label>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                      {imagePreviewUrl ? (
+                        <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-lg border border-border/80 bg-muted/30">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={imagePreviewUrl}
+                            alt="Product preview"
+                            className="h-full w-full object-cover"
+                          />
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="icon"
+                            className="absolute right-1 top-1 h-7 w-7 rounded-md shadow-sm"
+                            onClick={clearImage}
+                            aria-label="Remove image"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => imageInputRef.current?.click()}
+                          className="flex h-28 w-full max-w-xs flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/80 bg-muted/20 px-4 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/40 hover:text-foreground"
+                        >
+                          <ImagePlus className="h-6 w-6 opacity-70" />
+                          <span>Choose image</span>
+                          <span className="text-xs">JPG, PNG, WebP — max 5 MB</span>
+                        </button>
+                      )}
+                      <input
+                        ref={imageInputRef}
+                        id="productImage"
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        className="hidden"
+                        onChange={(e) => handleImageSelect(e.target.files?.[0] ?? null)}
+                      />
+                      {imagePreviewUrl ? (
+                        <div className="flex flex-col gap-2 pt-1">
+                          <p className="text-sm text-muted-foreground">{imageFile?.name}</p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="w-fit rounded-lg"
+                            onClick={() => imageInputRef.current?.click()}
+                          >
+                            Change image
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
 
                   <div className={fieldGroup}>

@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app"
 import { getFirestore, Firestore } from "firebase/firestore"
 import { getAuth, Auth } from "firebase/auth"
+import { getStorage, FirebaseStorage } from "firebase/storage"
 
 // Using fallbacks so it works even if Vercel env variables are missing
 const firebaseConfig = {
@@ -17,6 +18,7 @@ const firebaseConfig = {
 let app: FirebaseApp
 let db: Firestore
 let auth: Auth
+let storage: FirebaseStorage
 
 if (typeof window !== "undefined") {
   // Client side initialization
@@ -24,18 +26,21 @@ if (typeof window !== "undefined") {
     app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp()
     db = getFirestore(app)
     auth = getAuth(app)
+    storage = getStorage(app)
   } catch (error) {
     console.error("Error initializing Firebase:", error)
     app = {} as FirebaseApp
     db = {} as Firestore
     auth = {} as Auth
+    storage = {} as FirebaseStorage
   }
 } else {
   // Server side placeholders to prevent Next.js from throwing prerender errors
   app = {} as FirebaseApp
   db = {} as Firestore
   auth = {} as Auth
+  storage = {} as FirebaseStorage
 }
 
-export { app, db, auth }
+export { app, db, auth, storage }
 export default app

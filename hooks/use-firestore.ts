@@ -120,6 +120,10 @@ function productFromData(id: string, data: Record<string, unknown>): Product {
     barcode: barcode || undefined,
     barcodeKeys,
     brand: brand.length > 0 ? brand : undefined,
+    imageUrl: (() => {
+      const url = trimStr((data as { imageUrl?: unknown }).imageUrl)
+      return url.length > 0 ? url : undefined
+    })(),
     price: firestoreNumber(data.price, 0),
     costPrice: firestoreNumber(data.costPrice, 0),
     mrp: (() => {
@@ -338,6 +342,7 @@ export function useProducts() {
         product.discountPercent != null && Number(product.discountPercent) > 0
           ? Number(product.discountPercent)
           : undefined,
+      imageUrl: product.imageUrl?.trim() || undefined,
     })
 
     return result.productId
