@@ -26,6 +26,7 @@ import { fetchGlobalDashboardStats } from "@/lib/features/dashboard/services/das
 import { fetchSalesInDateRange } from "@/lib/features/sales/services/sales_query_service"
 import { omitUndefinedFields } from "@/lib/utils"
 import { InventoryBatchService } from "@/lib/features/inventory/services/inventory_batch_service"
+import { isNoExpiryBatch } from "@/lib/inventory/no-expiry-batch"
 import { loadCachedProductsAsProduct, saveProductCache } from "@/lib/offline/product-cache"
 import {
   coerceProductStockFromFirestore,
@@ -106,6 +107,7 @@ function productFromData(id: string, data: Record<string, unknown>): Product {
         quantity: Number.isFinite(Number(b.quantity)) ? Number(b.quantity) : 0,
         expiryDate: convertTimestamp(b.expiryDate),
         createdAt: convertTimestamp(b.createdAt),
+        ...(b.noExpiry ? { noExpiry: true } : {}),
       }))
     : []
   return {
@@ -207,6 +209,7 @@ export function useProducts() {
                         quantity: Number.isFinite(Number(bd.quantity)) ? Number(bd.quantity) : 0,
                         expiryDate: convertTimestamp(bd.expiryDate),
                         createdAt: convertTimestamp(bd.createdAt),
+                        ...(isNoExpiryBatch(bd) ? { noExpiry: true } : {}),
                       }
                     })
                     batchList.sort((a, b) => a.expiryDate.getTime() - b.expiryDate.getTime())
@@ -261,7 +264,9 @@ export function useProducts() {
     }
   }, [accountMode])
 
-  const addProduct = useCallback(async (product: Omit<Product, "id" | "createdAt" | "updatedAt" | "batches">) => {
+  const addProduct = useCallback(async (
+    product: Omit<Product, "id" | "createdAt" | "updatedAt" | "batches"> & { noExpiry?: boolean }
+  ) => {
     const barcode = String(product.barcode ?? "").trim()
     if (!barcode) {
       throw new Error("Barcode is required for batch inventory")
@@ -275,7 +280,8 @@ export function useProducts() {
       throw new Error("Rack must be one of predefined options")
     }
 
-    const expiryRaw = (product.expiry || "").trim()
+    const noExpiry = product.noExpiry === true
+    const expiryRaw = noExpiry ? "" : (product.expiry || "").trim()
     let expiryDate: Date | undefined
     if (expiryRaw) {
       expiryDate = new Date(expiryRaw)
@@ -288,8 +294,8 @@ export function useProducts() {
     if (expiryRaw && (!Number.isFinite(quantity) || quantity <= 0)) {
       throw new Error("Batch quantity must be greater than 0 when expiry is set")
     }
-    if (Number.isFinite(quantity) && quantity > 0 && !expiryRaw) {
-      throw new Error("Expiry date is required when batch quantity is set")
+    if (Number.isFinite(quantity) && quantity > 0 && !expiryRaw && !noExpiry) {
+      throw new Error("Select expiry date or choose No expiry when batch quantity is set")
     }
 
     const price = Number(product.price ?? 0)
@@ -326,6 +332,7 @@ export function useProducts() {
       brand: product.brand?.trim() ? product.brand.trim() : undefined,
       expiryDate: expiryDate ?? null,
       quantity: Number.isFinite(quantity) && quantity > 0 ? Math.floor(quantity) : undefined,
+      noExpiry: noExpiry || undefined,
       mrp,
       discountPercent:
         product.discountPercent != null && Number(product.discountPercent) > 0

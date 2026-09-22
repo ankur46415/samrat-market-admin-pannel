@@ -75,6 +75,7 @@ import {
   invTableCellClass,
   invTableCellNumeric,
 } from "@/lib/inventory-ui"
+import { isNoExpiryBatch } from "@/lib/inventory/no-expiry-batch"
 import { cn } from "@/lib/utils"
 
 type BatchRow = { batch: ProductBatch; product: Product }
@@ -83,7 +84,12 @@ function daysUntilExpiry(expiry: Date): number {
   return differenceInCalendarDays(startOfDay(expiry), startOfDay(new Date()))
 }
 
-function ExpiryCell({ date }: { date: Date }) {
+function ExpiryCell({ date, noExpiry }: { date: Date; noExpiry?: boolean }) {
+  if (noExpiry) {
+    return (
+      <span className="text-sm font-medium text-muted-foreground">No expiry</span>
+    )
+  }
   const d = daysUntilExpiry(date)
   const formatted = format(date, "dd MMM yyyy")
   let pill: { label: string; className: string } | null = null
@@ -224,6 +230,7 @@ export default function InventoryPage() {
                     bd.createdAt instanceof Timestamp
                       ? bd.createdAt.toDate()
                       : new Date(String(bd.createdAt ?? "")),
+                  ...(isNoExpiryBatch(bd) ? { noExpiry: true } : {}),
                 },
               })
             })
@@ -533,6 +540,7 @@ export default function InventoryPage() {
                     ) : (
                       filteredProducts.map((product) => {
                         const next = nextExpiryDate(product)
+                        const nextNoExpiry = product.batches[0]?.noExpiry === true
                         return (
                           <TableRow
                             key={product.id}
@@ -594,7 +602,7 @@ export default function InventoryPage() {
                             </TableCell>
                             <TableCell className={cn(invTableCellClass, "hidden sm:table-cell")}>
                               {next ? (
-                                <ExpiryCell date={next} />
+                                <ExpiryCell date={next} noExpiry={nextNoExpiry} />
                               ) : (
                                 <span className="text-muted-foreground">—</span>
                               )}
@@ -692,7 +700,7 @@ export default function InventoryPage() {
                             </code>
                           </TableCell>
                           <TableCell className={invTableCellClass}>
-                            <ExpiryCell date={batch.expiryDate} />
+                            <ExpiryCell date={batch.expiryDate} noExpiry={batch.noExpiry} />
                           </TableCell>
                           <TableCell className={invTableCellNumeric}>
                             <span className="font-semibold">{batch.quantity}</span>

@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
@@ -61,6 +62,7 @@ export default function AddProductPage() {
     barcode: "",
     brand: "",
     expiry: "",
+    noExpiry: false,
     minStock: "10",
   })
 
@@ -115,8 +117,12 @@ export default function AddProductPage() {
       toast.error("Batch quantity must be greater than 0 when expiry is set")
       return
     }
-    if (Number.isFinite(stockNum) && stockNum > 0 && !formData.expiry) {
-      toast.error("Batch expiry is required when quantity is set")
+    if (Number.isFinite(stockNum) && stockNum > 0 && !formData.expiry && !formData.noExpiry) {
+      toast.error("Select batch expiry or tick No expiry when quantity is set")
+      return
+    }
+    if (formData.noExpiry && formData.expiry) {
+      toast.error("Clear expiry date or uncheck No expiry")
       return
     }
     if (!formData.price || parseFloat(formData.price) < 0) {
@@ -149,7 +155,8 @@ export default function AddProductPage() {
         unit: normalizeProductUnit(formData.unit),
         barcode: formData.barcode || undefined,
         brand: formData.brand || undefined,
-        expiry: formData.expiry || undefined,
+        expiry: formData.noExpiry ? undefined : formData.expiry || undefined,
+        noExpiry: formData.noExpiry || undefined,
         minStock: parseMinStockInput(formData.minStock, 10),
       })
       if (existing) {
@@ -493,18 +500,43 @@ export default function AddProductPage() {
 
               <TabsContent value="batch" className="mt-0 space-y-6 px-4 py-6 sm:px-6 focus-visible:outline-none">
                 <p className="text-sm text-muted-foreground">
-                  Batch expiry aur quantity optional hain — dono khali chhod sakte hain ya dono bharen.
+                  Expiry date optional hai — non-perishable items ke liye &quot;No expiry&quot; choose karein aur quantity
+                  bharein.
                 </p>
                 <div className="grid max-w-xl gap-6 sm:grid-cols-2">
+                  <div className={cn(fieldGroup, "sm:col-span-2")}>
+                    <div className="flex items-center gap-3 rounded-lg border border-border/70 bg-muted/20 px-4 py-3">
+                      <Checkbox
+                        id="noExpiry"
+                        checked={formData.noExpiry}
+                        onCheckedChange={(checked) =>
+                          setFormData({
+                            ...formData,
+                            noExpiry: checked === true,
+                            expiry: checked === true ? "" : formData.expiry,
+                          })
+                        }
+                      />
+                      <Label htmlFor="noExpiry" className="cursor-pointer text-sm font-medium leading-snug">
+                        No expiry — is product par expiry date nahi hai (e.g. soap, utensils, hardware)
+                      </Label>
+                    </div>
+                  </div>
                   <div className={fieldGroup}>
                     <Label htmlFor="expiry" className={labelClass}>
-                      Batch expiry <span className="font-normal text-muted-foreground">(optional)</span>
+                      Batch expiry{" "}
+                      <span className="font-normal text-muted-foreground">
+                        {formData.noExpiry ? "(disabled)" : "(optional)"}
+                      </span>
                     </Label>
                     <Input
                       id="expiry"
                       type="date"
                       value={formData.expiry}
-                      onChange={(e) => setFormData({ ...formData, expiry: e.target.value })}
+                      disabled={formData.noExpiry}
+                      onChange={(e) =>
+                        setFormData({ ...formData, expiry: e.target.value, noExpiry: false })
+                      }
                       className={inputClass}
                     />
                   </div>

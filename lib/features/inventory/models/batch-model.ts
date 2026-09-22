@@ -3,5 +3,6 @@ export interface BatchModel {
   expiryDate: Date
   quantity: number
   createdAt: Date
+  noExpiry?: boolean
 }
 

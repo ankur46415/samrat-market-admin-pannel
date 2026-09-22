@@ -6,6 +6,8 @@ export interface ProductBatch {
   quantity: number
   expiryDate: Date
   createdAt: Date
+  /** True when batch was saved without an expiry date (non-perishable stock). */
+  noExpiry?: boolean
 }
 
 /**

@@ -15,6 +15,7 @@ import {
 import { col } from "@/lib/account-mode"
 import type { BatchModel } from "@/lib/features/inventory/models/batch-model"
 import type { ProductModel } from "@/lib/features/inventory/models/product-model"
+import { NO_EXPIRY_BATCH_DATE, isNoExpiryBatch } from "@/lib/inventory/no-expiry-batch"
 import { normalizeProductUnit } from "@/lib/stock"
 
 /** Fields stored on each `products/{id}` document (aligned with pre-batch inventory docs). */
@@ -32,6 +33,7 @@ export type ProductWithBatchInput = {
   brand?: string
   expiryDate?: Date | null
   quantity?: number
+  noExpiry?: boolean
   mrp?: number
   discountPercent?: number
 }
@@ -153,6 +155,7 @@ export class InventoryBatchService {
     await addDoc(collection(this.db, col("products"), productId, "batches"), {
       expiryDate: Timestamp.fromDate(batch.expiryDate),
       quantity: batch.quantity,
+      ...(batch.noExpiry ? { noExpiry: true } : {}),
       createdAt: Timestamp.now(),
     })
   }
@@ -174,10 +177,15 @@ export class InventoryBatchService {
       brand,
       expiryDate,
       quantity,
+      noExpiry,
     } = input
     const normalizedBarcode = barcode.trim()
     const qty = Math.max(0, Math.floor(Number(quantity) || 0))
-    const hasBatch = expiryDate instanceof Date && !Number.isNaN(expiryDate.getTime()) && qty > 0
+    const hasExpiryDate =
+      expiryDate instanceof Date && !Number.isNaN(expiryDate.getTime())
+    const hasExpiryBatch = hasExpiryDate && qty > 0
+    const hasNoExpiryBatch = noExpiry === true && qty > 0 && !hasExpiryDate
+    const hasBatch = hasExpiryBatch || hasNoExpiryBatch
     const existing = await this.getProductByBarcode(normalizedBarcode)
 
     const payloadFields = {
@@ -192,19 +200,29 @@ export class InventoryBatchService {
       unit,
       minStock,
       brand,
-      productExpiry: hasBatch ? expiryDate! : undefined,
+      productExpiry: hasExpiryBatch ? expiryDate! : undefined,
       mrp: input.mrp,
       discountPercent: input.discountPercent,
     }
 
     if (existing?.id) {
-      if (hasBatch) {
+      if (hasExpiryBatch) {
         await this.addBatch({
           productId: existing.id,
           batch: {
             expiryDate: expiryDate!,
             quantity: qty,
             createdAt: new Date(),
+          },
+        })
+      } else if (hasNoExpiryBatch) {
+        await this.addBatch({
+          productId: existing.id,
+          batch: {
+            expiryDate: NO_EXPIRY_BATCH_DATE,
+            quantity: qty,
+            createdAt: new Date(),
+            noExpiry: true,
           },
         })
       }
@@ -226,13 +244,23 @@ export class InventoryBatchService {
       stock: hasBatch ? qty : 0,
     })
 
-    if (hasBatch) {
+    if (hasExpiryBatch) {
       await this.addBatch({
         productId,
         batch: {
           expiryDate: expiryDate!,
           quantity: qty,
           createdAt: new Date(),
+        },
+      })
+    } else if (hasNoExpiryBatch) {
+      await this.addBatch({
+        productId,
+        batch: {
+          expiryDate: NO_EXPIRY_BATCH_DATE,
+          quantity: qty,
+          createdAt: new Date(),
+          noExpiry: true,
         },
       })
     }
@@ -253,6 +281,7 @@ export class InventoryBatchService {
         expiryDate: (data.expiryDate as Timestamp | undefined)?.toDate?.() ?? new Date(),
         quantity: Number(data.quantity ?? 0),
         createdAt: (data.createdAt as Timestamp | undefined)?.toDate?.() ?? new Date(),
+        ...(isNoExpiryBatch(data) ? { noExpiry: true } : {}),
       }
     })
   }
