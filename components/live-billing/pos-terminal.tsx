@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -24,10 +24,16 @@ import {
   XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
-import { useProducts, useCustomers } from "@/hooks/use-firestore"
 import { useSessionUser } from "@/lib/auth-session"
 import { usePosSession } from "@/hooks/use-pos-session"
 import { usePosScanner } from "@/hooks/use-pos-scanner"
+import { usePosCustomerLookup } from "@/hooks/use-pos-customer-lookup"
+import {
+  createCustomer,
+  fetchCustomerByPhone,
+} from "@/lib/features/customers/services/customer_lookup_service"
+import { cachedToBarcodeRef, type CachedBillingProduct } from "@/lib/offline/product-cache"
+import type { Customer } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -170,9 +176,6 @@ export function PosTerminal({
 }: PosTerminalProps) {
   const router = useRouter()
   const { user } = useSessionUser()
-  const { products, loading: productsLoading } = useProducts()
-  const { customers, loading: customersLoading, addCustomer } = useCustomers()
-
   const [sessionId, setSessionId] = useState<string | null>(initialSessionId ?? null)
   const [booting, setBooting] = useState(!initialSessionId)
   const [offlineMode, setOfflineMode] = useState(false)
@@ -185,8 +188,6 @@ export function PosTerminal({
   const [editingPrice, setEditingPrice] = useState("")
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null)
   const [clock, setClock] = useState(() => new Date())
-  const [customerPhone, setCustomerPhone] = useState(() => normalizePosPhone(initialCustomerPhone || "") || "NA")
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(initialCustomerId?.trim() || null)
   const [pendingCustomerName, setPendingCustomerName] = useState(initialCustomerName?.trim() || "")
   const [printing, setPrinting] = useState(false)
   const [manualDialogOpen, setManualDialogOpen] = useState(false)
@@ -203,14 +204,23 @@ export function PosTerminal({
   const customerInputRef = useRef<HTMLInputElement>(null)
 
   const cashierName = user?.name || user?.email || "Cashier"
-  const productCache = products.map((p) => ({
-    id: p.id,
-    name: p.name,
-    price: p.price,
-    barcode: p.barcode,
-    mrp: p.mrp,
-    barcodeKeys: p.barcodeKeys,
-  }))
+
+  const {
+    customerPhone,
+    setCustomerPhone,
+    selectedCustomerId,
+    setSelectedCustomerId,
+    matchedCustomer,
+    selectedCustomer,
+    loading: customersLoading,
+    attachMatchedCustomer,
+  } = usePosCustomerLookup(view === "finalize")
+
+  const [cachedProducts, setCachedProducts] = useState<CachedBillingProduct[]>([])
+  const productCache = useMemo(
+    () => cachedProducts.map(cachedToBarcodeRef),
+    [cachedProducts]
+  )
 
   const online = useOnlineStatus()
   const { items: liveItems, loading: liveItemsLoading, sessionStatus, totals: liveTotals } = usePosSession(
@@ -221,12 +231,13 @@ export function PosTerminal({
 
   useEffect(() => {
     void loadProductCache().then((rows) => {
+      setCachedProducts(rows)
       setCachedProductCount(rows.length)
       if (offlineMode && rows.length === 0) {
         toast.error("No products saved on this computer. Open billing once while online.")
       }
     })
-  }, [products.length, offlineMode])
+  }, [offlineMode])
   const localCart = useLocalPosCart(offlineMode, sessionId)
   const items = offlineMode ? localCart.items : liveItems
   const itemsLoading = offlineMode ? localCart.loading : liveItemsLoading
@@ -235,8 +246,14 @@ export function PosTerminal({
 
   const scanner = usePosScanner({
     sessionId,
-    productCache,
-    enabled: isActive && view === "billing" && !manualDialogOpen && !phoneDialogOpen && !printDialogOpen && !editingItemId,
+    productCache: offlineMode ? productCache : undefined,
+    enabled:
+      isActive &&
+      view === "billing" &&
+      !manualDialogOpen &&
+      !phoneDialogOpen &&
+      !printDialogOpen &&
+      !editingItemId,
     scanItem: offlineMode ? (_id, barcode, cache) => localCart.scanProduct(barcode, cache) : undefined,
   })
 
@@ -254,29 +271,25 @@ export function PosTerminal({
 
   const normalizedCustomerPhone = customerPhone.trim() || "NA"
   const isWalkInPhone = normalizedCustomerPhone.toUpperCase() === "NA"
-
-  const matchedCustomer =
-    !isWalkInPhone
-      ? customers.find((c) => normalizePosPhone(c.phone) === normalizePosPhone(normalizedCustomerPhone)) ??
-        null
-      : null
-  const selectedCustomer = customers.find((c) => c.id === selectedCustomerId) ?? matchedCustomer
   const linkedCustomerName = selectedCustomer?.name || pendingCustomerName
 
-  const applyCustomerPhone = useCallback((phone: string, name = "", customerId = "") => {
-    const digits = normalizePosPhone(phone)
-    if (!digits) {
-      setCustomerPhone("NA")
-      setSelectedCustomerId(null)
-      setPendingCustomerName("")
-      writeStoredPosCustomer(sessionId, "", "")
-      return
-    }
-    setCustomerPhone(digits)
-    if (name.trim()) setPendingCustomerName(name.trim())
-    if (customerId.trim()) setSelectedCustomerId(customerId.trim())
-    writeStoredPosCustomer(sessionId, digits, name, customerId)
-  }, [sessionId])
+  const applyCustomerPhone = useCallback(
+    (phone: string, name = "", customerId = "") => {
+      const digits = normalizePosPhone(phone)
+      if (!digits) {
+        setCustomerPhone("NA")
+        setSelectedCustomerId(null)
+        setPendingCustomerName("")
+        writeStoredPosCustomer(sessionId, "", "")
+        return
+      }
+      setCustomerPhone(digits)
+      if (name.trim()) setPendingCustomerName(name.trim())
+      if (customerId.trim()) setSelectedCustomerId(customerId.trim())
+      writeStoredPosCustomer(sessionId, digits, name, customerId)
+    },
+    [sessionId, setCustomerPhone, setSelectedCustomerId]
+  )
 
   const openPhoneDialog = () => {
     setPhoneDraft(isWalkInPhone ? "" : normalizedCustomerPhone)
@@ -296,7 +309,7 @@ export function PosTerminal({
       toast.error("Enter a valid 10-digit phone number")
       return
     }
-    const found = customers.find((c) => normalizePosPhone(c.phone) === digits)
+    const found = await fetchCustomerByPhone(digits)
     const name = (found?.name || nameDraft).trim()
     if (!found && !name) {
       toast.error("Enter customer name")
@@ -308,7 +321,7 @@ export function PosTerminal({
         applyCustomerPhone(digits, found.name, found.id)
         toast.success(`Customer linked: ${found.name}`)
       } else {
-        const newId = await addCustomer({
+        const newId = await createCustomer({
           name,
           phone: digits,
           balance: 0,
@@ -332,10 +345,15 @@ export function PosTerminal({
   const buildCurrentReceipt = useCallback((): ReceiptData | null => {
     if (items.length === 0) return null
     const phone = selectedCustomer?.phone ?? normalizedCustomerPhone
-    const catalog = products.map((p) => ({ id: p.id, barcode: p.barcode, mrp: p.mrp, unit: p.unit }))
+    const catalog = cachedProducts.map((p) => ({
+      id: p.id,
+      barcode: p.barcode,
+      mrp: p.mrp,
+      unit: p.unit,
+    }))
     const receiptItems = attachCatalogMrp(
       items.map((i) => {
-        const match = products.find(
+        const match = cachedProducts.find(
           (p) => p.id === i.barcode || (p.barcode && p.barcode === i.barcode)
         )
         return {
@@ -366,12 +384,36 @@ export function PosTerminal({
       amountPaid: totals.total,
       change: 0,
     }
-  }, [billPaymentMethod, currentBillNo, items, normalizedCustomerPhone, pendingCustomerName, products, selectedCustomer, totals.discountSaved, totals.mrpSaved, totals.total])
+  }, [
+    billPaymentMethod,
+    cachedProducts,
+    currentBillNo,
+    items,
+    normalizedCustomerPhone,
+    pendingCustomerName,
+    selectedCustomer,
+    totals.discountSaved,
+    totals.mrpSaved,
+    totals.total,
+  ])
 
   const printPhoneOk = normalizePosPhone(printPhoneDraft).length === 10
-  const printFoundCustomer = printPhoneOk
-    ? customers.find((c) => normalizePosPhone(c.phone) === normalizePosPhone(printPhoneDraft)) ?? null
-    : null
+  const [printFoundCustomer, setPrintFoundCustomer] = useState<Customer | null>(null)
+
+  useEffect(() => {
+    const digits = normalizePosPhone(printPhoneDraft)
+    if (digits.length !== 10) {
+      setPrintFoundCustomer(null)
+      return
+    }
+    let cancelled = false
+    void fetchCustomerByPhone(digits).then((found) => {
+      if (!cancelled) setPrintFoundCustomer(found)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [printPhoneDraft])
   const printCanProceed =
     printPhoneOk && printNameDraft.trim().length > 0 && (printPaymentType === "cash" || printPaymentType === "online")
 
@@ -382,10 +424,12 @@ export function PosTerminal({
     }
     const phone = isWalkInPhone ? "" : normalizedCustomerPhone
     setPrintPhoneDraft(phone)
-    const found = phone
-      ? customers.find((c) => normalizePosPhone(c.phone) === phone) ?? null
-      : null
-    setPrintNameDraft(found?.name || selectedCustomer?.name || pendingCustomerName || "")
+    setPrintNameDraft(selectedCustomer?.name || pendingCustomerName || "")
+    if (phone) {
+      void fetchCustomerByPhone(phone).then((found) => {
+        if (found) setPrintNameDraft(found.name)
+      })
+    }
     setPrintPaymentType("cash")
     setPrintDialogOpen(true)
   }
@@ -394,7 +438,7 @@ export function PosTerminal({
     if (!printCanProceed) return
     const digits = normalizePosPhone(printPhoneDraft)
     const name = printNameDraft.trim()
-    const found = customers.find((c) => normalizePosPhone(c.phone) === digits)
+    const found = await fetchCustomerByPhone(digits)
     if (!found && !name) {
       toast.error("Enter customer name")
       return
@@ -404,7 +448,7 @@ export function PosTerminal({
       if (found) {
         applyCustomerPhone(digits, found.name, found.id)
       } else {
-        const newId = await addCustomer({
+        const newId = await createCustomer({
           name,
           phone: digits,
           balance: 0,
@@ -559,7 +603,7 @@ export function PosTerminal({
       setPendingCustomerName(matchedCustomer.name)
       writeStoredPosCustomer(sessionId, normalizedCustomerPhone, matchedCustomer.name, matchedCustomer.id)
     }
-  }, [matchedCustomer, normalizedCustomerPhone, sessionId])
+  }, [matchedCustomer, normalizedCustomerPhone, sessionId, setSelectedCustomerId])
 
   useEffect(() => {
     if (editingItemId && !items.some((i) => i.itemDocId === editingItemId)) {
@@ -743,7 +787,9 @@ export function PosTerminal({
 
   const catalogMrpFor = (barcode: string, existing?: number) => {
     if (existing && existing > 0) return existing
-    const match = products.find((p) => p.id === barcode || (p.barcode && p.barcode.trim() === barcode))
+    const match = cachedProducts.find(
+      (p) => p.id === barcode || (p.barcode && p.barcode.trim() === barcode)
+    )
     return match?.mrp && match.mrp > 0 ? match.mrp : undefined
   }
 
@@ -916,7 +962,7 @@ export function PosTerminal({
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [focusScanInput, goFinalize, handleCancel, handleComplete, handleRemove, handleResetScan, items, manualDialogOpen, selectedIndex, view])
 
-  if (booting || (productsLoading && products.length === 0) || !sessionId) {
+  if (booting || !sessionId) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-muted-foreground">
@@ -952,8 +998,8 @@ export function PosTerminal({
             <p className="truncate text-xs text-muted-foreground">
               {view === "billing"
                 ? offlineMode
-                  ? `Offline Billing · ${cachedProductCount || products.length} products cached`
-                  : `Billing Terminal · ${cachedProductCount || products.length} products cached`
+                  ? `Offline Billing · ${cachedProductCount.toLocaleString("en-IN")} products cached`
+                  : `Billing Terminal · ${cachedProductCount.toLocaleString("en-IN")} products cached`
                 : "Payment & Finalize"}{" "}
               · {cashierName}
             </p>
@@ -989,7 +1035,7 @@ export function PosTerminal({
             {offlineMode || !online ? (
               <>
                 <CloudOff className="h-3.5 w-3.5" />
-                Offline · {(cachedProductCount || products.length).toLocaleString("en-IN")} cached
+                Offline · {cachedProductCount.toLocaleString("en-IN")} cached
               </>
             ) : (
               <>
@@ -1026,8 +1072,11 @@ export function PosTerminal({
                 onChange={(e) => {
                   const next = e.target.value.replace(/\D/g, "").slice(0, 10)
                   setPhoneDraft(next)
-                  const found = customers.find((c) => normalizePosPhone(c.phone) === next)
-                  if (found) setNameDraft(found.name)
+                  if (next.length === 10) {
+                    void fetchCustomerByPhone(next).then((found) => {
+                      if (found) setNameDraft(found.name)
+                    })
+                  }
                 }}
                 autoFocus
               />
@@ -1088,8 +1137,9 @@ export function PosTerminal({
                   const next = e.target.value.replace(/\D/g, "").slice(0, 10)
                   setPrintPhoneDraft(next)
                   if (next.length === 10) {
-                    const found = customers.find((c) => normalizePosPhone(c.phone) === next)
-                    setPrintNameDraft(found?.name ?? "")
+                    void fetchCustomerByPhone(next).then((found) => {
+                      setPrintNameDraft(found?.name ?? "")
+                    })
                   }
                 }}
                 autoFocus
@@ -1519,9 +1569,8 @@ export function PosTerminal({
                     className="shrink-0"
                     disabled={isWalkInPhone}
                     onClick={() => {
-                      if (matchedCustomer) {
-                        setSelectedCustomerId(matchedCustomer.id)
-                        setPendingCustomerName(matchedCustomer.name)
+                      if (attachMatchedCustomer()) {
+                        if (matchedCustomer) setPendingCustomerName(matchedCustomer.name)
                         toast.success("Customer attached")
                       } else if (linkedCustomerName && !isWalkInPhone) {
                         toast.success(`Customer attached: ${linkedCustomerName}`)

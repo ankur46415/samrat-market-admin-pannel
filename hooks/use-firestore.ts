@@ -22,6 +22,8 @@ import { col } from "@/lib/account-mode"
 import { useAccountModeScope } from "@/components/account-mode-provider"
 import type { Product, ProductBatch, Customer, Sale, LedgerEntry, DashboardStats, Order } from "@/lib/types"
 import { saleFromFirestoreDoc } from "@/lib/sale-from-firestore"
+import { fetchGlobalDashboardStats } from "@/lib/features/dashboard/services/dashboard_aggregate_service"
+import { fetchSalesInDateRange } from "@/lib/features/sales/services/sales_query_service"
 import { omitUndefinedFields } from "@/lib/utils"
 import { InventoryBatchService } from "@/lib/features/inventory/services/inventory_batch_service"
 import { loadCachedProductsAsProduct, saveProductCache } from "@/lib/offline/product-cache"
@@ -542,8 +544,16 @@ export function useLedger(customerId?: string) {
   return { entries, loading, addEntry }
 }
 
-// Dashboard Stats Hook
-export function useDashboardStats() {
+const DASHBOARD_STATS_REFRESH_MS = 5 * 60 * 1000
+
+type UseDashboardStatsOptions = {
+  /** header = low-stock badge only (products read). full = all dashboard KPIs. */
+  scope?: "header" | "full"
+}
+
+// Dashboard Stats Hook — one-time reads + periodic refresh (no always-on listeners).
+export function useDashboardStats(options?: UseDashboardStatsOptions) {
+  const scope = options?.scope ?? "full"
   const accountMode = useAccountModeScope()
   const [stats, setStats] = useState<DashboardStats>({
     todaySales: 0,
@@ -555,53 +565,63 @@ export function useDashboardStats() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    let cancelled = false
 
-    // Listen to products for low stock
-    const productsUnsubscribe = onSnapshot(collection(db, col("products")), (snapshot) => {
-      const lowStock = snapshot.docs.filter((doc) =>
-        isLowStockFromFirestoreData(doc.data() as Record<string, unknown>)
-      ).length
-      setStats((prev) => ({ ...prev, lowStockCount: lowStock }))
-    })
+    const load = async () => {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const todayEnd = new Date(today)
+      todayEnd.setDate(todayEnd.getDate() + 1)
 
-    // Listen to customers for count and pending credit
-    const customersUnsubscribe = onSnapshot(collection(db, col("customers")), (snapshot) => {
-      const totalCredit = snapshot.docs.reduce((sum, doc) => {
-        return sum + (doc.data().balance || 0)
-      }, 0)
-      setStats((prev) => ({
-        ...prev,
-        totalCustomers: snapshot.size,
-        pendingCredit: totalCredit,
-      }))
-    })
+      try {
+        const productsSnap = await getDocs(collection(db, col("products")))
+        if (cancelled) return
 
-    const todayEnd = new Date(today)
-    todayEnd.setDate(todayEnd.getDate() + 1)
+        const lowStock = productsSnap.docs.filter((d) =>
+          isLowStockFromFirestoreData(d.data() as Record<string, unknown>)
+        ).length
 
-    // All sales: map Flutter line docs + web invoices; filter today client-side (soldAt / createdAt).
-    const salesUnsubscribe = onSnapshot(collection(db, col("sales")), (snapshot) => {
-      let todayTotal = 0
-      let revenueTotal = 0
-      snapshot.docs.forEach((doc) => {
-        const sale = saleFromFirestoreDoc(doc)
-        revenueTotal += sale.total
-        if (sale.createdAt >= today && sale.createdAt < todayEnd) {
-          todayTotal += sale.total
+        if (scope === "header") {
+          setStats((prev) => ({ ...prev, lowStockCount: lowStock }))
+          return
         }
-      })
-      setStats((prev) => ({ ...prev, todaySales: todayTotal, totalRevenue: revenueTotal }))
-      setLoading(false)
-    })
+
+        const [customersSnap, globalStats, todaySalesList] = await Promise.all([
+          getDocs(collection(db, col("customers"))),
+          fetchGlobalDashboardStats(),
+          fetchSalesInDateRange(today, todayEnd),
+        ])
+        if (cancelled) return
+
+        let totalCredit = 0
+        customersSnap.docs.forEach((d) => {
+          totalCredit += firestoreNumber(d.data().balance, 0)
+        })
+
+        const todayTotal = todaySalesList.reduce((sum, sale) => sum + sale.total, 0)
+
+        setStats({
+          lowStockCount: lowStock,
+          totalCustomers: customersSnap.size,
+          pendingCredit: totalCredit,
+          todaySales: todayTotal,
+          totalRevenue: globalStats.totalRevenue,
+        })
+      } catch (err) {
+        console.error("Dashboard stats load error:", err)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void load()
+    const intervalId = window.setInterval(() => void load(), DASHBOARD_STATS_REFRESH_MS)
 
     return () => {
-      productsUnsubscribe()
-      customersUnsubscribe()
-      salesUnsubscribe()
+      cancelled = true
+      window.clearInterval(intervalId)
     }
-  }, [accountMode])
+  }, [accountMode, scope])
 
   return { stats, loading }
 }

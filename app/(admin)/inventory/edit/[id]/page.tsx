@@ -32,7 +32,9 @@ import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
 import { normalizeProductUnit, parseMinStockInput } from "@/lib/stock"
 import { discountedUnitPrice, parseDiscountInput, clampDiscountPercent } from "@/lib/billing/line-discount"
-import type { Product } from "@/lib/types"
+import type { Product, ProductBatch } from "@/lib/types"
+import { collection, getDocs, Timestamp } from "firebase/firestore"
+import { db } from "@/lib/firebase"
 import { RACK_OPTIONS, RACK_OPTIONS_SET } from "@/lib/rack-options"
 import { STATUS_OPTIONS, STATUS_OPTIONS_SET } from "@/lib/status-options"
 import {
@@ -77,6 +79,7 @@ export default function EditProductPage({
   const [saving, setSaving] = useState(false)
   const [newCategory, setNewCategory] = useState("")
   const [showNewCategory, setShowNewCategory] = useState(false)
+  const [productBatches, setProductBatches] = useState<ProductBatch[]>([])
 
   const [formData, setFormData] = useState({
     name: "",
@@ -121,6 +124,43 @@ export default function EditProductPage({
       })
     }
   }, [product])
+
+  useEffect(() => {
+    if (!id) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const batchesSnap = await getDocs(collection(db, "products", id, "batches"))
+        if (cancelled) return
+        const batches: ProductBatch[] = batchesSnap.docs
+          .map((b) => {
+            const bd = b.data() as Record<string, unknown>
+            const expiryRaw = bd.expiryDate
+            const createdRaw = bd.createdAt
+            return {
+              id: b.id,
+              quantity: Number.isFinite(Number(bd.quantity)) ? Number(bd.quantity) : 0,
+              expiryDate:
+                expiryRaw instanceof Timestamp
+                  ? expiryRaw.toDate()
+                  : new Date(String(expiryRaw ?? "")),
+              createdAt:
+                createdRaw instanceof Timestamp
+                  ? createdRaw.toDate()
+                  : new Date(String(createdRaw ?? "")),
+            }
+          })
+          .sort((a, b) => a.expiryDate.getTime() - b.expiryDate.getTime())
+        setProductBatches(batches)
+      } catch (err) {
+        console.error("Edit product batches load error:", err)
+        if (!cancelled) setProductBatches([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [id])
 
   const handleMrpChange = (mrp: string) => {
     setFormData((prev) => {
@@ -229,8 +269,11 @@ export default function EditProductPage({
     )
   }
 
-  const batchCount = product.batches.length
-  const totalFromBatches = product.batches.reduce((s, b) => s + b.quantity, 0)
+  const batchCount = productBatches.length
+  const totalFromBatches =
+    productBatches.length > 0
+      ? productBatches.reduce((s, b) => s + b.quantity, 0)
+      : product.stock
 
   return (
     <div className="mx-auto max-w-4xl space-y-8 pb-12">
@@ -587,7 +630,7 @@ export default function EditProductPage({
                 <CardTitle className="text-lg">Batches</CardTitle>
               </CardHeader>
               <CardContent className="pt-6">
-                {product.batches.length === 0 ? (
+                {productBatches.length === 0 ? (
                   <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed py-14 text-center">
                     <Layers className="h-10 w-10 text-muted-foreground/70" />
                     <p className="font-medium text-foreground">No batches yet</p>
@@ -609,7 +652,7 @@ export default function EditProductPage({
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {product.batches.map((b) => (
+                        {productBatches.map((b) => (
                           <TableRow key={b.id} className="border-border/50 hover:bg-muted/40">
                             <TableCell className={cn(invTableCellClass, "max-w-[200px]")}>
                               <code className="block break-all rounded-md bg-muted px-2 py-1.5 font-mono text-[11px] leading-snug">

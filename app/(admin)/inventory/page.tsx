@@ -1,6 +1,8 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
+import { collection, getDocs, Timestamp } from "firebase/firestore"
+import { db } from "@/lib/firebase"
 import Link from "next/link"
 import { toast } from "sonner"
 import {
@@ -117,6 +119,10 @@ export default function InventoryPage() {
   const [bulkNewCategory, setBulkNewCategory] = useState("")
   const [bulkSaving, setBulkSaving] = useState(false)
   const [showCost, setShowCost] = useState(false)
+  const [inventoryTab, setInventoryTab] = useState<"products" | "batches">("products")
+  const [lazyBatchRows, setLazyBatchRows] = useState<BatchRow[]>([])
+  const [batchesLoading, setBatchesLoading] = useState(false)
+  const batchesLoadedRef = useRef(false)
 
   const categories = useMemo(() => {
     const cats = [...new Set(products.map((p) => p.category))]
@@ -191,17 +197,61 @@ export default function InventoryPage() {
     }
   }
 
-  const batchRows = useMemo((): BatchRow[] => {
-    const rows: BatchRow[] = []
-    for (const p of filteredProducts) {
-      for (const b of p.batches) {
-        rows.push({ batch: b, product: p })
+  useEffect(() => {
+    if (inventoryTab !== "batches" || batchesLoadedRef.current || products.length === 0) return
+
+    let cancelled = false
+    setBatchesLoading(true)
+
+    void (async () => {
+      try {
+        const rows: BatchRow[] = []
+        await Promise.all(
+          products.map(async (product) => {
+            const batchesSnap = await getDocs(collection(db, "products", product.id, "batches"))
+            batchesSnap.docs.forEach((b) => {
+              const bd = b.data() as Record<string, unknown>
+              rows.push({
+                product,
+                batch: {
+                  id: b.id,
+                  quantity: Number.isFinite(Number(bd.quantity)) ? Number(bd.quantity) : 0,
+                  expiryDate:
+                    bd.expiryDate instanceof Timestamp
+                      ? bd.expiryDate.toDate()
+                      : new Date(String(bd.expiryDate ?? "")),
+                  createdAt:
+                    bd.createdAt instanceof Timestamp
+                      ? bd.createdAt.toDate()
+                      : new Date(String(bd.createdAt ?? "")),
+                },
+              })
+            })
+          })
+        )
+        if (cancelled) return
+        rows.sort((a, b) => a.batch.expiryDate.getTime() - b.batch.expiryDate.getTime())
+        setLazyBatchRows(rows)
+        batchesLoadedRef.current = true
+      } catch (err) {
+        console.error("Inventory batches load error:", err)
+      } finally {
+        if (!cancelled) setBatchesLoading(false)
       }
+    })()
+
+    return () => {
+      cancelled = true
     }
-    return rows.sort(
-      (a, b) => a.batch.expiryDate.getTime() - b.batch.expiryDate.getTime()
-    )
-  }, [filteredProducts])
+  }, [inventoryTab, products])
+
+  const batchRows = useMemo((): BatchRow[] => {
+    if (inventoryTab !== "batches") return []
+    const allowed = new Set(filteredProducts.map((p) => p.id))
+    return lazyBatchRows
+      .filter((row) => allowed.has(row.product.id))
+      .sort((a, b) => a.batch.expiryDate.getTime() - b.batch.expiryDate.getTime())
+  }, [filteredProducts, inventoryTab, lazyBatchRows])
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
@@ -214,7 +264,14 @@ export default function InventoryPage() {
   const shortenId = (id: string) =>
     id.length <= 10 ? id : `${id.slice(0, 4)}…${id.slice(-4)}`
 
-  const nextExpiryDate = (product: Product) => product.batches[0]?.expiryDate
+  const nextExpiryDate = (product: Product) => {
+    if (product.batches[0]?.expiryDate) return product.batches[0].expiryDate
+    if (product.expiry) {
+      const d = new Date(product.expiry)
+      if (!Number.isNaN(d.getTime())) return d
+    }
+    return undefined
+  }
 
   const getStockBadge = (product: Product) => {
     if (product.stock === 0) {
@@ -376,7 +433,11 @@ export default function InventoryPage() {
             </div>
           </div>
 
-          <Tabs defaultValue="products" className="w-full">
+          <Tabs
+            value={inventoryTab}
+            onValueChange={(v) => setInventoryTab(v as "products" | "batches")}
+            className="w-full"
+          >
             <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl bg-muted/60 p-1.5 sm:inline-flex sm:w-auto">
               <TabsTrigger
@@ -517,13 +578,19 @@ export default function InventoryPage() {
                               <span className="ml-1 text-muted-foreground">{product.unit}</span>
                             </TableCell>
                             <TableCell className={cn(invTableCellClass, "text-center")}>
-                              {product.batches.length > 0 ? (
-                                <Badge variant="secondary" className="tabular-nums font-semibold">
-                                  {product.batches.length}
-                                </Badge>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">—</span>
-                              )}
+                              {(() => {
+                                const count =
+                                  inventoryTab === "batches"
+                                    ? batchRows.filter((r) => r.product.id === product.id).length
+                                    : product.batches.length
+                                return count > 0 ? (
+                                  <Badge variant="secondary" className="tabular-nums font-semibold">
+                                    {count}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">—</span>
+                                )
+                              })()}
                             </TableCell>
                             <TableCell className={cn(invTableCellClass, "hidden sm:table-cell")}>
                               {next ? (
@@ -573,6 +640,11 @@ export default function InventoryPage() {
             </TabsContent>
 
             <TabsContent value="batches" className="mt-0 focus-visible:outline-none">
+              {batchesLoading ? (
+                <div className="flex h-40 items-center justify-center text-muted-foreground">
+                  Loading batches…
+                </div>
+              ) : null}
               <div className={inventoryTableFrameClassName()}>
                 <Table>
                   <TableHeader>

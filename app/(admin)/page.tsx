@@ -1,6 +1,10 @@
 "use client"
 
-import { useDashboardStats, useProducts, useSales } from "@/hooks/use-firestore"
+import { useEffect, useState } from "react"
+import { subDays, startOfDay } from "date-fns"
+import { useDashboardStats, useProducts } from "@/hooks/use-firestore"
+import { fetchSalesSince } from "@/lib/features/sales/services/sales_query_service"
+import type { Sale } from "@/lib/types"
 import { StatsCards } from "@/components/dashboard/stats-cards"
 import { RevenueChart } from "@/components/dashboard/revenue-chart"
 import { CategoryChart } from "@/components/dashboard/category-chart"
@@ -9,9 +13,26 @@ import { LowStockAlert } from "@/components/dashboard/low-stock-alert"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export default function DashboardPage() {
-  const { stats, loading: statsLoading } = useDashboardStats()
+  const { stats, loading: statsLoading } = useDashboardStats({ scope: "full" })
   const { products, loading: productsLoading } = useProducts()
-  const { sales, loading: salesLoading } = useSales()
+  const [sales, setSales] = useState<Sale[]>([])
+  const [salesLoading, setSalesLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    const since = startOfDay(subDays(new Date(), 7))
+    fetchSalesSince(since, 500)
+      .then((items) => {
+        if (!cancelled) setSales(items)
+      })
+      .catch((err) => console.error("Dashboard chart sales load error:", err))
+      .finally(() => {
+        if (!cancelled) setSalesLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const loading = statsLoading || productsLoading || salesLoading
 

@@ -1,4 +1,4 @@
-import { db } from "@/lib/firebase"
+﻿import { db } from "@/lib/firebase"
 import { generateOnlineBillNo } from "@/lib/features/sales/bill-no"
 import { firestoreNumber, getBarcodeLookupCandidates, normalizeScannedBarcode, findCachedProductByBarcode, liveSessionItemQuantity, type BarcodeProductRef } from "@/lib/stock"
 import {
@@ -25,6 +25,7 @@ import {
   Timestamp,
   increment,
 } from "firebase/firestore"
+import { applyGlobalDashboardStatsIncrement } from "@/lib/features/dashboard/services/dashboard_aggregate_service"
 import type { DocumentReference } from "firebase/firestore"
 import { accountScopedKey, col } from "@/lib/account-mode"
 
@@ -54,6 +55,7 @@ export interface CompleteSessionResult {
   completedItems: number
   salesWritten: number
   billNo?: string
+  saleId?: string
 }
 
 export const ADMIN_SCAN_SESSION_STORAGE_KEY = "samrat_admin_scan_session_id"
@@ -165,6 +167,7 @@ export async function writeSaleFromLineItems(input: {
   customer?: CheckoutCustomerInfo
   source?: string
   billNo?: string
+  saleId?: string
   paymentMethod?: "cash" | "upi"
 }): Promise<CompleteSessionResult> {
   const soldAt = new Date().toISOString()
@@ -237,7 +240,7 @@ export async function writeSaleFromLineItems(input: {
   }
 }
 
-/** Reuse one active scanner session per browser tab — avoids duplicate sessions on re-open / Strict Mode. */
+/** Reuse one active scanner session per browser tab â€” avoids duplicate sessions on re-open / Strict Mode. */
 
 function normalizeBillingPhone(phone: string): string {
   const digits = phone.replace(/\D/g, "")
@@ -294,7 +297,7 @@ async function ensureCustomerForBilling(
   }
 }
 
-/** Reuse one active scanner session per browser tab — avoids duplicate sessions on re-open / Strict Mode. */
+/** Reuse one active scanner session per browser tab â€” avoids duplicate sessions on re-open / Strict Mode. */
 export async function getOrCreateScannerBillingSession(cashierLabel?: string): Promise<string> {
   if (typeof window !== "undefined") {
     const stored = sessionStorage.getItem(scanSessionStorageKey())
@@ -344,6 +347,30 @@ export async function completeLiveBillingSession(
   }
 
   const liveData = liveSnap.data() as Record<string, unknown>
+  const existingSaleId = String(liveData.saleId ?? "").trim()
+  if (existingSaleId) {
+    const saleSnap = await getDoc(doc(db, col("sales"), existingSaleId))
+    const savedTotal = saleSnap.exists()
+      ? firestoreNumber(saleSnap.data()?.total, 0)
+      : 0
+    if (liveData.globalStatsApplied !== true && savedTotal > 0) {
+      try {
+        await applyGlobalDashboardStatsIncrement(sessionId, savedTotal)
+      } catch (aggregateErr) {
+        console.error(
+          "[DashboardAggregate] Bill already saved; global stats increment retry failed â€” reconcile later:",
+          aggregateErr
+        )
+      }
+    }
+    return {
+      completedItems: 0,
+      salesWritten: 0,
+      billNo: typeof liveData.billNo === "string" ? liveData.billNo : undefined,
+      saleId: existingSaleId,
+    }
+  }
+
   const itemsSnap = await getDocs(collection(db, col("live_sessions"), sessionId, "items"))
 
   const lineItems: LiveBillingLineItem[] = []
@@ -382,9 +409,28 @@ export async function completeLiveBillingSession(
       customerPhone,
       ...(customer?.customerId ? { customerId: customer.customerId } : {}),
       ...(customer?.customerName ? { customerName: customer.customerName } : {}),
+      ...(result.saleId ? { saleId: result.saleId } : {}),
+      ...(result.billNo ? { billNo: result.billNo } : {}),
     })
   } catch (sessionErr) {
     console.error("Sale written but session status update failed:", sessionErr)
+  }
+
+  if (result.salesWritten > 0 && result.saleId) {
+    const saleSnap = await getDoc(doc(db, col("sales"), result.saleId))
+    const savedTotal = saleSnap.exists()
+      ? firestoreNumber(saleSnap.data()?.total, 0)
+      : 0
+    if (savedTotal > 0) {
+      try {
+        await applyGlobalDashboardStatsIncrement(sessionId, savedTotal)
+      } catch (aggregateErr) {
+        console.error(
+          "[DashboardAggregate] Bill saved but global stats increment failed â€” reconcile later:",
+          aggregateErr
+        )
+      }
+    }
   }
 
   clearAdminScanSessionStorage()
@@ -489,8 +535,21 @@ async function findSessionItemRef(
   }
   if (candidates.size === 0) return null
 
-  const itemsSnap = await getDocs(collection(db, col("live_sessions"), sessionId, "items"))
+  // Fast path: admin scanner uses doc id derived from barcode (1 read vs entire items subcollection).
+  for (const candidate of candidates) {
+    const directRef = doc(
+      db,
+      col("live_sessions"),
+      sessionId,
+      "items",
+      toSessionItemDocId(candidate)
+    )
+    const directSnap = await getDoc(directRef)
+    if (directSnap.exists()) return directRef
+  }
 
+  // Slow path: legacy/mobile sessions may use non-standard item doc ids.
+  const itemsSnap = await getDocs(collection(db, col("live_sessions"), sessionId, "items"))
   for (const itemDoc of itemsSnap.docs) {
     const data = itemDoc.data() as Record<string, unknown>
     const barcodesToCheck = [String(data.barcode ?? ""), itemDoc.id]
@@ -577,7 +636,7 @@ function newManualItemDocId(): string {
   return `manual_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`.replace(/[/\\]/g, "_")
 }
 
-/** Add a custom line item (not from inventory scan) — e.g. misc / other products. */
+/** Add a custom line item (not from inventory scan) â€” e.g. misc / other products. */
 export async function addManualItemToSession(
   sessionId: string,
   input: { name: string; quantity: number; price: number; discountPercent?: number }
@@ -617,7 +676,7 @@ export async function removeItemFromSession(sessionId: string, itemDocId: string
   await deleteDoc(doc(db, col("live_sessions"), sessionId, "items", itemDocId))
 }
 
-/** Set line quantity manually (both `quantity` and `qty` for mobile compatibility). Removes line if qty ≤ 0. */
+/** Set line quantity manually (both `quantity` and `qty` for mobile compatibility). Removes line if qty â‰¤ 0. */
 export async function updateSessionItemQuantity(
   sessionId: string,
   itemDocId: string,
@@ -651,7 +710,7 @@ export async function updateSessionItemPrice(
   })
 }
 
-/** Apply per-line discount % (0–100) on the active bill. */
+/** Apply per-line discount % (0â€“100) on the active bill. */
 export async function updateSessionItemDiscount(
   sessionId: string,
   itemDocId: string,

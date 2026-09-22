@@ -20,7 +20,8 @@ export function usePosScanner({
   scanItem,
 }: {
   sessionId: string | null
-  productCache: BarcodeProductRef[]
+  /** Optional in-memory cache; billing scans use direct Firestore barcode queries when omitted. */
+  productCache?: BarcodeProductRef[]
   enabled?: boolean
   scanItem?: (
     sessionId: string,
@@ -31,11 +32,11 @@ export function usePosScanner({
   const inputRef = useRef<HTMLInputElement>(null)
   const queueRef = useRef<string[]>([])
   const processingRef = useRef(false)
-  const productCacheRef = useRef(productCache)
+  const productCacheRef = useRef(productCache ?? [])
   const sessionIdRef = useRef(sessionId)
   const enabledRef = useRef(enabled)
 
-  productCacheRef.current = productCache
+  productCacheRef.current = productCache ?? []
   sessionIdRef.current = sessionId
   enabledRef.current = enabled
 

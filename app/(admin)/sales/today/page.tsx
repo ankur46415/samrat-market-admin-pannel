@@ -1,9 +1,9 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { format, isToday } from "date-fns"
+import { format } from "date-fns"
 import { TrendingUp, Receipt, CreditCard, Banknote, Smartphone, Search } from "lucide-react"
-import { useSales } from "@/hooks/use-firestore"
+import { useTodaySales } from "@/hooks/use-today-sales"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -30,17 +30,13 @@ import type { Sale } from "@/lib/types"
 import { saleMatchesPhoneFilter, saleMatchesSearch, salePhone } from "@/lib/sales-filter"
 
 export default function TodaySalesPage() {
-  const { sales, loading } = useSales()
+  const { sales: todaySales, loading } = useTodaySales()
   const [search, setSearch] = useState("")
   const [phoneFilter, setPhoneFilter] = useState("")
   const [paymentFilter, setPaymentFilter] = useState<string>("all")
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
   const [detailDialogOpen, setDetailDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
-
-  const todaySales = useMemo(() => {
-    return sales.filter((sale) => isToday(sale.createdAt))
-  }, [sales])
 
   const filteredTodaySales = useMemo(() => {
     return todaySales.filter((sale) => {

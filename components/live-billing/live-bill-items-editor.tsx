@@ -14,7 +14,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useProducts } from "@/hooks/use-firestore"
 import { normalizeScannedBarcode } from "@/lib/stock"
 import { lineItemAmount } from "@/lib/billing/line-discount"
 import {
@@ -51,21 +50,11 @@ export function LiveBillItemsEditor({
   loading?: boolean
   editable?: boolean
 }) {
-  const { products } = useProducts()
   const scanInputRef = useRef<HTMLInputElement>(null)
   const scanningRef = useRef(false)
   const [scanValue, setScanValue] = useState("")
   const [adding, setAdding] = useState(false)
   const [removingId, setRemovingId] = useState<string | null>(null)
-
-  const productCache = products.map((p) => ({
-    id: p.id,
-    name: p.name,
-    price: p.price,
-    barcode: p.barcode,
-    mrp: p.mrp,
-    barcodeKeys: p.barcodeKeys,
-  }))
 
   const focusScanInput = useCallback(() => {
     setTimeout(() => scanInputRef.current?.focus(), 30)
@@ -88,7 +77,7 @@ export function LiveBillItemsEditor({
     setScanValue("")
 
     try {
-      const item = await scanItemIntoSession(sessionId, barcode, productCache)
+      const item = await scanItemIntoSession(sessionId, barcode)
       toast.success(`${item.name} — qty ${item.quantity}`)
     } catch (e) {
       console.error(e)
