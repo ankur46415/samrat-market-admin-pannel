@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, use } from "react"
+import { useState, useEffect, useMemo, useRef, use } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Layers, Package, Box } from "lucide-react"
@@ -33,7 +33,7 @@ import { toast } from "sonner"
 import { normalizeProductUnit, parseMinStockInput } from "@/lib/stock"
 import { discountedUnitPrice, parseDiscountInput, clampDiscountPercent } from "@/lib/billing/line-discount"
 import type { Product, ProductBatch } from "@/lib/types"
-import { collection, doc, getDocs, Timestamp, updateDoc } from "firebase/firestore"
+import { collection, getDocs, Timestamp } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { RACK_OPTIONS, RACK_OPTIONS_SET } from "@/lib/rack-options"
 import { STATUS_OPTIONS, STATUS_OPTIONS_SET } from "@/lib/status-options"
@@ -46,6 +46,8 @@ import {
 import { cn } from "@/lib/utils"
 import { CreatableSearchSelect } from "@/components/inventory/creatable-search-select"
 import { uniqueBrandsFromProducts, uniqueTagsFromProducts } from "@/lib/inventory-field-options"
+import { batchQuantitiesForTarget, syncProductStockWithBatches } from "@/lib/inventory/sync-product-stock-batches"
+import { col } from "@/lib/account-mode"
 
 const labelClass = "text-sm font-medium text-foreground"
 const inputClass = "h-11 rounded-lg border-border/80 shadow-sm"
@@ -105,9 +107,14 @@ export default function EditProductPage({
 
   const brandOptions = useMemo(() => uniqueBrandsFromProducts(products), [products])
   const tagOptions = useMemo(() => uniqueTagsFromProducts(products), [products])
+  const formHydratedForId = useRef<string | null>(null)
+  const batchesHydratedForId = useRef<string | null>(null)
 
   useEffect(() => {
     if (product) {
+      if (formHydratedForId.current === product.id) return
+      formHydratedForId.current = product.id
+      batchesHydratedForId.current = null
       const mrpStr = product.mrp != null && product.mrp > 0 ? String(product.mrp) : ""
       setFormData({
         name: product.name || "",
@@ -137,7 +144,7 @@ export default function EditProductPage({
     let cancelled = false
     void (async () => {
       try {
-        const batchesSnap = await getDocs(collection(db, "products", id, "batches"))
+        const batchesSnap = await getDocs(collection(db, col("products"), id, "batches"))
         if (cancelled) return
         const batches: ProductBatch[] = batchesSnap.docs
           .map((b) => {
@@ -168,6 +175,14 @@ export default function EditProductPage({
       cancelled = true
     }
   }, [id])
+
+  useEffect(() => {
+    if (!id || productBatches.length === 0) return
+    if (batchesHydratedForId.current === id) return
+    batchesHydratedForId.current = id
+    const total = productBatches.reduce((s, b) => s + b.quantity, 0)
+    setFormData((prev) => ({ ...prev, stock: String(total) }))
+  }, [id, productBatches])
 
   const handleMrpChange = (mrp: string) => {
     setFormData((prev) => {
@@ -246,33 +261,25 @@ export default function EditProductPage({
       const disc = parseDiscountInput(formData.discountPercent) ?? 0
       updatePayload.discountPercent = disc
 
-      await updateProduct(id, updatePayload as Partial<Product>)
-
       if (productBatches.length > 0) {
         const currentTotal = productBatches.reduce((s, b) => s + b.quantity, 0)
         if (currentTotal !== newStock) {
-          const sorted = [...productBatches].sort(
-            (a, b) => a.expiryDate.getTime() - b.expiryDate.getTime()
+          const syncedStock = await syncProductStockWithBatches(
+            db,
+            id,
+            productBatches,
+            newStock,
+            col("products")
           )
-          if (sorted.length === 1) {
-            await updateDoc(doc(db, "products", id, "batches", sorted[0].id), {
-              quantity: newStock,
-            })
-          } else {
-            const last = sorted[sorted.length - 1]
-            const delta = newStock - currentTotal
-            const newLastQty = Math.max(0, last.quantity + delta)
-            await updateDoc(doc(db, "products", id, "batches", last.id), {
-              quantity: newLastQty,
-            })
-            const finalStock =
-              sorted.slice(0, -1).reduce((s, b) => s + b.quantity, 0) + newLastQty
-            if (finalStock !== newStock) {
-              await updateProduct(id, { stock: finalStock })
-            }
-          }
+          updatePayload.stock = syncedStock
+          const qtyMap = batchQuantitiesForTarget(productBatches, syncedStock)
+          setProductBatches((prev) =>
+            prev.map((b) => ({ ...b, quantity: qtyMap.get(b.id) ?? b.quantity }))
+          )
         }
       }
+
+      await updateProduct(id, updatePayload as Partial<Product>)
 
       toast.success("Product updated successfully")
       router.push("/inventory")

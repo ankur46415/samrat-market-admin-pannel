@@ -218,7 +218,11 @@ export function useProducts() {
                     })
                     batchList.sort((a, b) => a.expiryDate.getTime() - b.expiryDate.getTime())
                     const totalStock = batchList.reduce((sum, b) => sum + b.quantity, 0)
-                    return productFromData(docSnap.id, { ...data, __totalStock: totalStock, __batches: batchList })
+                    const enriched =
+                      batchList.length > 0
+                        ? { ...data, __totalStock: totalStock, __batches: batchList }
+                        : { ...data, __batches: batchList }
+                    return productFromData(docSnap.id, enriched)
                   } catch {
                     return productFromData(docSnap.id, data)
                   }
