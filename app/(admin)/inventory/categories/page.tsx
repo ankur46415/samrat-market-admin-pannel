@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { useCategories, useProducts } from "@/hooks/use-firestore"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,22 +10,19 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { Loader2, Package, Pencil, Plus, Trash2 } from "lucide-react"
 
 export default function CategoriesPage() {
@@ -36,8 +33,17 @@ export default function CategoriesPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ name: string; productCount: number } | null>(
     null
   )
+  const [moveToCategory, setMoveToCategory] = useState("")
   const [nameDraft, setNameDraft] = useState("")
   const [saving, setSaving] = useState(false)
+
+  const swapCategoryOptions = useMemo(() => {
+    if (!deleteTarget) return []
+    return categories
+      .map((c) => c.name)
+      .filter((name) => name !== deleteTarget.name)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+  }, [categories, deleteTarget])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -99,21 +105,40 @@ export default function CategoriesPage() {
 
   const openDelete = (name: string, productCount: number) => {
     setDeleteTarget({ name, productCount })
+    setMoveToCategory("")
+  }
+
+  const closeDelete = () => {
+    setDeleteTarget(null)
+    setMoveToCategory("")
   }
 
   const handleDelete = async () => {
     if (!deleteTarget) return
     setSaving(true)
     try {
-      await deleteCategory(deleteTarget.name)
-      toast.success(`Category "${deleteTarget.name}" deleted`)
-      setDeleteTarget(null)
+      const movedCount = await deleteCategory(
+        deleteTarget.name,
+        deleteTarget.productCount > 0 ? moveToCategory : undefined
+      )
+      if (movedCount && movedCount > 0) {
+        toast.success(
+          `Moved ${movedCount} product${movedCount === 1 ? "" : "s"} to "${moveToCategory.trim()}" and deleted "${deleteTarget.name}"`
+        )
+      } else {
+        toast.success(`Category "${deleteTarget.name}" deleted`)
+      }
+      closeDelete()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to delete category")
     } finally {
       setSaving(false)
     }
   }
+
+  const deleteNeedsSwap = (deleteTarget?.productCount ?? 0) > 0
+  const canConfirmDelete =
+    !deleteNeedsSwap || (moveToCategory.trim().length > 0 && swapCategoryOptions.length > 0)
 
   if (loading) {
     return (
@@ -238,45 +263,63 @@ export default function CategoriesPage() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog
-        open={deleteTarget != null}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete category</AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteTarget?.productCount ? (
-                <>
-                  &ldquo;{deleteTarget.name}&rdquo; has {deleteTarget.productCount} product
-                  {deleteTarget.productCount === 1 ? "" : "s"}. Rename those products to another
-                  category first, then delete.
-                </>
-              ) : (
-                <>
-                  Delete &ldquo;{deleteTarget?.name}&rdquo;? This cannot be undone.
-                </>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
-            {deleteTarget?.productCount === 0 ? (
-              <AlertDialogAction
-                onClick={(e) => {
-                  e.preventDefault()
-                  void handleDelete()
-                }}
-                disabled={saving}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              >
-                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Delete
-              </AlertDialogAction>
-            ) : null}
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <Dialog open={deleteTarget != null} onOpenChange={(open) => !open && closeDelete()}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete category</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            {deleteNeedsSwap ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  &ldquo;{deleteTarget?.name}&rdquo; me {deleteTarget?.productCount} product
+                  {deleteTarget?.productCount === 1 ? "" : "s"} hain. Neeche jo category choose
+                  karoge, <span className="font-medium text-foreground">saare products apne aap</span>{" "}
+                  us category me shift ho jayenge, phir yeh category delete ho jayegi.
+                </p>
+                {swapCategoryOptions.length > 0 ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="move-products-category">Saare products is category me bhejo</Label>
+                    <Select value={moveToCategory} onValueChange={setMoveToCategory}>
+                      <SelectTrigger id="move-products-category" className="w-full">
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {swapCategoryOptions.map((name) => (
+                          <SelectItem key={name} value={name}>
+                            {name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <p className="text-sm text-destructive">
+                    Create another category first — there is nowhere to move these products.
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Delete &ldquo;{deleteTarget?.name}&rdquo;? This cannot be undone.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDelete} disabled={saving}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void handleDelete()}
+              disabled={saving || !canConfirmDelete}
+            >
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {deleteNeedsSwap ? "Shift products & delete" : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={renameFrom != null} onOpenChange={(open) => !open && setRenameFrom(null)}>
         <DialogContent className="max-w-sm">

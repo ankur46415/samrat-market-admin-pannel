@@ -755,25 +755,37 @@ export function useCategories() {
   )
 
   const deleteCategory = useCallback(
-    async (categoryName: string) => {
+    async (categoryName: string, moveProductsTo?: string) => {
       const name = categoryName.trim()
       if (!name) throw new Error("Category not found")
 
-      const productCount = products.filter((p) => (p.category ?? "").trim() === name).length
-      if (productCount > 0) {
-        throw new Error(
-          `Cannot delete "${name}" — ${productCount} product(s) still use this category. Rename or reassign them first.`
+      const productIds = products
+        .filter((p) => (p.category ?? "").trim().toLowerCase() === name.toLowerCase())
+        .map((p) => p.id)
+
+      if (productIds.length > 0) {
+        const target = (moveProductsTo ?? "").trim()
+        if (!target) {
+          throw new Error("Select a category to move products into before deleting")
+        }
+        if (target.toLowerCase() === name.toLowerCase()) {
+          throw new Error("Choose a different category to move products into")
+        }
+        await bulkUpdateProductCategory(productIds, target)
+      }
+
+      const matchingDocs = stored.filter(
+        (c) => c.name.trim().toLowerCase() === name.toLowerCase()
+      )
+      if (matchingDocs.length > 0) {
+        await Promise.all(
+          matchingDocs.map((c) => deleteDoc(doc(db, col("product_categories"), c.id)))
         )
       }
 
-      const matchingDocs = stored.filter((c) => c.name === name)
-      if (matchingDocs.length === 0) return
-
-      await Promise.all(
-        matchingDocs.map((c) => deleteDoc(doc(db, col("product_categories"), c.id)))
-      )
+      return productIds.length
     },
-    [products, stored]
+    [bulkUpdateProductCategory, products, stored]
   )
 
   return {
