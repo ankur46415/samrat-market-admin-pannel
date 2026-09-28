@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, use } from "react"
+import { useState, useEffect, useMemo, use } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Layers, Package, Box } from "lucide-react"
@@ -33,7 +33,7 @@ import { toast } from "sonner"
 import { normalizeProductUnit, parseMinStockInput } from "@/lib/stock"
 import { discountedUnitPrice, parseDiscountInput, clampDiscountPercent } from "@/lib/billing/line-discount"
 import type { Product, ProductBatch } from "@/lib/types"
-import { collection, getDocs, Timestamp } from "firebase/firestore"
+import { collection, doc, getDocs, Timestamp, updateDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { RACK_OPTIONS, RACK_OPTIONS_SET } from "@/lib/rack-options"
 import { STATUS_OPTIONS, STATUS_OPTIONS_SET } from "@/lib/status-options"
@@ -44,6 +44,8 @@ import {
   invTableCellNumeric,
 } from "@/lib/inventory-ui"
 import { cn } from "@/lib/utils"
+import { CreatableSearchSelect } from "@/components/inventory/creatable-search-select"
+import { uniqueBrandsFromProducts, uniqueTagsFromProducts } from "@/lib/inventory-field-options"
 
 const labelClass = "text-sm font-medium text-foreground"
 const inputClass = "h-11 rounded-lg border-border/80 shadow-sm"
@@ -96,9 +98,13 @@ export default function EditProductPage({
     brand: "",
     expiry: "",
     minStock: "10",
+    stock: "0",
   })
 
   const product = products.find((p) => p.id === id)
+
+  const brandOptions = useMemo(() => uniqueBrandsFromProducts(products), [products])
+  const tagOptions = useMemo(() => uniqueTagsFromProducts(products), [products])
 
   useEffect(() => {
     if (product) {
@@ -121,6 +127,7 @@ export default function EditProductPage({
         brand: product.brand || "",
         expiry: product.expiry || "",
         minStock: String(product.minStock),
+        stock: String(product.stock),
       })
     }
   }, [product])
@@ -204,6 +211,9 @@ export default function EditProductPage({
       return
     }
 
+    const stockNum = parseInt(formData.stock, 10)
+    const newStock = Number.isFinite(stockNum) && stockNum >= 0 ? stockNum : 0
+
     setSaving(true)
 
     try {
@@ -211,12 +221,13 @@ export default function EditProductPage({
         name: formData.name,
         category,
         rack: formData.rack,
-        tag: formData.tag,
+        tag: formData.tag.trim(),
         status: formData.status,
         price: parseFloat(formData.price),
         costPrice: parseFloat(formData.costPrice),
         unit: normalizeProductUnit(formData.unit),
         minStock: parseMinStockInput(formData.minStock, 10),
+        stock: newStock,
       }
 
       if (formData.barcode) {
@@ -236,6 +247,32 @@ export default function EditProductPage({
       updatePayload.discountPercent = disc
 
       await updateProduct(id, updatePayload as Partial<Product>)
+
+      if (productBatches.length > 0) {
+        const currentTotal = productBatches.reduce((s, b) => s + b.quantity, 0)
+        if (currentTotal !== newStock) {
+          const sorted = [...productBatches].sort(
+            (a, b) => a.expiryDate.getTime() - b.expiryDate.getTime()
+          )
+          if (sorted.length === 1) {
+            await updateDoc(doc(db, "products", id, "batches", sorted[0].id), {
+              quantity: newStock,
+            })
+          } else {
+            const last = sorted[sorted.length - 1]
+            const delta = newStock - currentTotal
+            const newLastQty = Math.max(0, last.quantity + delta)
+            await updateDoc(doc(db, "products", id, "batches", last.id), {
+              quantity: newLastQty,
+            })
+            const finalStock =
+              sorted.slice(0, -1).reduce((s, b) => s + b.quantity, 0) + newLastQty
+            if (finalStock !== newStock) {
+              await updateProduct(id, { stock: finalStock })
+            }
+          }
+        }
+      }
 
       toast.success("Product updated successfully")
       router.push("/inventory")
@@ -364,22 +401,26 @@ export default function EditProductPage({
                     <Label htmlFor="brand" className={labelClass}>
                       Brand <span className="font-normal text-muted-foreground">(optional)</span>
                     </Label>
-                    <Input
+                    <CreatableSearchSelect
                       id="brand"
                       value={formData.brand}
-                      onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                      className={inputClass}
+                      onChange={(brand) => setFormData({ ...formData, brand })}
+                      options={brandOptions}
+                      placeholder="Brand name"
+                      inputClassName={inputClass}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="tag" className={labelClass}>
                       Tag
                     </Label>
-                    <Input
+                    <CreatableSearchSelect
                       id="tag"
                       value={formData.tag}
-                      onChange={(e) => setFormData({ ...formData, tag: e.target.value })}
-                      className={inputClass}
+                      onChange={(tag) => setFormData({ ...formData, tag })}
+                      options={tagOptions}
+                      placeholder="Tag"
+                      inputClassName={inputClass}
                     />
                   </div>
                   <div className="space-y-2">
@@ -584,17 +625,25 @@ export default function EditProductPage({
                         required
                       />
                     </div>
-                    <div className="space-y-2 sm:col-span-2 lg:col-span-2">
-                      <Label className={labelClass}>Total stock</Label>
-                      <div className="rounded-lg border border-border/80 bg-muted/30 px-4 py-3 text-sm">
-                        <span className="font-semibold tabular-nums">{product.stock}</span> {product.unit}
-                        {batchCount > 0 ? (
-                          <>
-                            {" "}
-                            · <span className="font-semibold">{batchCount}</span> batch{batchCount === 1 ? "" : "es"}
-                          </>
-                        ) : null}
-                      </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="stock" className={labelClass}>
+                        Total stock
+                      </Label>
+                      <Input
+                        id="stock"
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={formData.stock}
+                        onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                        className={cn(inputClass, "tabular-nums")}
+                      />
+                      {batchCount > 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          {batchCount} batch{batchCount === 1 ? "" : "es"} — saving adjusts the latest expiry batch
+                          when total changes.
+                        </p>
+                      ) : null}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="minStock" className={labelClass}>

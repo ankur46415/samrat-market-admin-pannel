@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, ImagePlus, Package, Layers, X } from "lucide-react"
@@ -30,6 +30,8 @@ import {
   uploadProductImage,
   validateProductImageFile,
 } from "@/lib/features/inventory/services/product_image_service"
+import { CreatableSearchSelect } from "@/components/inventory/creatable-search-select"
+import { uniqueBrandsFromProducts, uniqueTagsFromProducts } from "@/lib/inventory-field-options"
 
 const labelClass = "text-sm font-medium text-foreground"
 const inputClass = "h-11 rounded-lg border-border/80 shadow-sm"
@@ -44,8 +46,10 @@ function sellingPriceFromMrp(mrp: string, discountPercent: string): string | nul
 
 export default function AddProductPage() {
   const router = useRouter()
-  const { addProduct, getProductByBarcode, updateProduct } = useProducts()
+  const { products, addProduct, getProductByBarcode, updateProduct } = useProducts()
   const { categories } = useCategories()
+  const brandOptions = useMemo(() => uniqueBrandsFromProducts(products), [products])
+  const tagOptions = useMemo(() => uniqueTagsFromProducts(products), [products])
   const [loading, setLoading] = useState(false)
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
@@ -300,12 +304,13 @@ export default function AddProductPage() {
                     <Label htmlFor="brand" className={labelClass}>
                       Brand <span className="font-normal text-muted-foreground">(optional)</span>
                     </Label>
-                    <Input
+                    <CreatableSearchSelect
                       id="brand"
-                      placeholder="e.g. Parle"
                       value={formData.brand}
-                      onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                      className={inputClass}
+                      onChange={(brand) => setFormData({ ...formData, brand })}
+                      options={brandOptions}
+                      placeholder="e.g. Parle"
+                      inputClassName={inputClass}
                     />
                   </div>
 
@@ -374,12 +379,13 @@ export default function AddProductPage() {
                     <Label htmlFor="tag" className={labelClass}>
                       Tag
                     </Label>
-                    <Input
+                    <CreatableSearchSelect
                       id="tag"
-                      placeholder="e.g. Fast Moving"
                       value={formData.tag}
-                      onChange={(e) => setFormData({ ...formData, tag: e.target.value })}
-                      className={inputClass}
+                      onChange={(tag) => setFormData({ ...formData, tag })}
+                      options={tagOptions}
+                      placeholder="e.g. Fast Moving"
+                      inputClassName={inputClass}
                     />
                   </div>
 
