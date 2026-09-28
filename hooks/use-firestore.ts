@@ -754,11 +754,34 @@ export function useCategories() {
     [bulkUpdateProductCategory, hasCategoryName, products, stored]
   )
 
+  const deleteCategory = useCallback(
+    async (categoryName: string) => {
+      const name = categoryName.trim()
+      if (!name) throw new Error("Category not found")
+
+      const productCount = products.filter((p) => (p.category ?? "").trim() === name).length
+      if (productCount > 0) {
+        throw new Error(
+          `Cannot delete "${name}" — ${productCount} product(s) still use this category. Rename or reassign them first.`
+        )
+      }
+
+      const matchingDocs = stored.filter((c) => c.name === name)
+      if (matchingDocs.length === 0) return
+
+      await Promise.all(
+        matchingDocs.map((c) => deleteDoc(doc(db, col("product_categories"), c.id)))
+      )
+    },
+    [products, stored]
+  )
+
   return {
     categories,
     loading: productsLoading || storedLoading,
     addCategory,
     renameCategory,
+    deleteCategory,
   }
 }
 

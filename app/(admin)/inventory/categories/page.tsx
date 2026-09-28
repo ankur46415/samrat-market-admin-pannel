@@ -16,13 +16,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Loader2, Package, Pencil, Plus } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Loader2, Package, Pencil, Plus, Trash2 } from "lucide-react"
 
 export default function CategoriesPage() {
-  const { categories, loading, addCategory, renameCategory } = useCategories()
+  const { categories, loading, addCategory, renameCategory, deleteCategory } = useCategories()
   const { products } = useProducts()
   const [createOpen, setCreateOpen] = useState(false)
   const [renameFrom, setRenameFrom] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ name: string; productCount: number } | null>(
+    null
+  )
   const [nameDraft, setNameDraft] = useState("")
   const [saving, setSaving] = useState(false)
 
@@ -79,6 +92,24 @@ export default function CategoriesPage() {
       setNameDraft("")
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to rename category")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const openDelete = (name: string, productCount: number) => {
+    setDeleteTarget({ name, productCount })
+  }
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    setSaving(true)
+    try {
+      await deleteCategory(deleteTarget.name)
+      toast.success(`Category "${deleteTarget.name}" deleted`)
+      setDeleteTarget(null)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete category")
     } finally {
       setSaving(false)
     }
@@ -150,6 +181,16 @@ export default function CategoriesPage() {
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
+                        onClick={() => openDelete(category.name, category.productCount)}
+                        title="Delete category"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 </CardHeader>
@@ -196,6 +237,46 @@ export default function CategoriesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={deleteTarget != null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete category</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget?.productCount ? (
+                <>
+                  &ldquo;{deleteTarget.name}&rdquo; has {deleteTarget.productCount} product
+                  {deleteTarget.productCount === 1 ? "" : "s"}. Rename those products to another
+                  category first, then delete.
+                </>
+              ) : (
+                <>
+                  Delete &ldquo;{deleteTarget?.name}&rdquo;? This cannot be undone.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
+            {deleteTarget?.productCount === 0 ? (
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault()
+                  void handleDelete()
+                }}
+                disabled={saving}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Delete
+              </AlertDialogAction>
+            ) : null}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={renameFrom != null} onOpenChange={(open) => !open && setRenameFrom(null)}>
         <DialogContent className="max-w-sm">
