@@ -1,6 +1,11 @@
 import { db } from "@/lib/firebase"
 
 import { generateOnlineBillNo } from "@/lib/features/sales/bill-no"
+import {
+  DRAFT_BILLING_BLOCKED_MESSAGE,
+  deductDraftStockByBarcode,
+  isDraftBillableStatus,
+} from "@/lib/features/inventory/services/draft_product_service"
 
 import {
   firestoreNumber,
@@ -151,9 +156,16 @@ async function deductStockForLineItem(
     }
 
     if (!productDoc) {
-      console.warn(
-        `[StockDeduct] Product NOT FOUND for barcode: "${itemPayload.barcode}". Stock not deducted.`
+      const deductedFromDraft = await deductDraftStockByBarcode(
+        db,
+        itemPayload.barcode,
+        itemPayload.quantity
       )
+      if (!deductedFromDraft) {
+        console.warn(
+          `[StockDeduct] Product NOT FOUND for barcode: "${itemPayload.barcode}". Stock not deducted.`
+        )
+      }
       return
     }
 
@@ -1066,6 +1078,23 @@ export async function lookupProductForBilling(
       hit.data() as Record<string, unknown>,
       scanned
     )
+  }
+
+  const draftByBarcode = await getDocs(
+    query(
+      collection(db, col("draft_products")),
+      where("barcode", "==", scanned),
+      limit(1)
+    )
+  )
+
+  if (!draftByBarcode.empty) {
+    const hit = draftByBarcode.docs[0]
+    const data = hit.data() as Record<string, unknown>
+    if (!isDraftBillableStatus(data.status)) {
+      throw new Error(DRAFT_BILLING_BLOCKED_MESSAGE)
+    }
+    return toBillingProduct(hit.id, data, scanned)
   }
 
   return null

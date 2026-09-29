@@ -1,8 +1,6 @@
 "use client"
 
-import { useState, useMemo, useEffect, useRef } from "react"
-import { collection, getDocs, Timestamp } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { useState, useMemo, useEffect } from "react"
 import Link from "next/link"
 import { toast } from "sonner"
 import {
@@ -23,6 +21,9 @@ import {
   Loader2,
   Eye,
   EyeOff,
+  FilePenLine,
+  Download,
+  ChevronDown,
 } from "lucide-react"
 import { format, differenceInCalendarDays, startOfDay } from "date-fns"
 import { useProducts } from "@/hooks/use-firestore"
@@ -63,6 +64,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { DeleteProductDialog } from "@/components/inventory/delete-product-dialog"
 import { BarcodeDialog } from "@/components/inventory/barcode-dialog"
 import { CsvUploadDialog } from "@/components/inventory/csv-upload-dialog"
@@ -75,8 +86,11 @@ import {
   invTableCellClass,
   invTableCellNumeric,
 } from "@/lib/inventory-ui"
-import { isNoExpiryBatch } from "@/lib/inventory/no-expiry-batch"
 import { cn } from "@/lib/utils"
+import {
+  downloadProductsCatalogCsv,
+  downloadProductsCatalogJson,
+} from "@/lib/features/inventory/products-catalog-export"
 
 type BatchRow = { batch: ProductBatch; product: Product }
 
@@ -110,12 +124,14 @@ function ExpiryCell({ date, noExpiry }: { date: Date; noExpiry?: boolean }) {
 }
 
 export default function InventoryPage() {
-  const { products, loading, deleteProduct, bulkUpdateProductCategory } = useProducts()
+  const { products, loading, deleteProduct, bulkUpdateProductCategory, moveToDraftList } = useProducts()
   const [search, setSearch] = useState("")
   const [searchMode, setSearchMode] = useState<"text" | "scan">("text")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [productToDelete, setProductToDelete] = useState<Product | null>(null)
+  const [productToDraft, setProductToDraft] = useState<Product | null>(null)
+  const [movingToDraft, setMovingToDraft] = useState(false)
   const [barcodeDialogOpen, setBarcodeDialogOpen] = useState(false)
   const [productForBarcode, setProductForBarcode] = useState<Product | null>(null)
   const [csvDialogOpen, setCsvDialogOpen] = useState(false)
@@ -128,7 +144,6 @@ export default function InventoryPage() {
   const [inventoryTab, setInventoryTab] = useState<"products" | "batches">("products")
   const [lazyBatchRows, setLazyBatchRows] = useState<BatchRow[]>([])
   const [batchesLoading, setBatchesLoading] = useState(false)
-  const batchesLoadedRef = useRef(false)
 
   const categories = useMemo(() => {
     const cats = [...new Set(products.map((p) => p.category))]
@@ -204,52 +219,18 @@ export default function InventoryPage() {
   }
 
   useEffect(() => {
-    if (inventoryTab !== "batches" || batchesLoadedRef.current || products.length === 0) return
+    if (inventoryTab !== "batches") return
 
-    let cancelled = false
     setBatchesLoading(true)
-
-    void (async () => {
-      try {
-        const rows: BatchRow[] = []
-        await Promise.all(
-          products.map(async (product) => {
-            const batchesSnap = await getDocs(collection(db, "products", product.id, "batches"))
-            batchesSnap.docs.forEach((b) => {
-              const bd = b.data() as Record<string, unknown>
-              rows.push({
-                product,
-                batch: {
-                  id: b.id,
-                  quantity: Number.isFinite(Number(bd.quantity)) ? Number(bd.quantity) : 0,
-                  expiryDate:
-                    bd.expiryDate instanceof Timestamp
-                      ? bd.expiryDate.toDate()
-                      : new Date(String(bd.expiryDate ?? "")),
-                  createdAt:
-                    bd.createdAt instanceof Timestamp
-                      ? bd.createdAt.toDate()
-                      : new Date(String(bd.createdAt ?? "")),
-                  ...(isNoExpiryBatch(bd) ? { noExpiry: true } : {}),
-                },
-              })
-            })
-          })
-        )
-        if (cancelled) return
-        rows.sort((a, b) => a.batch.expiryDate.getTime() - b.batch.expiryDate.getTime())
-        setLazyBatchRows(rows)
-        batchesLoadedRef.current = true
-      } catch (err) {
-        console.error("Inventory batches load error:", err)
-      } finally {
-        if (!cancelled) setBatchesLoading(false)
+    const rows: BatchRow[] = []
+    for (const product of products) {
+      for (const batch of product.batches) {
+        rows.push({ product, batch })
       }
-    })()
-
-    return () => {
-      cancelled = true
     }
+    rows.sort((a, b) => a.batch.expiryDate.getTime() - b.batch.expiryDate.getTime())
+    setLazyBatchRows(rows)
+    setBatchesLoading(false)
   }, [inventoryTab, products])
 
   const batchRows = useMemo((): BatchRow[] => {
@@ -303,6 +284,10 @@ export default function InventoryPage() {
     setDeleteDialogOpen(true)
   }
 
+  const handleMoveToDraft = (product: Product) => {
+    setProductToDraft(product)
+  }
+
   const confirmDelete = async () => {
     if (productToDelete) {
       await deleteProduct(productToDelete.id)
@@ -311,9 +296,42 @@ export default function InventoryPage() {
     }
   }
 
+  const confirmMoveToDraft = async () => {
+    if (!productToDraft) return
+    setMovingToDraft(true)
+    try {
+      await moveToDraftList(productToDraft.id)
+      toast.success(`"${productToDraft.name}" moved to Draft Entries as Inactive`)
+      setProductToDraft(null)
+    } catch (e) {
+      console.error(e)
+      toast.error(e instanceof Error ? e.message : "Failed to move to draft list")
+    } finally {
+      setMovingToDraft(false)
+    }
+  }
+
   const handleShowBarcode = (product: Product) => {
     setProductForBarcode(product)
     setBarcodeDialogOpen(true)
+  }
+
+  const handleExportCatalogCsv = () => {
+    if (products.length === 0) {
+      toast.error("No products to export")
+      return
+    }
+    downloadProductsCatalogCsv(products)
+    toast.success(`Exported ${products.length} products to products.csv`)
+  }
+
+  const handleExportCatalogJson = () => {
+    if (products.length === 0) {
+      toast.error("No products to export")
+      return
+    }
+    downloadProductsCatalogJson(products)
+    toast.success(`Exported ${products.length} products to products.json`)
   }
 
   if (loading) {
@@ -331,6 +349,23 @@ export default function InventoryPage() {
           <h1 className="text-3xl font-semibold tracking-tight text-foreground">Inventory</h1>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="default" className="shadow-sm">
+                <Download className="mr-2 h-4 w-4" />
+                Export
+                <ChevronDown className="ml-2 h-4 w-4 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem onClick={handleExportCatalogCsv}>
+                Export CSV (products.csv)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportCatalogJson}>
+                Export JSON
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button variant="outline" size="default" className="shadow-sm" onClick={() => setCsvDialogOpen(true)}>
             <Upload className="mr-2 h-4 w-4" />
             Import CSV
@@ -627,6 +662,10 @@ export default function InventoryPage() {
                                     <Barcode className="mr-2 h-4 w-4" />
                                     Print barcode
                                   </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleMoveToDraft(product)}>
+                                    <FilePenLine className="mr-2 h-4 w-4" />
+                                    Move to draft list
+                                  </DropdownMenuItem>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem
                                     onClick={() => handleDelete(product)}
@@ -734,6 +773,36 @@ export default function InventoryPage() {
         product={productToDelete}
         onConfirm={confirmDelete}
       />
+
+      <AlertDialog open={!!productToDraft} onOpenChange={(open) => !open && setProductToDraft(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Move to draft list?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {productToDraft ? (
+                <>
+                  &quot;{productToDraft.name}&quot; will be removed from All Products and appear in Draft
+                  Entries with status <strong>Inactive</strong>. Billing will be blocked until you set it Active
+                  in Draft Entries and approve it back to inventory.
+                </>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={movingToDraft}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={movingToDraft}
+              onClick={(e) => {
+                e.preventDefault()
+                void confirmMoveToDraft()
+              }}
+            >
+              {movingToDraft ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Move to draft
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <BarcodeDialog
         open={barcodeDialogOpen}

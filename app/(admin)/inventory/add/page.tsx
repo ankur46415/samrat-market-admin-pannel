@@ -32,6 +32,9 @@ import {
 } from "@/lib/features/inventory/services/product_image_service"
 import { CreatableSearchSelect } from "@/components/inventory/creatable-search-select"
 import { uniqueBrandsFromProducts, uniqueTagsFromProducts } from "@/lib/inventory-field-options"
+import { doc, Timestamp, updateDoc } from "firebase/firestore"
+import { db } from "@/lib/firebase"
+import { col } from "@/lib/account-mode"
 
 const labelClass = "text-sm font-medium text-foreground"
 const inputClass = "h-11 rounded-lg border-border/80 shadow-sm"
@@ -46,7 +49,14 @@ function sellingPriceFromMrp(mrp: string, discountPercent: string): string | nul
 
 export default function AddProductPage() {
   const router = useRouter()
-  const { products, addProduct, getProductByBarcode, updateProduct } = useProducts()
+  const {
+    products,
+    addProduct,
+    addDraftProduct,
+    getProductByBarcode,
+    getDraftByBarcode,
+    updateProduct,
+  } = useProducts()
   const { categories } = useCategories()
   const brandOptions = useMemo(() => uniqueBrandsFromProducts(products), [products])
   const tagOptions = useMemo(() => uniqueTagsFromProducts(products), [products])
@@ -180,12 +190,18 @@ export default function AddProductPage() {
 
     try {
       const existing = await getProductByBarcode(formData.barcode)
-      const productId = await addProduct({
+      const pendingDraft = existing ? null : await getDraftByBarcode(formData.barcode)
+      if (pendingDraft) {
+        toast.error("This barcode is already pending in Draft Entries")
+        return
+      }
+
+      const productPayload = {
         name: formData.name || "Unnamed Product",
         category,
         rack: formData.rack,
         tag: formData.tag,
-        status: formData.status,
+        status: existing ? formData.status : "deactive",
         price: parseFloat(formData.price),
         costPrice: formData.costPrice.trim() ? parseFloat(formData.costPrice) : 0,
         mrp: formData.mrp.trim() ? parseFloat(formData.mrp) : undefined,
@@ -197,24 +213,39 @@ export default function AddProductPage() {
         expiry: formData.noExpiry ? undefined : formData.expiry || undefined,
         noExpiry: formData.noExpiry || undefined,
         minStock: parseMinStockInput(formData.minStock, 10),
-      })
+      }
+
+      let productId: string
+      if (existing) {
+        productId = await addProduct(productPayload)
+      } else {
+        productId = await addDraftProduct(productPayload)
+      }
 
       if (imageFile) {
         try {
           const imageUrl = await uploadProductImage(productId, imageFile)
-          await updateProduct(productId, { imageUrl })
+          if (existing) {
+            await updateProduct(productId, { imageUrl })
+          } else {
+            await updateDoc(doc(db, col("draft_products"), productId), {
+              imageUrl,
+              updatedAt: Timestamp.now(),
+            })
+          }
         } catch (imageError) {
           console.error("Product image upload failed:", imageError)
-          toast.warning("Product saved, but image upload failed")
+          toast.warning("Entry saved, but image upload failed")
         }
       }
 
       if (existing) {
         toast.success("Stock added.")
+        router.push("/inventory")
       } else {
-        toast.success("Saved.")
+        toast.success("Submitted to Draft Entries for audit.")
+        router.push("/draft-entries")
       }
-      router.push("/inventory")
     } catch (error) {
       console.error("Error adding product:", error)
       toast.error("Failed to save")

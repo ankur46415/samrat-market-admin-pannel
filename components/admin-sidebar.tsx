@@ -16,6 +16,7 @@ import {
   Percent,
   Wallet,
   ClipboardList,
+  FilePenLine,
 } from "lucide-react"
 import Image from "next/image"
 import {
@@ -69,6 +70,11 @@ const mainNavItems = [
       { title: "New Category", url: "/inventory/categories?new=1" },
       { title: "Low Stock", url: "/inventory/low-stock" },
     ],
+  },
+  {
+    title: "Draft Entries",
+    url: "/draft-entries",
+    icon: FilePenLine,
   },
   {
     title: "Customers",

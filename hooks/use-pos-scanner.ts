@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { normalizeScannedBarcode } from "@/lib/stock"
 import { scanItemIntoSession } from "@/lib/features/live_billing_admin/services/live_billing_admin_service"
+import { DRAFT_BILLING_BLOCKED_MESSAGE } from "@/lib/features/inventory/services/draft_product_service"
 import type { LiveBillingLineItem } from "@/lib/features/live_billing_admin/services/live_billing_admin_service"
 import type { BarcodeProductRef } from "@/lib/stock"
 
@@ -107,12 +108,17 @@ export function usePosScanner({
           )
         } catch (e) {
           const msg = e instanceof Error ? e.message : "Scan failed"
-          const notFound = msg.toLowerCase().includes("not found")
-          if (!notFound) console.error(e)
+          const draftBlocked = msg === DRAFT_BILLING_BLOCKED_MESSAGE
+          const notFound = msg.toLowerCase().includes("not found") && !draftBlocked
+          if (!notFound && !draftBlocked) console.error(e)
           setLastFailedBarcode(barcode)
           setStatusTone("error")
           setStatusMessage(
-            notFound ? `✗ Barcode not in inventory: ${barcode}` : `✗ ${msg}`
+            draftBlocked
+              ? `✗ ${DRAFT_BILLING_BLOCKED_MESSAGE}`
+              : notFound
+                ? `✗ Barcode not in inventory: ${barcode}`
+                : `✗ ${msg}`
           )
         }
       }

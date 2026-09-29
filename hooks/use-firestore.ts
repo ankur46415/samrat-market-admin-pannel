@@ -26,6 +26,15 @@ import { fetchGlobalDashboardStats } from "@/lib/features/dashboard/services/das
 import { fetchSalesInDateRange } from "@/lib/features/sales/services/sales_query_service"
 import { omitUndefinedFields } from "@/lib/utils"
 import { InventoryBatchService } from "@/lib/features/inventory/services/inventory_batch_service"
+import {
+  addDraftProductDoc,
+  approveDraftProduct,
+  getDraftProductByBarcode,
+  moveProductToDraftList,
+  updateDraftProduct,
+  updateDraftProductStatus,
+  type DraftProductInput,
+} from "@/lib/features/inventory/services/draft_product_service"
 import { isNoExpiryBatch } from "@/lib/inventory/no-expiry-batch"
 import { loadCachedProductsAsProduct, saveProductCache } from "@/lib/offline/product-cache"
 import {
@@ -39,6 +48,150 @@ import {
 } from "@/lib/stock"
 import { RACK_OPTIONS, RACK_OPTIONS_SET } from "@/lib/rack-options"
 import { STATUS_OPTIONS, STATUS_OPTIONS_SET } from "@/lib/status-options"
+import { mapPool } from "@/lib/async-map-pool"
+import type { QueryDocumentSnapshot } from "firebase/firestore"
+
+const PRODUCTS_BATCH_READ_CONCURRENCY = 10
+
+type ProductsStoreSnapshot = {
+  products: Product[]
+  loading: boolean
+  error: string | null
+}
+
+let productsStore: ProductsStoreSnapshot = {
+  products: [],
+  loading: true,
+  error: null,
+}
+const productsStoreListeners = new Set<() => void>()
+let productsFirestoreUnsub: (() => void) | null = null
+let productsListenerAccountKey: string | null = null
+let productsBatchEnrichGen = 0
+
+function publishProductsStore(partial: Partial<ProductsStoreSnapshot>) {
+  productsStore = { ...productsStore, ...partial }
+  productsStoreListeners.forEach((listener) => listener())
+}
+
+async function enrichProductsWithBatches(
+  docs: QueryDocumentSnapshot[],
+  generation: number
+): Promise<Product[]> {
+  const withBatches = await mapPool(docs, PRODUCTS_BATCH_READ_CONCURRENCY, async (docSnap) => {
+    const data = docSnap.data() as Record<string, unknown>
+    try {
+      const batchesSnap = await getDocs(collection(db, col("products"), docSnap.id, "batches"))
+      const batchList: ProductBatch[] = batchesSnap.docs.map((b) => {
+        const bd = b.data() as Record<string, unknown>
+        return {
+          id: b.id,
+          quantity: Number.isFinite(Number(bd.quantity)) ? Number(bd.quantity) : 0,
+          expiryDate: convertTimestamp(bd.expiryDate),
+          createdAt: convertTimestamp(bd.createdAt),
+          ...(isNoExpiryBatch(bd) ? { noExpiry: true } : {}),
+        }
+      })
+      batchList.sort((a, b) => a.expiryDate.getTime() - b.expiryDate.getTime())
+      const totalStock = batchList.reduce((sum, b) => sum + b.quantity, 0)
+      return productFromData(docSnap.id, { ...data, __totalStock: totalStock, __batches: batchList })
+    } catch {
+      return productFromData(docSnap.id, data)
+    }
+  })
+
+  if (generation !== productsBatchEnrichGen) return productsStore.products
+
+  withBatches.sort((a, b) =>
+    (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })
+  )
+  return withBatches
+}
+
+function ensureSharedProductsListener(accountModeKey: string) {
+  if (productsFirestoreUnsub && productsListenerAccountKey === accountModeKey) return
+
+  productsFirestoreUnsub?.()
+  productsListenerAccountKey = accountModeKey
+  productsBatchEnrichGen += 1
+  const enrichGen = productsBatchEnrichGen
+
+  publishProductsStore({ products: [], loading: true, error: null })
+
+  let fromNetwork = false
+  const applyCache = (cached: Product[]) => {
+    if (fromNetwork || cached.length === 0) return
+    publishProductsStore({ products: cached, loading: false, error: null })
+  }
+
+  void loadCachedProductsAsProduct().then(applyCache)
+
+  const fallbackTimer = window.setTimeout(() => {
+    if (fromNetwork) return
+    void loadCachedProductsAsProduct().then(applyCache)
+  }, 1500)
+
+  productsFirestoreUnsub = onSnapshot(
+    collection(db, col("products")),
+    (snapshot) => {
+      fromNetwork = true
+      window.clearTimeout(fallbackTimer)
+      try {
+        const items = snapshot.docs.map((docSnap) =>
+          productFromData(docSnap.id, docSnap.data() as Record<string, unknown>)
+        )
+        items.sort((a, b) =>
+          (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })
+        )
+        publishProductsStore({ products: items, loading: false, error: null })
+        void saveProductCache(items)
+
+        void (async () => {
+          try {
+            const withBatches = await enrichProductsWithBatches(snapshot.docs, enrichGen)
+            if (withBatches.length === 0) return
+            publishProductsStore({ products: withBatches })
+            void saveProductCache(withBatches)
+          } catch (batchErr) {
+            console.error("Batch enrichment error:", batchErr)
+          }
+        })()
+      } catch (err) {
+        console.error("Products snapshot processing error:", err)
+        void loadCachedProductsAsProduct().then((cached) => {
+          if (cached.length === 0) return
+          publishProductsStore({
+            products: cached,
+            loading: false,
+            error: null,
+          })
+        })
+        publishProductsStore({
+          error: err instanceof Error ? err.message : "Failed to process products",
+          loading: false,
+        })
+      }
+    },
+    (err) => {
+      console.error("Products error:", err)
+      void loadCachedProductsAsProduct().then((cached) => {
+        publishProductsStore({
+          products: cached.length > 0 ? cached : productsStore.products,
+          error: cached.length > 0 ? null : err.message,
+          loading: false,
+        })
+      })
+    }
+  )
+}
+
+function releaseSharedProductsListener() {
+  if (productsStoreListeners.size > 0) return
+  productsFirestoreUnsub?.()
+  productsFirestoreUnsub = null
+  productsListenerAccountKey = null
+  productsBatchEnrichGen += 1
+}
 
 function isTimestampLike(value: unknown): value is { toDate: () => Date } {
   return typeof value === "object" && value !== null && "toDate" in value && typeof (value as any).toDate === "function"
@@ -155,122 +308,21 @@ function productFromData(id: string, data: Record<string, unknown>): Product {
 // Products Hook
 export function useProducts() {
   const accountMode = useAccountModeScope()
-  const batchService = new InventoryBatchService(db)
-  const [products, setProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const batchService = useMemo(() => new InventoryBatchService(db), [])
+  const [storeSnap, setStoreSnap] = useState<ProductsStoreSnapshot>(productsStore)
 
   useEffect(() => {
-    let fromNetwork = false
-    let cancelled = false
-    setProducts([])
-    setLoading(true)
-    setError(null)
-
-    const applyCache = (cached: Product[]) => {
-      if (cancelled || fromNetwork || cached.length === 0) return
-      setProducts(cached)
-      setLoading(false)
-    }
-
-    void loadCachedProductsAsProduct().then(applyCache)
-
-    const fallbackTimer = window.setTimeout(() => {
-      if (fromNetwork) return
-      void loadCachedProductsAsProduct().then(applyCache)
-    }, 1500)
-
-    const unsubscribe = onSnapshot(
-      collection(db, col("products")),
-      (snapshot) => {
-        fromNetwork = true
-        window.clearTimeout(fallbackTimer)
-        try {
-          // Billing needs barcode/price immediately. Do not wait on batches subcollection reads.
-          const items = snapshot.docs.map((docSnap) =>
-            productFromData(docSnap.id, docSnap.data() as Record<string, unknown>)
-          )
-          items.sort((a, b) =>
-            (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })
-          )
-          if (cancelled) return
-          setProducts(items)
-          setError(null)
-          setLoading(false)
-          void saveProductCache(items)
-
-          void (async () => {
-            try {
-              const withBatches = await Promise.all(
-                snapshot.docs.map(async (docSnap) => {
-                  const data = docSnap.data() as Record<string, unknown>
-                  try {
-                    const batchesSnap = await getDocs(collection(db, col("products"), docSnap.id, "batches"))
-                    const batchList: ProductBatch[] = batchesSnap.docs.map((b) => {
-                      const bd = b.data() as Record<string, unknown>
-                      return {
-                        id: b.id,
-                        quantity: Number.isFinite(Number(bd.quantity)) ? Number(bd.quantity) : 0,
-                        expiryDate: convertTimestamp(bd.expiryDate),
-                        createdAt: convertTimestamp(bd.createdAt),
-                        ...(isNoExpiryBatch(bd) ? { noExpiry: true } : {}),
-                      }
-                    })
-                    batchList.sort((a, b) => a.expiryDate.getTime() - b.expiryDate.getTime())
-                    const totalStock = batchList.reduce((sum, b) => sum + b.quantity, 0)
-                    const enriched =
-                      batchList.length > 0
-                        ? { ...data, __totalStock: totalStock, __batches: batchList }
-                        : { ...data, __batches: batchList }
-                    return productFromData(docSnap.id, enriched)
-                  } catch {
-                    return productFromData(docSnap.id, data)
-                  }
-                })
-              )
-              withBatches.sort((a, b) =>
-                (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })
-              )
-              if (cancelled || withBatches.length === 0) return
-              setProducts(withBatches)
-              void saveProductCache(withBatches)
-            } catch (batchErr) {
-              console.error("Batch enrichment error:", batchErr)
-            }
-          })()
-        } catch (err) {
-          console.error("Products snapshot processing error:", err)
-          setError(err instanceof Error ? err.message : "Failed to process products")
-          void loadCachedProductsAsProduct().then((cached) => {
-            if (cancelled || cached.length === 0) return
-            setProducts(cached)
-            setError(null)
-          }).finally(() => {
-            if (!cancelled) setLoading(false)
-          })
-        }
-      },
-      (err) => {
-        console.error("Products error:", err)
-        setError(err.message)
-        void loadCachedProductsAsProduct().then((cached) => {
-          if (cancelled) return
-          if (cached.length > 0) {
-            setProducts(cached)
-            setError(null)
-          }
-        }).finally(() => {
-          if (!cancelled) setLoading(false)
-        })
-      }
-    )
-
+    ensureSharedProductsListener(accountMode)
+    const sync = () => setStoreSnap({ ...productsStore })
+    productsStoreListeners.add(sync)
+    sync()
     return () => {
-      cancelled = true
-      window.clearTimeout(fallbackTimer)
-      unsubscribe()
+      productsStoreListeners.delete(sync)
+      releaseSharedProductsListener()
     }
   }, [accountMode])
+
+  const { products, loading, error } = storeSnap
 
   const addProduct = useCallback(async (
     product: Omit<Product, "id" | "createdAt" | "updatedAt" | "batches"> & { noExpiry?: boolean }
@@ -415,7 +467,221 @@ export function useProducts() {
     await batch.commit()
   }, [])
 
-  return { products, loading, error, addProduct, updateProduct, bulkUpdateProductCategory, deleteProduct, bulkAddProducts, getProductByBarcode }
+  const addDraftProduct = useCallback(async (
+    product: Omit<Product, "id" | "createdAt" | "updatedAt" | "batches"> & { noExpiry?: boolean }
+  ) => {
+    const barcode = String(product.barcode ?? "").trim()
+    if (!barcode) {
+      throw new Error("Barcode is required for batch inventory")
+    }
+    const rack = String(product.rack ?? "").trim()
+    if (rack && !RACK_OPTIONS_SET.has(rack as (typeof RACK_OPTIONS)[number])) {
+      throw new Error("Rack must be one of predefined options")
+    }
+
+    const noExpiry = product.noExpiry === true
+    const expiryRaw = noExpiry ? "" : (product.expiry || "").trim()
+    let expiryDate: Date | undefined
+    if (expiryRaw) {
+      expiryDate = new Date(expiryRaw)
+      if (Number.isNaN(expiryDate.getTime())) {
+        throw new Error("Invalid Expiry Date")
+      }
+    }
+
+    const quantity = Number(product.stock ?? 0)
+    if (expiryRaw && (!Number.isFinite(quantity) || quantity <= 0)) {
+      throw new Error("Batch quantity must be greater than 0 when expiry is set")
+    }
+    if (Number.isFinite(quantity) && quantity > 0 && !expiryRaw && !noExpiry) {
+      throw new Error("Select expiry date or choose No expiry when batch quantity is set")
+    }
+
+    const price = Number(product.price ?? 0)
+    if (!Number.isFinite(price) || price < 0) {
+      throw new Error("Selling price is required")
+    }
+
+    const costRaw = product.costPrice
+    const costPrice =
+      costRaw === undefined || costRaw === null || costRaw === ("" as unknown as number)
+        ? 0
+        : Number(costRaw)
+    if (!Number.isFinite(costPrice) || costPrice < 0) {
+      throw new Error("Invalid cost price")
+    }
+
+    const mrpRaw = product.mrp
+    const mrp =
+      mrpRaw != null && Number.isFinite(Number(mrpRaw)) && Number(mrpRaw) > 0
+        ? Number(mrpRaw)
+        : undefined
+
+    const input: DraftProductInput = {
+      name: product.name || "Unnamed Product",
+      barcode,
+      category: (product.category ?? "").trim(),
+      rack,
+      tag: String(product.tag ?? "").trim(),
+      status: "deactive",
+      price,
+      costPrice,
+      unit: normalizeProductUnit(product.unit),
+      minStock: Number.isFinite(Number(product.minStock)) ? Number(product.minStock) : 10,
+      brand: product.brand?.trim() ? product.brand.trim() : undefined,
+      expiryDate: expiryDate ?? null,
+      quantity: Number.isFinite(quantity) && quantity > 0 ? Math.floor(quantity) : undefined,
+      noExpiry: noExpiry || undefined,
+      mrp,
+      discountPercent:
+        product.discountPercent != null && Number(product.discountPercent) > 0
+          ? Number(product.discountPercent)
+          : undefined,
+      imageUrl: product.imageUrl?.trim() || undefined,
+    }
+
+    return addDraftProductDoc(db, input)
+  }, [])
+
+  const getDraftByBarcode = useCallback(async (barcode: string) => {
+    return getDraftProductByBarcode(db, barcode)
+  }, [])
+
+  const moveToDraftList = useCallback(async (productId: string) => {
+    return moveProductToDraftList(db, productId)
+  }, [])
+
+  return {
+    products,
+    loading,
+    error,
+    addProduct,
+    addDraftProduct,
+    updateProduct,
+    bulkUpdateProductCategory,
+    deleteProduct,
+    bulkAddProducts,
+    getProductByBarcode,
+    getDraftByBarcode,
+    moveToDraftList,
+  }
+}
+
+export function useDraftProducts() {
+  const accountMode = useAccountModeScope()
+  const [drafts, setDrafts] = useState<Product[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setDrafts([])
+    setLoading(true)
+    const unsubscribe = onSnapshot(
+      collection(db, col("draft_products")),
+      (snapshot) => {
+        const items = snapshot.docs.map((docSnap) =>
+          productFromData(docSnap.id, docSnap.data() as Record<string, unknown>)
+        )
+        items.sort((a, b) =>
+          (b.createdAt?.getTime?.() ?? 0) - (a.createdAt?.getTime?.() ?? 0)
+        )
+        setDrafts(items)
+        setLoading(false)
+        setError(null)
+      },
+      (err) => {
+        console.error("Draft products error:", err)
+        setError(err.message)
+        setLoading(false)
+      }
+    )
+    return () => unsubscribe()
+  }, [accountMode])
+
+  const updateDraftStatus = useCallback(async (id: string, status: string) => {
+    if (!STATUS_OPTIONS_SET.has(status as (typeof STATUS_OPTIONS)[number])) {
+      throw new Error("Status must be active or deactive")
+    }
+    await updateDraftProductStatus(db, id, status)
+  }, [])
+
+  const approveDraft = useCallback(async (id: string) => {
+    return approveDraftProduct(db, id)
+  }, [])
+
+  const updateDraft = useCallback(
+    async (
+      draftId: string,
+      product: Omit<Product, "id" | "createdAt" | "updatedAt" | "batches"> & { noExpiry?: boolean }
+    ) => {
+      const barcode = String(product.barcode ?? "").trim()
+      if (!barcode) throw new Error("Barcode is required")
+      const status = String(product.status ?? "").trim()
+      if (!status || !STATUS_OPTIONS_SET.has(status as (typeof STATUS_OPTIONS)[number])) {
+        throw new Error("Status must be active or deactive")
+      }
+      const rack = String(product.rack ?? "").trim()
+      if (rack && !RACK_OPTIONS_SET.has(rack as (typeof RACK_OPTIONS)[number])) {
+        throw new Error("Rack must be one of predefined options")
+      }
+
+      const noExpiry = product.noExpiry === true
+      const expiryRaw = noExpiry ? "" : (product.expiry || "").trim()
+      let expiryDate: Date | undefined
+      if (expiryRaw) {
+        expiryDate = new Date(expiryRaw)
+        if (Number.isNaN(expiryDate.getTime())) throw new Error("Invalid expiry date")
+      }
+
+      const quantity = Number(product.stock ?? 0)
+      if (expiryRaw && (!Number.isFinite(quantity) || quantity <= 0)) {
+        throw new Error("Quantity must be greater than 0 when expiry is set")
+      }
+      if (Number.isFinite(quantity) && quantity > 0 && !expiryRaw && !noExpiry) {
+        throw new Error("Select expiry or No expiry when quantity is set")
+      }
+
+      const price = Number(product.price ?? 0)
+      if (!Number.isFinite(price) || price < 0) throw new Error("Selling price is required")
+
+      const costPrice = Number(product.costPrice ?? 0)
+      if (!Number.isFinite(costPrice) || costPrice < 0) throw new Error("Invalid cost price")
+
+      const mrpRaw = product.mrp
+      const mrp =
+        mrpRaw != null && Number.isFinite(Number(mrpRaw)) && Number(mrpRaw) > 0
+          ? Number(mrpRaw)
+          : undefined
+
+      const input: DraftProductInput = {
+        name: product.name || "Unnamed Product",
+        barcode,
+        category: (product.category ?? "").trim(),
+        rack,
+        tag: String(product.tag ?? "").trim(),
+        status,
+        price,
+        costPrice,
+        unit: normalizeProductUnit(product.unit),
+        minStock: Number.isFinite(Number(product.minStock)) ? Number(product.minStock) : 10,
+        brand: product.brand?.trim() ? product.brand.trim() : undefined,
+        expiryDate: expiryDate ?? null,
+        quantity: Number.isFinite(quantity) && quantity > 0 ? Math.floor(quantity) : undefined,
+        noExpiry: noExpiry || undefined,
+        mrp,
+        discountPercent:
+          product.discountPercent != null && Number(product.discountPercent) > 0
+            ? Number(product.discountPercent)
+            : undefined,
+        imageUrl: product.imageUrl?.trim() || undefined,
+      }
+
+      await updateDraftProduct(db, draftId, input)
+    },
+    []
+  )
+
+  return { drafts, loading, error, updateDraftStatus, updateDraft, approveDraft }
 }
 
 // Customers Hook
