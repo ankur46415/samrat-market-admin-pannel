@@ -150,6 +150,11 @@ export default function InventoryPage() {
     return cats.filter(Boolean).sort()
   }, [products])
 
+  const selectedProducts = useMemo(
+    () => products.filter((p) => selectedIds.has(p.id)),
+    [products, selectedIds]
+  )
+
   const filteredProducts = useMemo(() => {
     const q = search.trim()
     const qLower = q.toLowerCase()
@@ -316,22 +321,24 @@ export default function InventoryPage() {
     setBarcodeDialogOpen(true)
   }
 
-  const handleExportCatalogCsv = () => {
-    if (products.length === 0) {
-      toast.error("No products to export")
+  const handleExportCatalogCsv = (scope: "all" | "selected") => {
+    const list = scope === "selected" ? selectedProducts : products
+    if (list.length === 0) {
+      toast.error(scope === "selected" ? "Select products to export" : "No products to export")
       return
     }
-    downloadProductsCatalogCsv(products)
-    toast.success(`Exported ${products.length} products to products.csv`)
+    downloadProductsCatalogCsv(list)
+    toast.success(`Exported ${list.length} product${list.length === 1 ? "" : "s"} to products.csv`)
   }
 
-  const handleExportCatalogJson = () => {
-    if (products.length === 0) {
-      toast.error("No products to export")
+  const handleExportCatalogJson = (scope: "all" | "selected") => {
+    const list = scope === "selected" ? selectedProducts : products
+    if (list.length === 0) {
+      toast.error(scope === "selected" ? "Select products to export" : "No products to export")
       return
     }
-    downloadProductsCatalogJson(products)
-    toast.success(`Exported ${products.length} products to products.json`)
+    downloadProductsCatalogJson(list)
+    toast.success(`Exported ${list.length} product${list.length === 1 ? "" : "s"} to products.json`)
   }
 
   if (loading) {
@@ -357,12 +364,25 @@ export default function InventoryPage() {
                 <ChevronDown className="ml-2 h-4 w-4 opacity-60" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem onClick={handleExportCatalogCsv}>
-                Export CSV (products.csv)
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={() => handleExportCatalogCsv("all")}>
+                Export CSV — all products
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportCatalogJson}>
-                Export JSON
+              <DropdownMenuItem onClick={() => handleExportCatalogJson("all")}>
+                Export JSON — all products
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                disabled={selectedIds.size === 0}
+                onClick={() => handleExportCatalogCsv("selected")}
+              >
+                Export CSV — selected ({selectedIds.size})
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={selectedIds.size === 0}
+                onClick={() => handleExportCatalogJson("selected")}
+              >
+                Export JSON — selected ({selectedIds.size})
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
