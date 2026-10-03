@@ -11,6 +11,7 @@ next.user-config.*
 .env*.local
 
 # Common ignores
+.idea/
 node_modules/
 .next/
 .DS_Store
