@@ -2,7 +2,7 @@
 
 import { useEffect } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { canAccessPath, useSessionUser } from "@/lib/auth-session"
+import { canAccessPath, defaultHomePath, useSessionUser } from "@/lib/auth-session"
 
 export function AdminAuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -16,7 +16,7 @@ export function AdminAuthGuard({ children }: { children: React.ReactNode }) {
       return
     }
     if (!canAccessPath(user.role, pathname)) {
-      router.replace("/")
+      router.replace(defaultHomePath(user.role))
     }
   }, [ready, user, pathname, router])
 

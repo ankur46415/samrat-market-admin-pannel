@@ -31,6 +31,8 @@ export type ProductWithBatchInput = {
   unit: string
   minStock: number
   brand?: string
+  supplierName?: string
+  supplierContact?: string
   expiryDate?: Date | null
   quantity?: number
   noExpiry?: boolean
@@ -63,6 +65,8 @@ export class InventoryBatchService {
     minStock: number
     stock: number
     brand?: string
+    supplierName?: string
+    supplierContact?: string
     productExpiry?: Date
     mrp?: number
     discountPercent?: number
@@ -99,6 +103,10 @@ export class InventoryBatchService {
     }
     const b = fields.brand?.trim()
     if (b) d.brand = b
+    const sn = fields.supplierName?.trim()
+    if (sn) d.supplierName = sn
+    const sc = fields.supplierContact?.trim()
+    if (sc) d.supplierContact = sc
     const imageUrl = fields.imageUrl?.trim()
     if (imageUrl) d.imageUrl = imageUrl
     return d
@@ -116,6 +124,8 @@ export class InventoryBatchService {
     unit: string
     minStock: number
     brand?: string
+    supplierName?: string
+    supplierContact?: string
     productExpiry?: Date
     stock: number
     mrp?: number
@@ -180,6 +190,8 @@ export class InventoryBatchService {
       unit,
       minStock,
       brand,
+      supplierName,
+      supplierContact,
       expiryDate,
       quantity,
       noExpiry,
@@ -205,6 +217,8 @@ export class InventoryBatchService {
       unit,
       minStock,
       brand,
+      supplierName,
+      supplierContact,
       productExpiry: hasExpiryBatch ? expiryDate! : undefined,
       mrp: input.mrp,
       discountPercent: input.discountPercent,

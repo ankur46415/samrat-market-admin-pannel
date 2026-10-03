@@ -101,6 +101,10 @@ function draftPayloadFromInput(input: DraftProductInput): Record<string, unknown
   }
   if (input.brand?.trim()) payload.brand = input.brand.trim()
   else payload.brand = null
+  if (input.supplierName?.trim()) payload.supplierName = input.supplierName.trim()
+  else payload.supplierName = null
+  if (input.supplierContact?.trim()) payload.supplierContact = input.supplierContact.trim()
+  else payload.supplierContact = null
   if (input.imageUrl?.trim()) payload.imageUrl = input.imageUrl.trim()
   else payload.imageUrl = null
   if (input.mrp != null && input.mrp > 0) payload.mrp = input.mrp
@@ -182,6 +186,12 @@ export async function approveDraftProduct(
     unit: String(data.unit ?? data.units ?? "pcs"),
     minStock: Number(data.minStock ?? 10),
     brand: typeof data.brand === "string" ? data.brand : undefined,
+    supplierName:
+      typeof data.supplierName === "string" ? data.supplierName.trim() || undefined : undefined,
+    supplierContact:
+      typeof data.supplierContact === "string"
+        ? data.supplierContact.trim() || undefined
+        : undefined,
     expiryDate: expiryDate ?? null,
     quantity: qty > 0 ? qty : undefined,
     noExpiry: noExpiry || undefined,
@@ -257,6 +267,12 @@ export async function moveProductToDraftList(
     unit: String(data.unit ?? data.units ?? "pcs"),
     minStock: firestoreNumber(data.minStock, 10),
     brand: typeof data.brand === "string" ? data.brand.trim() || undefined : undefined,
+    supplierName:
+      typeof data.supplierName === "string" ? data.supplierName.trim() || undefined : undefined,
+    supplierContact:
+      typeof data.supplierContact === "string"
+        ? data.supplierContact.trim() || undefined
+        : undefined,
     expiryDate: expiryDate ?? null,
     quantity: stock > 0 ? stock : undefined,
     noExpiry: noExpiry || undefined,

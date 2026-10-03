@@ -5,13 +5,20 @@ import { signInWithEmailAndPassword, signOut, onAuthStateChanged, type User } fr
 import { doc, getDoc } from "firebase/firestore"
 import { auth, db } from "@/lib/firebase"
 import { col } from "@/lib/account-mode"
+import {
+  accountTagFromEmail,
+  loginEmailFromUsername,
+  SCANNER_ALLOWED_PREFIXES,
+} from "@/lib/scan-employees"
 
-export type UserRole = "admin" | "employee"
+export type UserRole = "admin" | "employee" | "scanner"
 
 export type SessionUser = {
   email: string
   role: UserRole
   name: string
+  /** Field staff id stamped on product tag (e.g. EMP01). */
+  accountTag?: string
 }
 
 function normalizeEmail(v: string): string {
@@ -21,10 +28,15 @@ function normalizeEmail(v: string): string {
 function fallbackRoleByEmail(email: string): UserRole {
   const e = normalizeEmail(email)
   if (e === "samratadmin@gmail.com") return "admin"
+  if (accountTagFromEmail(e)) return "scanner"
   return "employee"
 }
 
 const SESSION_CACHE_KEY = "samrat_session_user_v1"
+
+function isUserRole(v: unknown): v is UserRole {
+  return v === "admin" || v === "employee" || v === "scanner"
+}
 
 function readCachedSessionUser(): SessionUser | null {
   if (typeof window === "undefined") return null
@@ -32,7 +44,7 @@ function readCachedSessionUser(): SessionUser | null {
     const raw = localStorage.getItem(SESSION_CACHE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as SessionUser
-    if (!parsed?.email || (parsed.role !== "admin" && parsed.role !== "employee")) return null
+    if (!parsed?.email || !isUserRole(parsed.role)) return null
     return parsed
   } catch {
     return null
@@ -48,7 +60,8 @@ function writeCachedSessionUser(user: SessionUser | null): void {
   localStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(user))
 }
 
-async function resolveRole(user: User): Promise<UserRole> {
+async function resolveRole(user: User): Promise<{ role: UserRole; accountTag?: string }> {
+  let accountTag = accountTagFromEmail(user.email || "")
   try {
     const roleDoc = await Promise.race([
       getDoc(doc(db, col("users"), user.uid)),
@@ -56,15 +69,22 @@ async function resolveRole(user: User): Promise<UserRole> {
         window.setTimeout(() => reject(new Error("role lookup timeout")), 1500)
       }),
     ])
-    const roleRaw = roleDoc.data()?.role
-    if (roleRaw === "admin" || roleRaw === "employee") return roleRaw
+    const data = roleDoc.data()
+    const roleRaw = data?.role
+    if (typeof data?.accountTag === "string" && data.accountTag.trim()) {
+      accountTag = data.accountTag.trim().toUpperCase()
+    }
+    if (isUserRole(roleRaw)) {
+      return { role: roleRaw, accountTag }
+    }
   } catch {
     // Fall back to email mapping when role doc is missing/unavailable/offline.
   }
-  return fallbackRoleByEmail(user.email || "")
+  return { role: fallbackRoleByEmail(user.email || ""), accountTag }
 }
 
-function toDisplayName(user: User): string {
+function toDisplayName(user: User, accountTag?: string): string {
+  if (accountTag) return accountTag
   if (user.displayName?.trim()) return user.displayName.trim()
   const email = normalizeEmail(user.email || "")
   if (email === "samratadmin@gmail.com") return "Samrat Admin"
@@ -72,15 +92,18 @@ function toDisplayName(user: User): string {
 }
 
 async function mapFirebaseUser(user: User): Promise<SessionUser> {
+  const { role, accountTag } = await resolveRole(user)
   return {
     email: user.email || "",
-    role: await resolveRole(user),
-    name: toDisplayName(user),
+    role,
+    name: toDisplayName(user, accountTag),
+    accountTag,
   }
 }
 
-export async function loginWithFirebase(email: string, password: string): Promise<SessionUser> {
-  const credential = await signInWithEmailAndPassword(auth, email.trim(), password)
+export async function loginWithFirebase(emailOrUsername: string, password: string): Promise<SessionUser> {
+  const email = loginEmailFromUsername(emailOrUsername)
+  const credential = await signInWithEmailAndPassword(auth, email, password)
   const mapped = await mapFirebaseUser(credential.user)
   writeCachedSessionUser(mapped)
   return mapped
@@ -91,12 +114,24 @@ export async function logoutFirebase(): Promise<void> {
   await signOut(auth)
 }
 
-// Employee restrictions.
 const EMPLOYEE_BLOCKED_PREFIXES = ["/reports"] as const
 
-export function canAccessPath(role: UserRole, pathname: string): boolean {
-  if (role === "admin") return true
+function pathAllowedForScanner(pathname: string): boolean {
   const path = pathname || "/"
+  return SCANNER_ALLOWED_PREFIXES.some(
+    (allowed) => path === allowed || path.startsWith(`${allowed}/`)
+  )
+}
+
+export function defaultHomePath(role: UserRole): string {
+  if (role === "scanner") return "/scan-edit"
+  return "/"
+}
+
+export function canAccessPath(role: UserRole, pathname: string): boolean {
+  const path = pathname || "/"
+  if (role === "admin") return true
+  if (role === "scanner") return pathAllowedForScanner(path)
   return !EMPLOYEE_BLOCKED_PREFIXES.some(
     (blocked) => path === blocked || path.startsWith(`${blocked}/`)
   )
@@ -149,4 +184,3 @@ export function useSessionUser() {
 
   return { user, ready }
 }
-

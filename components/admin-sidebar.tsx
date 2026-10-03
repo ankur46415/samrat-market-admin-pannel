@@ -18,6 +18,8 @@ import {
   ClipboardList,
   FilePenLine,
   ListTree,
+  ScanBarcode,
+  Inbox,
 } from "lucide-react"
 import Image from "next/image"
 import {
@@ -41,7 +43,12 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
-import { canAccessPath, logoutFirebase, useSessionUser } from "@/lib/auth-session"
+import {
+  canAccessPath,
+  defaultHomePath,
+  logoutFirebase,
+  useSessionUser,
+} from "@/lib/auth-session"
 import { AccountModeSwitcher } from "@/components/account-mode-switcher"
 
 const mainNavItems = [
@@ -80,12 +87,24 @@ const mainNavItems = [
       { title: "All dropdowns", url: "/manage-dropdown" },
       { title: "Brand", url: "/manage-dropdown?tab=brands" },
       { title: "Tag", url: "/manage-dropdown?tab=tags" },
+      { title: "Supplier name", url: "/manage-dropdown?tab=supplier-names" },
+      { title: "Supplier contact", url: "/manage-dropdown?tab=supplier-contacts" },
     ],
   },
   {
     title: "Draft Entries",
     url: "/draft-entries",
     icon: FilePenLine,
+  },
+  {
+    title: "Scan & Edit",
+    url: "/scan-edit",
+    icon: ScanBarcode,
+  },
+  {
+    title: "Open Draft Entries",
+    url: "/open-draft-entries",
+    icon: Inbox,
   },
   {
     title: "Customers",
@@ -151,6 +170,7 @@ export function AdminSidebar() {
   const router = useRouter()
   const { user } = useSessionUser()
   const role = user?.role ?? "employee"
+  const homeHref = defaultHomePath(role)
   const visibleMainItems = mainNavItems
     .filter((item) => canAccessPath(role, item.url))
     .map((item) => {
@@ -167,7 +187,7 @@ export function AdminSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
-              <Link href="/" className="flex items-center gap-3">
+              <Link href={homeHref} className="flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground overflow-hidden">
                   <Image
                     src="/images/samrat-market-logo.png"
@@ -252,11 +272,14 @@ export function AdminSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
+        {role !== "scanner" && (
         <SidebarGroup>
           <SidebarGroupLabel>System</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {settingsNavItems.map((item) => {
+              {settingsNavItems
+                .filter((item) => canAccessPath(role, item.url))
+                .map((item) => {
                 const isActive = pathname === item.url
                 const Icon = item.icon
                 return (
@@ -273,10 +296,11 @@ export function AdminSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border">
-        <AccountModeSwitcher />
+        {role !== "scanner" && <AccountModeSwitcher />}
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton

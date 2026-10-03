@@ -8,6 +8,7 @@ import {
   onSnapshot,
   doc,
   addDoc,
+  getDoc,
   getDocs,
   updateDoc,
   deleteDoc,
@@ -20,7 +21,22 @@ import {
 import { db } from "@/lib/firebase"
 import { col } from "@/lib/account-mode"
 import { useAccountModeScope } from "@/components/account-mode-provider"
-import type { Product, ProductBatch, Customer, Sale, LedgerEntry, DashboardStats, Order } from "@/lib/types"
+import type {
+  Product,
+  ProductBatch,
+  Customer,
+  Sale,
+  LedgerEntry,
+  DashboardStats,
+  Order,
+  OpenDraftEntry,
+  OpenDraftEntryInput,
+} from "@/lib/types"
+import {
+  approveOpenDraftEntry,
+  mapOpenDraftEntryDoc,
+  submitOpenDraftEntry,
+} from "@/lib/features/inventory/services/open_draft_entry_service"
 import { saleFromFirestoreDoc } from "@/lib/sale-from-firestore"
 import { fetchGlobalDashboardStats } from "@/lib/features/dashboard/services/dashboard_aggregate_service"
 import { fetchSalesInDateRange } from "@/lib/features/sales/services/sales_query_service"
@@ -36,7 +52,13 @@ import {
   type DraftProductInput,
 } from "@/lib/features/inventory/services/draft_product_service"
 import { isNoExpiryBatch } from "@/lib/inventory/no-expiry-batch"
-import { loadCachedProductsAsProduct, saveProductCache } from "@/lib/offline/product-cache"
+import {
+  cachedToProduct,
+  loadCachedProductsAsProduct,
+  loadProductCache,
+  lookupProductFromIdb,
+  saveProductCache,
+} from "@/lib/offline/product-cache"
 import {
   coerceProductStockFromFirestore,
   firestoreNumber,
@@ -44,6 +66,7 @@ import {
   minStockThresholdFromFirestore,
   productUnitFromFirestore,
   normalizeProductUnit,
+  normalizeScannedBarcode,
   barcodeValuesFromFirestore,
 } from "@/lib/stock"
 import { RACK_OPTIONS, RACK_OPTIONS_SET } from "@/lib/rack-options"
@@ -247,6 +270,8 @@ function expiryFromFirestore(data: Record<string, unknown>): string | undefined 
 
 function productFromData(id: string, data: Record<string, unknown>): Product {
   const brand = trimStr((data as any).brand)
+  const supplierName = trimStr((data as any).supplierName)
+  const supplierContact = trimStr((data as any).supplierContact)
   const expiry = expiryFromFirestore(data)
   const totalStock = Number((data as any).__totalStock ?? NaN)
   const rawBatches = (data as Record<string, unknown>).__batches
@@ -274,6 +299,8 @@ function productFromData(id: string, data: Record<string, unknown>): Product {
     barcode: barcode || undefined,
     barcodeKeys,
     brand: brand.length > 0 ? brand : undefined,
+    supplierName: supplierName.length > 0 ? supplierName : undefined,
+    supplierContact: supplierContact.length > 0 ? supplierContact : undefined,
     imageUrl: (() => {
       const url = trimStr((data as { imageUrl?: unknown }).imageUrl)
       return url.length > 0 ? url : undefined
@@ -391,6 +418,8 @@ export function useProducts() {
       unit: normalizeProductUnit(product.unit),
       minStock: Number.isFinite(Number(product.minStock)) ? Number(product.minStock) : 10,
       brand: product.brand?.trim() ? product.brand.trim() : undefined,
+      supplierName: product.supplierName?.trim() || undefined,
+      supplierContact: product.supplierContact?.trim() || undefined,
       expiryDate: expiryDate ?? null,
       quantity: Number.isFinite(quantity) && quantity > 0 ? Math.floor(quantity) : undefined,
       noExpiry: noExpiry || undefined,
@@ -589,6 +618,8 @@ export function useProducts() {
       unit: normalizeProductUnit(product.unit),
       minStock: Number.isFinite(Number(product.minStock)) ? Number(product.minStock) : 10,
       brand: product.brand?.trim() ? product.brand.trim() : undefined,
+      supplierName: product.supplierName?.trim() || undefined,
+      supplierContact: product.supplierContact?.trim() || undefined,
       expiryDate: expiryDate ?? null,
       quantity: Number.isFinite(quantity) && quantity > 0 ? Math.floor(quantity) : undefined,
       noExpiry: noExpiry || undefined,
@@ -727,6 +758,8 @@ export function useDraftProducts() {
         unit: normalizeProductUnit(product.unit),
         minStock: Number.isFinite(Number(product.minStock)) ? Number(product.minStock) : 10,
         brand: product.brand?.trim() ? product.brand.trim() : undefined,
+        supplierName: product.supplierName?.trim() || undefined,
+        supplierContact: product.supplierContact?.trim() || undefined,
         expiryDate: expiryDate ?? null,
         quantity: Number.isFinite(quantity) && quantity > 0 ? Math.floor(quantity) : undefined,
         noExpiry: noExpiry || undefined,
@@ -1127,7 +1160,9 @@ export function useCategories() {
 
 export type ProductFieldListItem = { id: string; name: string; productCount: number }
 
-function useProductFieldList(collectionName: string, field: "brand" | "tag") {
+type ProductDropdownField = "brand" | "tag" | "supplierName" | "supplierContact"
+
+function useProductFieldList(collectionName: string, field: ProductDropdownField) {
   const accountMode = useAccountModeScope()
   const { products, loading: productsLoading } = useProducts()
   const [stored, setStored] = useState<{ id: string; name: string }[]>([])
@@ -1304,6 +1339,171 @@ export function useProductBrands() {
 
 export function useProductTags() {
   return useProductFieldList("product_tags", "tag")
+}
+
+export function useProductSupplierNames() {
+  return useProductFieldList("product_supplier_names", "supplierName")
+}
+
+export function useProductSupplierContacts() {
+  return useProductFieldList("product_supplier_contacts", "supplierContact")
+}
+
+const LOOKUP_TIMEOUT_MS = 12_000
+
+function withLookupTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      window.setTimeout(
+        () =>
+          reject(
+            new Error(
+              `${label} timed out. Check internet connection, then try again (or use offline cache after an admin has opened inventory once).`
+            )
+          ),
+        LOOKUP_TIMEOUT_MS
+      )
+    }),
+  ])
+}
+
+/** Barcode, normalized barcode, or Firestore product document id. Falls back to IndexedDB cache. */
+export async function lookupProductByScanCode(code: string): Promise<Product | null> {
+  const trimmed = code.trim()
+  if (!trimmed) return null
+  const normalized = normalizeScannedBarcode(trimmed) || trimmed
+
+  const fromDoc = async (productId: string): Promise<Product | null> => {
+    const snap = await getDoc(doc(db, col("products"), productId))
+    if (!snap.exists()) return null
+    return productFromData(snap.id, snap.data() as Record<string, unknown>)
+  }
+
+  const fromBarcodeField = async (value: string): Promise<Product | null> => {
+    const q = query(
+      collection(db, col("products")),
+      where("barcode", "==", value),
+      limit(1)
+    )
+    const snap = await getDocs(q)
+    if (snap.empty) return null
+    const d = snap.docs[0]!
+    return productFromData(d.id, d.data() as Record<string, unknown>)
+  }
+
+  try {
+    let product = await withLookupTimeout(fromBarcodeField(normalized), "Product lookup")
+    if (product) return product
+    if (normalized !== trimmed) {
+      product = await withLookupTimeout(fromBarcodeField(trimmed), "Product lookup")
+      if (product) return product
+    }
+
+    // Document id (e.g. paste from inventory list)
+    if (/^[a-zA-Z0-9]{10,28}$/.test(trimmed)) {
+      product = await withLookupTimeout(fromDoc(trimmed), "Product lookup")
+      if (product) return product
+    }
+  } catch (err) {
+    console.warn("lookupProductByScanCode: Firestore failed, trying offline cache", err)
+  }
+
+  const cachedRef = await lookupProductFromIdb(trimmed)
+  if (!cachedRef?.id) return null
+  const rows = await loadProductCache()
+  const full = rows.find((row) => row.id === cachedRef.id)
+  if (full) return cachedToProduct(full)
+  return cachedToProduct({
+    id: cachedRef.id,
+    name: cachedRef.name,
+    barcode: cachedRef.barcode,
+    barcodeKeys: cachedRef.barcodeKeys,
+    price: cachedRef.price,
+    mrp: cachedRef.mrp,
+    discountPercent: cachedRef.discountPercent,
+    stock: 0,
+    unit: "pcs",
+    category: "",
+  })
+}
+
+export function useProductScanLookup() {
+  const accountMode = useAccountModeScope()
+  return useCallback((code: string) => lookupProductByScanCode(code), [accountMode])
+}
+
+/** @deprecated Use useProductScanLookup — returns full product + id/barcode lookup */
+export function useProductBarcodeLookup() {
+  return useProductScanLookup()
+}
+
+export function useDropdownRegistryNames(collectionName: string) {
+  const accountMode = useAccountModeScope()
+  const [names, setNames] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    const unsub = onSnapshot(
+      collection(db, col(collectionName)),
+      (snapshot) => {
+        const next = snapshot.docs
+          .map((d) => String((d.data() as { name?: unknown }).name ?? "").trim())
+          .filter(Boolean)
+        setNames(
+          [...new Set(next)].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+        )
+        setLoading(false)
+      },
+      (err) => {
+        console.error(`${collectionName} registry error:`, err)
+        setLoading(false)
+      }
+    )
+    return () => unsub()
+  }, [accountMode, collectionName])
+
+  return { names, loading }
+}
+
+export function useOpenDraftEntries() {
+  const accountMode = useAccountModeScope()
+  const [entries, setEntries] = useState<OpenDraftEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setEntries([])
+    setLoading(true)
+    const q = query(collection(db, col("open_draft_entries")), orderBy("updatedAt", "desc"))
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const items = snapshot.docs.map((d) =>
+          mapOpenDraftEntryDoc(d.id, d.data() as Record<string, unknown>)
+        )
+        setEntries(items)
+        setLoading(false)
+      },
+      (err) => {
+        console.error("Open draft entries error:", err)
+        setError(err.message)
+        setLoading(false)
+      }
+    )
+    return () => unsubscribe()
+  }, [accountMode])
+
+  const submitEntry = useCallback(async (input: OpenDraftEntryInput) => {
+    return submitOpenDraftEntry(db, input)
+  }, [])
+
+  const approveEntry = useCallback(async (id: string) => {
+    await approveOpenDraftEntry(db, id)
+  }, [])
+
+  return { entries, loading, error, submitEntry, approveEntry }
 }
 
 // Orders Hook

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import Image from "next/image"
 import Lottie from "lottie-react"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
-import { loginWithFirebase, useSessionUser } from "@/lib/auth-session"
+import { defaultHomePath, loginWithFirebase, useSessionUser } from "@/lib/auth-session"
 
 // ✅ Correct way to import JSON in Next.js client components
 const manAnimation = require("@/assets/Man with task list.json")
@@ -23,7 +23,12 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (ready && user) {
-      router.replace(typeof navigator !== "undefined" && !navigator.onLine ? "/generate-bill/scan" : "/")
+      const home = defaultHomePath(user.role)
+      router.replace(
+        typeof navigator !== "undefined" && !navigator.onLine && user.role !== "scanner"
+          ? "/generate-bill/scan"
+          : home
+      )
     }
   }, [ready, user, router])
 
@@ -32,8 +37,8 @@ export default function LoginPage() {
     setError("")
     setLoading(true)
     try {
-      await loginWithFirebase(email, password)
-      router.replace("/")
+      const session = await loginWithFirebase(email, password)
+      router.replace(defaultHomePath(session.role))
     } catch (err: any) {
       setLoading(false)
       const msg =
@@ -311,12 +316,12 @@ export default function LoginPage() {
                 <label className="field-label">Username</label>
                 <input
                   className="field-input"
-                  type="email"
+                  type="text"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
+                  placeholder="EMP01 or you@example.com"
                   required
-                  autoComplete="email"
+                  autoComplete="username"
                 />
               </div>
 

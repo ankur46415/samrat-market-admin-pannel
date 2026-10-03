@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Layers, Package, Box } from "lucide-react"
 import { format, differenceInCalendarDays, startOfDay } from "date-fns"
-import { useProducts, useCategories, useProductBrands, useProductTags } from "@/hooks/use-firestore"
+import {
+  useProducts,
+  useCategories,
+  useProductBrands,
+  useProductTags,
+  useProductSupplierNames,
+  useProductSupplierContacts,
+} from "@/hooks/use-firestore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -98,6 +105,8 @@ export default function EditProductPage({
     unit: "pcs",
     barcode: "",
     brand: "",
+    supplierName: "",
+    supplierContact: "",
     expiry: "",
     minStock: "10",
     stock: "0",
@@ -107,6 +116,8 @@ export default function EditProductPage({
 
   const { names: brandOptions } = useProductBrands()
   const { names: tagOptions } = useProductTags()
+  const { names: supplierNameOptions } = useProductSupplierNames()
+  const { names: supplierContactOptions } = useProductSupplierContacts()
   const formHydratedForId = useRef<string | null>(null)
   const batchesHydratedForId = useRef<string | null>(null)
 
@@ -132,6 +143,8 @@ export default function EditProductPage({
         unit: product.unit || "pcs",
         barcode: product.barcode || "",
         brand: product.brand || "",
+        supplierName: product.supplierName || "",
+        supplierContact: product.supplierContact || "",
         expiry: product.expiry || "",
         minStock: String(product.minStock),
         stock: String(product.stock),
@@ -233,6 +246,14 @@ export default function EditProductPage({
       toast.error("Select a tag from Manage Dropdown (or leave empty)")
       return
     }
+    if (!isRegisteredDropdownValue(formData.supplierName, supplierNameOptions)) {
+      toast.error("Select a supplier name from Manage Dropdown (or leave empty)")
+      return
+    }
+    if (!isRegisteredDropdownValue(formData.supplierContact, supplierContactOptions)) {
+      toast.error("Select a supplier contact from Manage Dropdown (or leave empty)")
+      return
+    }
 
     const stockNum = parseInt(formData.stock, 10)
     const newStock = Number.isFinite(stockNum) && stockNum >= 0 ? stockNum : 0
@@ -259,6 +280,8 @@ export default function EditProductPage({
       if (formData.brand) {
         updatePayload.brand = formData.brand
       }
+      updatePayload.supplierName = formData.supplierName.trim() || null
+      updatePayload.supplierContact = formData.supplierContact.trim() || null
       if (formData.expiry) {
         updatePayload.expiry = formData.expiry
       }
@@ -422,6 +445,36 @@ export default function EditProductPage({
                       onChange={(brand) => setFormData({ ...formData, brand })}
                       options={brandOptions}
                       placeholder="Select brand"
+                      triggerClassName={inputClass}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="supplierName" className={labelClass}>
+                      Supplier name{" "}
+                      <span className="font-normal text-muted-foreground">(optional)</span>
+                    </Label>
+                    <InventoryFieldSelect
+                      id="supplierName"
+                      value={formData.supplierName}
+                      onChange={(supplierName) => setFormData({ ...formData, supplierName })}
+                      options={supplierNameOptions}
+                      placeholder="Select supplier name"
+                      triggerClassName={inputClass}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="supplierContact" className={labelClass}>
+                      Supplier contact{" "}
+                      <span className="font-normal text-muted-foreground">(optional)</span>
+                    </Label>
+                    <InventoryFieldSelect
+                      id="supplierContact"
+                      value={formData.supplierContact}
+                      onChange={(supplierContact) =>
+                        setFormData({ ...formData, supplierContact })
+                      }
+                      options={supplierContactOptions}
+                      placeholder="Select supplier contact"
                       triggerClassName={inputClass}
                     />
                   </div>

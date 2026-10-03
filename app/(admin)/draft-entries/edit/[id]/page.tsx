@@ -6,7 +6,14 @@ import { useRouter } from "next/navigation"
 import { ArrowLeft, FilePenLine } from "lucide-react"
 import { doc, getDoc } from "firebase/firestore"
 import { toast } from "sonner"
-import { useCategories, useDraftProducts, useProductBrands, useProductTags } from "@/hooks/use-firestore"
+import {
+  useCategories,
+  useDraftProducts,
+  useProductBrands,
+  useProductTags,
+  useProductSupplierNames,
+  useProductSupplierContacts,
+} from "@/hooks/use-firestore"
 import { InventoryFieldSelect } from "@/components/inventory/inventory-field-select"
 import { db } from "@/lib/firebase"
 import { col } from "@/lib/account-mode"
@@ -53,6 +60,8 @@ export default function EditDraftEntryPage({ params }: { params: Promise<{ id: s
   const { categories } = useCategories()
   const { names: brandOptions } = useProductBrands()
   const { names: tagOptions } = useProductTags()
+  const { names: supplierNameOptions } = useProductSupplierNames()
+  const { names: supplierContactOptions } = useProductSupplierContacts()
   const [saving, setSaving] = useState(false)
   const [showNewCategory, setShowNewCategory] = useState(false)
   const [newCategory, setNewCategory] = useState("")
@@ -74,6 +83,8 @@ export default function EditDraftEntryPage({ params }: { params: Promise<{ id: s
     unit: "pcs",
     barcode: "",
     brand: "",
+    supplierName: "",
+    supplierContact: "",
     expiry: "",
     noExpiry: false,
     minStock: "10",
@@ -113,6 +124,8 @@ export default function EditDraftEntryPage({ params }: { params: Promise<{ id: s
         unit: draft.unit || "pcs",
         barcode: draft.barcode || "",
         brand: draft.brand || "",
+        supplierName: draft.supplierName || "",
+        supplierContact: draft.supplierContact || "",
         expiry: draft.expiry || "",
         noExpiry,
         minStock: String(draft.minStock ?? 10),
@@ -163,6 +176,14 @@ export default function EditDraftEntryPage({ params }: { params: Promise<{ id: s
       toast.error("Select a tag from Manage Dropdown (or leave empty)")
       return
     }
+    if (!isRegisteredDropdownValue(formData.supplierName, supplierNameOptions)) {
+      toast.error("Select a supplier name from Manage Dropdown (or leave empty)")
+      return
+    }
+    if (!isRegisteredDropdownValue(formData.supplierContact, supplierContactOptions)) {
+      toast.error("Select a supplier contact from Manage Dropdown (or leave empty)")
+      return
+    }
 
     const stockNum = parseInt(formData.stock, 10)
     if (formData.expiry && !formData.noExpiry && (!Number.isFinite(stockNum) || stockNum <= 0)) {
@@ -195,6 +216,8 @@ export default function EditDraftEntryPage({ params }: { params: Promise<{ id: s
         unit: normalizeProductUnit(formData.unit),
         barcode: formData.barcode,
         brand: formData.brand || undefined,
+        supplierName: formData.supplierName || undefined,
+        supplierContact: formData.supplierContact || undefined,
         expiry: formData.noExpiry ? undefined : formData.expiry || undefined,
         noExpiry: formData.noExpiry || undefined,
         minStock: parseMinStockInput(formData.minStock, 10),
@@ -277,6 +300,28 @@ export default function EditDraftEntryPage({ params }: { params: Promise<{ id: s
                   onChange={(brand) => setFormData({ ...formData, brand })}
                   options={brandOptions}
                   placeholder="Select brand"
+                  triggerClassName={inputClass}
+                />
+              </div>
+              <div className={fieldGroup}>
+                <Label className={labelClass}>Supplier name</Label>
+                <InventoryFieldSelect
+                  value={formData.supplierName}
+                  onChange={(supplierName) => setFormData({ ...formData, supplierName })}
+                  options={supplierNameOptions}
+                  placeholder="Select supplier name"
+                  triggerClassName={inputClass}
+                />
+              </div>
+              <div className={fieldGroup}>
+                <Label className={labelClass}>Supplier contact</Label>
+                <InventoryFieldSelect
+                  value={formData.supplierContact}
+                  onChange={(supplierContact) =>
+                    setFormData({ ...formData, supplierContact })
+                  }
+                  options={supplierContactOptions}
+                  placeholder="Select supplier contact"
                   triggerClassName={inputClass}
                 />
               </div>

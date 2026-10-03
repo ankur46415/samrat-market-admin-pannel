@@ -33,6 +33,10 @@ export interface Product {
   /** Extra lookup keys (sku, ean, padded variants) for POS scan matching */
   barcodeKeys?: string[]
   brand?: string
+  /** From Manage Dropdown — supplier name registry */
+  supplierName?: string
+  /** From Manage Dropdown — supplier contact registry */
+  supplierContact?: string
   /** Firebase Storage download URL — optional product photo */
   imageUrl?: string
   /** Maximum retail price (MRP) when set at product creation */
@@ -46,6 +50,50 @@ export interface Product {
   createdAt: Date
   updatedAt: Date
 }
+
+/** Pending field edits from Scan & Edit — approved into live `products`. */
+export interface OpenDraftEntry {
+  id: string
+  productId: string
+  barcode: string
+  name: string
+  category: string
+  rack: string
+  /** Set to editor account (e.g. EMP01) to track who submitted the change */
+  tag: string
+  status: string
+  brand?: string
+  supplierName?: string
+  supplierContact?: string
+  mrp?: number
+  discountPercent?: number
+  price: number
+  stock: number
+  editedBy: string
+  editedByEmail: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type OpenDraftEntryInput = Pick<
+  OpenDraftEntry,
+  | "productId"
+  | "barcode"
+  | "name"
+  | "category"
+  | "rack"
+  | "tag"
+  | "status"
+  | "brand"
+  | "supplierName"
+  | "supplierContact"
+  | "mrp"
+  | "discountPercent"
+  | "price"
+  | "stock"
+  | "editedBy"
+  | "editedByEmail"
+>
 
 // Customer types
 export interface Customer {

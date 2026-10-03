@@ -16,6 +16,8 @@ type BarcodeScannerInputProps = {
   placeholder?: string
   className?: string
   disabled?: boolean
+  /** Called after Enter / scanner commit with normalized code */
+  onCommit?: (code: string) => void
 }
 
 /** Barcode field with USB / Bluetooth scanner gun support (HID keyboard mode). */
@@ -26,6 +28,7 @@ export function BarcodeScannerInput({
   placeholder = "Scan or type barcode…",
   className,
   disabled,
+  onCommit,
 }: BarcodeScannerInputProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [focused, setFocused] = useState(false)
@@ -34,6 +37,7 @@ export function BarcodeScannerInput({
     const cleaned = normalizeScannedBarcode(raw)
     if (!cleaned) return
     onChange(cleaned)
+    onCommit?.(cleaned)
     if (showToast) toast.success(`Barcode: ${cleaned}`)
   }
 
@@ -54,7 +58,7 @@ export function BarcodeScannerInput({
           placeholder={placeholder}
           autoComplete="off"
           spellCheck={false}
-          inputMode="numeric"
+          inputMode="text"
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={() => setFocused(true)}

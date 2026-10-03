@@ -4,7 +4,14 @@ import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, ImagePlus, Package, Layers, X } from "lucide-react"
-import { useProducts, useCategories, useProductBrands, useProductTags } from "@/hooks/use-firestore"
+import {
+  useProducts,
+  useCategories,
+  useProductBrands,
+  useProductTags,
+  useProductSupplierNames,
+  useProductSupplierContacts,
+} from "@/hooks/use-firestore"
 import { BarcodeScannerInput } from "@/components/inventory/barcode-scanner-input"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -54,6 +61,8 @@ export default function AddProductPage() {
   const { categories } = useCategories()
   const { names: brandOptions } = useProductBrands()
   const { names: tagOptions } = useProductTags()
+  const { names: supplierNameOptions } = useProductSupplierNames()
+  const { names: supplierContactOptions } = useProductSupplierContacts()
   const [loading, setLoading] = useState(false)
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
@@ -76,6 +85,8 @@ export default function AddProductPage() {
     unit: "pcs",
     barcode: "",
     brand: "",
+    supplierName: "",
+    supplierContact: "",
     expiry: "",
     noExpiry: false,
     minStock: "10",
@@ -187,6 +198,14 @@ export default function AddProductPage() {
       toast.error("Select a tag from Manage Dropdown (or leave empty)")
       return
     }
+    if (!isRegisteredDropdownValue(formData.supplierName, supplierNameOptions)) {
+      toast.error("Select a supplier name from Manage Dropdown (or leave empty)")
+      return
+    }
+    if (!isRegisteredDropdownValue(formData.supplierContact, supplierContactOptions)) {
+      toast.error("Select a supplier contact from Manage Dropdown (or leave empty)")
+      return
+    }
 
     setLoading(true)
 
@@ -212,6 +231,8 @@ export default function AddProductPage() {
         unit: normalizeProductUnit(formData.unit),
         barcode: formData.barcode || undefined,
         brand: formData.brand || undefined,
+        supplierName: formData.supplierName || undefined,
+        supplierContact: formData.supplierContact || undefined,
         expiry: formData.noExpiry ? undefined : formData.expiry || undefined,
         noExpiry: formData.noExpiry || undefined,
         minStock: parseMinStockInput(formData.minStock, 10),
@@ -343,6 +364,36 @@ export default function AddProductPage() {
                       onChange={(brand) => setFormData({ ...formData, brand })}
                       options={brandOptions}
                       placeholder="Select brand"
+                      triggerClassName={inputClass}
+                    />
+                  </div>
+
+                  <div className={fieldGroup}>
+                    <Label htmlFor="supplierName" className={labelClass}>
+                      Supplier name{" "}
+                      <span className="font-normal text-muted-foreground">(optional)</span>
+                    </Label>
+                    <InventoryFieldSelect
+                      id="supplierName"
+                      value={formData.supplierName}
+                      onChange={(supplierName) => setFormData({ ...formData, supplierName })}
+                      options={supplierNameOptions}
+                      placeholder="Select supplier name"
+                      triggerClassName={inputClass}
+                    />
+                  </div>
+
+                  <div className={fieldGroup}>
+                    <Label htmlFor="supplierContact" className={labelClass}>
+                      Supplier contact{" "}
+                      <span className="font-normal text-muted-foreground">(optional)</span>
+                    </Label>
+                    <InventoryFieldSelect
+                      id="supplierContact"
+                      value={formData.supplierContact}
+                      onChange={(supplierContact) => setFormData({ ...formData, supplierContact })}
+                      options={supplierContactOptions}
+                      placeholder="Select supplier contact"
                       triggerClassName={inputClass}
                     />
                   </div>
