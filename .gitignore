@@ -1,17 +1,12 @@
-# v0 sandbox internal files
-__v0_runtime_loader.js
-__v0_devtools.tsx
-__v0_jsx-dev-runtime.ts
-.snowflake/
-.v0-trash/
-.vercel/
-next.user-config.*
+# Repo tracks only the Website app (see Website/)
+/*
+!/Website/
+!/Website/**
 
-# Environment variables
-.env*.local
+!.gitignore
 
-# Common ignores
+# Local IDE / tooling at repo root (not committed)
+.idea/
 node_modules/
 .next/
-.DS_Store
 tsconfig.tsbuildinfo
