@@ -1,9 +1,22 @@
 import { redirect } from "next/navigation"
 
-export default function DropdownManagementRedirectPage({
+function redirectTab(raw: string | undefined): string {
+  if (raw === "tags") return "tags"
+  if (
+    raw === "suppliers" ||
+    raw === "supplier-names" ||
+    raw === "supplier-contacts"
+  ) {
+    return "suppliers"
+  }
+  return "brands"
+}
+
+export default async function DropdownManagementRedirectPage({
   searchParams,
 }: {
   searchParams: Promise<{ tab?: string }>
 }) {
-  return redirect(`/manage-dropdown?tab=${(await searchParams).tab === "tags" ? "tags" : "brands"}`)
+  const params = await searchParams
+  redirect(`/manage-dropdown?tab=${redirectTab(params.tab)}`)
 }
