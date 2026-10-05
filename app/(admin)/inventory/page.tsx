@@ -703,7 +703,10 @@ export default function InventoryPage() {
                       <TableHead className={cn(invTableHeadClass, "text-right")}>MRP</TableHead>
                       <TableHead className={cn(invTableHeadClass, "text-right")}>Sell</TableHead>
                       {showCost ? (
-                        <TableHead className={cn(invTableHeadClass, "text-right")}>Cost</TableHead>
+                        <>
+                          <TableHead className={cn(invTableHeadClass, "text-right")}>Cost</TableHead>
+                          <TableHead className={cn(invTableHeadClass, "text-right")}>Total cost</TableHead>
+                        </>
                       ) : null}
                       <TableHead className={cn(invTableHeadClass, "text-right")}>Total qty</TableHead>
                       <TableHead className={cn(invTableHeadClass, "text-center w-[88px]")}>Batches</TableHead>
@@ -715,7 +718,7 @@ export default function InventoryPage() {
                   <TableBody>
                     {filteredProducts.length === 0 ? (
                       <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={showCost ? 12 : 11} className="h-40 text-center">
+                        <TableCell colSpan={showCost ? 13 : 11} className="h-40 text-center">
                           <div className="flex flex-col items-center justify-center gap-2 py-6">
                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
                               <Inbox className="h-6 w-6 text-muted-foreground" />
@@ -768,9 +771,18 @@ export default function InventoryPage() {
                             </TableCell>
                             <TableCell className={invTableCellNumeric}>{formatCurrency(product.price)}</TableCell>
                             {showCost ? (
-                              <TableCell className={cn(invTableCellNumeric, "text-muted-foreground")}>
-                                {formatCurrency(product.costPrice)}
-                              </TableCell>
+                              <>
+                                <TableCell className={cn(invTableCellNumeric, "text-muted-foreground")}>
+                                  {formatCurrency(product.costPrice)}
+                                </TableCell>
+                                <TableCell className={cn(invTableCellNumeric, "text-muted-foreground")}>
+                                  {formatCurrency(
+                                    product.totalCost != null && product.totalCost >= 0
+                                      ? product.totalCost
+                                      : product.stock * product.costPrice
+                                  )}
+                                </TableCell>
+                              </>
                             ) : null}
                             <TableCell className={invTableCellNumeric}>
                               <span className="font-semibold text-foreground">{product.stock}</span>

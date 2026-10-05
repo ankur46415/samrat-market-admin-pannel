@@ -87,8 +87,7 @@ const mainNavItems = [
       { title: "All dropdowns", url: "/manage-dropdown" },
       { title: "Brand", url: "/manage-dropdown?tab=brands" },
       { title: "Tag", url: "/manage-dropdown?tab=tags" },
-      { title: "Supplier name", url: "/manage-dropdown?tab=supplier-names" },
-      { title: "Supplier contact", url: "/manage-dropdown?tab=supplier-contacts" },
+      { title: "Suppliers", url: "/manage-dropdown?tab=suppliers" },
     ],
   },
   {

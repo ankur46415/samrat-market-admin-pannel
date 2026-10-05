@@ -8,7 +8,6 @@ import {
   onSnapshot,
   doc,
   addDoc,
-  getDoc,
   getDocs,
   updateDoc,
   deleteDoc,
@@ -34,6 +33,7 @@ import type {
 } from "@/lib/types"
 import {
   approveOpenDraftEntry,
+  deleteOpenDraftEntry,
   mapOpenDraftEntryDoc,
   submitOpenDraftEntry,
 } from "@/lib/features/inventory/services/open_draft_entry_service"
@@ -45,6 +45,7 @@ import { InventoryBatchService } from "@/lib/features/inventory/services/invento
 import {
   addDraftProductDoc,
   approveDraftProduct,
+  deleteDraftProduct,
   getDraftProductByBarcode,
   moveProductToDraftList,
   updateDraftProduct,
@@ -52,13 +53,9 @@ import {
   type DraftProductInput,
 } from "@/lib/features/inventory/services/draft_product_service"
 import { isNoExpiryBatch } from "@/lib/inventory/no-expiry-batch"
-import {
-  cachedToProduct,
-  loadCachedProductsAsProduct,
-  loadProductCache,
-  lookupProductFromIdb,
-  saveProductCache,
-} from "@/lib/offline/product-cache"
+import { loadCachedProductsAsProduct, saveProductCache } from "@/lib/offline/product-cache"
+import { convertTimestamp, productFromData } from "@/lib/inventory/product-from-doc"
+import { lookupProductByScanCode } from "@/lib/features/inventory/services/product_lookup_service"
 import {
   coerceProductStockFromFirestore,
   firestoreNumber,
@@ -66,7 +63,6 @@ import {
   minStockThresholdFromFirestore,
   productUnitFromFirestore,
   normalizeProductUnit,
-  normalizeScannedBarcode,
   barcodeValuesFromFirestore,
 } from "@/lib/stock"
 import { RACK_OPTIONS, RACK_OPTIONS_SET } from "@/lib/rack-options"
@@ -217,122 +213,6 @@ function releaseSharedProductsListener() {
   productsBatchEnrichGen += 1
 }
 
-function isTimestampLike(value: unknown): value is { toDate: () => Date } {
-  return typeof value === "object" && value !== null && "toDate" in value && typeof (value as any).toDate === "function"
-}
-
-// Helper to convert Firestore timestamp-like values into a safe Date
-const convertTimestamp = (timestamp: unknown): Date => {
-  if (!timestamp) return new Date()
-  if (timestamp instanceof Date) return timestamp
-  if (timestamp instanceof Timestamp) return timestamp.toDate()
-  if (isTimestampLike(timestamp)) {
-    const d = timestamp.toDate()
-    return Number.isNaN(d.getTime()) ? new Date() : d
-  }
-  if (typeof timestamp === "string" || typeof timestamp === "number") {
-    const d = new Date(timestamp)
-    return Number.isNaN(d.getTime()) ? new Date() : d
-  }
-  if (typeof timestamp === "object" && timestamp !== null) {
-    const seconds = (timestamp as any).seconds
-    const nanoseconds = (timestamp as any).nanoseconds
-    if (typeof seconds === "number") {
-      const millis = (seconds * 1000) + (typeof nanoseconds === "number" ? Math.floor(nanoseconds / 1_000_000) : 0)
-      const d = new Date(millis)
-      return Number.isNaN(d.getTime()) ? new Date() : d
-    }
-  }
-  return new Date()
-}
-
-/** Map Firestore product doc → Product (matches console: barcode, category, costPrice, minStock, name, price, stock, unit, …) */
-function trimStr(v: unknown): string {
-  return typeof v === "string" ? v.trim() : ""
-}
-
-function optionalBarcode(v: unknown): string | undefined {
-  if (v === undefined || v === null) return undefined
-  const s = typeof v === "string" ? v.trim() : String(v).trim()
-  return s.length > 0 ? s : undefined
-}
-
-function expiryFromFirestore(data: Record<string, unknown>): string | undefined {
-  const raw = data.expiry
-  if (raw instanceof Timestamp) {
-    const d = raw.toDate()
-    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10)
-    return undefined
-  }
-  const s = trimStr(raw)
-  return s.length > 0 ? s : undefined
-}
-
-function productFromData(id: string, data: Record<string, unknown>): Product {
-  const brand = trimStr((data as any).brand)
-  const supplierName = trimStr((data as any).supplierName)
-  const supplierContact = trimStr((data as any).supplierContact)
-  const expiry = expiryFromFirestore(data)
-  const totalStock = Number((data as any).__totalStock ?? NaN)
-  const rawBatches = (data as Record<string, unknown>).__batches
-  const rack = trimStr((data as any).rack)
-  const tag = trimStr((data as any).tag)
-  const status = trimStr((data as any).status)
-  const barcodeKeys = barcodeValuesFromFirestore(data, id)
-  const barcode = optionalBarcode(data.barcode) || optionalBarcode((data as any).productBarcode)
-  const batches: ProductBatch[] = Array.isArray(rawBatches)
-    ? (rawBatches as ProductBatch[]).map((b) => ({
-        id: b.id,
-        quantity: Number.isFinite(Number(b.quantity)) ? Number(b.quantity) : 0,
-        expiryDate: convertTimestamp(b.expiryDate),
-        createdAt: convertTimestamp(b.createdAt),
-        ...(b.noExpiry ? { noExpiry: true } : {}),
-      }))
-    : []
-  return {
-    id,
-    name: trimStr(data.name),
-    category: trimStr(data.category),
-    rack,
-    tag,
-    status,
-    barcode: barcode || undefined,
-    barcodeKeys,
-    brand: brand.length > 0 ? brand : undefined,
-    supplierName: supplierName.length > 0 ? supplierName : undefined,
-    supplierContact: supplierContact.length > 0 ? supplierContact : undefined,
-    imageUrl: (() => {
-      const url = trimStr((data as { imageUrl?: unknown }).imageUrl)
-      return url.length > 0 ? url : undefined
-    })(),
-    price: firestoreNumber(data.price, 0),
-    costPrice: firestoreNumber(data.costPrice, 0),
-    mrp: (() => {
-      const n = firestoreNumber((data as any).mrp, NaN)
-      return Number.isFinite(n) && n > 0 ? n : undefined
-    })(),
-    discountPercent: (() => {
-      const n = firestoreNumber((data as { discountPercent?: unknown }).discountPercent, NaN)
-      if (!Number.isFinite(n) || n <= 0) return undefined
-      return Math.min(100, Math.max(0, Math.round(n * 100) / 100))
-    })(),
-    stock: Number.isFinite(totalStock) ? totalStock : coerceProductStockFromFirestore(data),
-    batches,
-    minStock: (() => {
-      const raw = data.minStock
-      if (raw !== undefined && raw !== null) {
-        const n = firestoreNumber(raw, NaN)
-        if (Number.isFinite(n)) return n
-      }
-      return minStockThresholdFromFirestore(data)
-    })(),
-    expiry: expiry && expiry.length > 0 ? expiry : undefined,
-    unit: normalizeProductUnit(productUnitFromFirestore(data)),
-    createdAt: convertTimestamp(data.createdAt as Timestamp | Date | undefined),
-    updatedAt: convertTimestamp(data.updatedAt as Timestamp | Date | undefined),
-  }
-}
-
 // Products Hook
 export function useProducts() {
   const accountMode = useAccountModeScope()
@@ -427,6 +307,12 @@ export function useProducts() {
       discountPercent:
         product.discountPercent != null && Number(product.discountPercent) > 0
           ? Number(product.discountPercent)
+          : undefined,
+      gstPercent:
+        product.gstPercent != null &&
+        Number.isFinite(Number(product.gstPercent)) &&
+        Number(product.gstPercent) >= 0
+          ? Number(product.gstPercent)
           : undefined,
       imageUrl: product.imageUrl?.trim() || undefined,
     })
@@ -612,7 +498,11 @@ export function useProducts() {
       category: (product.category ?? "").trim(),
       rack,
       tag: String(product.tag ?? "").trim(),
-      status: "deactive",
+      status:
+        product.status &&
+        STATUS_OPTIONS_SET.has(product.status as (typeof STATUS_OPTIONS)[number])
+          ? String(product.status).trim()
+          : "active",
       price,
       costPrice,
       unit: normalizeProductUnit(product.unit),
@@ -627,6 +517,12 @@ export function useProducts() {
       discountPercent:
         product.discountPercent != null && Number(product.discountPercent) > 0
           ? Number(product.discountPercent)
+          : undefined,
+      gstPercent:
+        product.gstPercent != null &&
+        Number.isFinite(Number(product.gstPercent)) &&
+        Number(product.gstPercent) >= 0
+          ? Number(product.gstPercent)
           : undefined,
       imageUrl: product.imageUrl?.trim() || undefined,
     }
@@ -702,6 +598,10 @@ export function useDraftProducts() {
     return approveDraftProduct(db, id)
   }, [])
 
+  const deleteDraft = useCallback(async (id: string) => {
+    await deleteDraftProduct(db, id)
+  }, [])
+
   const updateDraft = useCallback(
     async (
       draftId: string,
@@ -746,6 +646,12 @@ export function useDraftProducts() {
           ? Number(mrpRaw)
           : undefined
 
+      const totalCostRaw = product.totalCost
+      const totalCost =
+        totalCostRaw != null && Number.isFinite(Number(totalCostRaw)) && Number(totalCostRaw) >= 0
+          ? Number(totalCostRaw)
+          : undefined
+
       const input: DraftProductInput = {
         name: product.name || "Unnamed Product",
         barcode,
@@ -755,6 +661,7 @@ export function useDraftProducts() {
         status,
         price,
         costPrice,
+        totalCost,
         unit: normalizeProductUnit(product.unit),
         minStock: Number.isFinite(Number(product.minStock)) ? Number(product.minStock) : 10,
         brand: product.brand?.trim() ? product.brand.trim() : undefined,
@@ -768,6 +675,12 @@ export function useDraftProducts() {
           product.discountPercent != null && Number(product.discountPercent) > 0
             ? Number(product.discountPercent)
             : undefined,
+        gstPercent:
+          product.gstPercent != null &&
+          Number.isFinite(Number(product.gstPercent)) &&
+          Number(product.gstPercent) >= 0
+            ? Number(product.gstPercent)
+            : undefined,
         imageUrl: product.imageUrl?.trim() || undefined,
       }
 
@@ -776,7 +689,7 @@ export function useDraftProducts() {
     []
   )
 
-  return { drafts, loading, error, updateDraftStatus, updateDraft, approveDraft }
+  return { drafts, loading, error, updateDraftStatus, updateDraft, approveDraft, deleteDraft }
 }
 
 // Customers Hook
@@ -1349,85 +1262,6 @@ export function useProductSupplierContacts() {
   return useProductFieldList("product_supplier_contacts", "supplierContact")
 }
 
-const LOOKUP_TIMEOUT_MS = 12_000
-
-function withLookupTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => {
-      window.setTimeout(
-        () =>
-          reject(
-            new Error(
-              `${label} timed out. Check internet connection, then try again (or use offline cache after an admin has opened inventory once).`
-            )
-          ),
-        LOOKUP_TIMEOUT_MS
-      )
-    }),
-  ])
-}
-
-/** Barcode, normalized barcode, or Firestore product document id. Falls back to IndexedDB cache. */
-export async function lookupProductByScanCode(code: string): Promise<Product | null> {
-  const trimmed = code.trim()
-  if (!trimmed) return null
-  const normalized = normalizeScannedBarcode(trimmed) || trimmed
-
-  const fromDoc = async (productId: string): Promise<Product | null> => {
-    const snap = await getDoc(doc(db, col("products"), productId))
-    if (!snap.exists()) return null
-    return productFromData(snap.id, snap.data() as Record<string, unknown>)
-  }
-
-  const fromBarcodeField = async (value: string): Promise<Product | null> => {
-    const q = query(
-      collection(db, col("products")),
-      where("barcode", "==", value),
-      limit(1)
-    )
-    const snap = await getDocs(q)
-    if (snap.empty) return null
-    const d = snap.docs[0]!
-    return productFromData(d.id, d.data() as Record<string, unknown>)
-  }
-
-  try {
-    let product = await withLookupTimeout(fromBarcodeField(normalized), "Product lookup")
-    if (product) return product
-    if (normalized !== trimmed) {
-      product = await withLookupTimeout(fromBarcodeField(trimmed), "Product lookup")
-      if (product) return product
-    }
-
-    // Document id (e.g. paste from inventory list)
-    if (/^[a-zA-Z0-9]{10,28}$/.test(trimmed)) {
-      product = await withLookupTimeout(fromDoc(trimmed), "Product lookup")
-      if (product) return product
-    }
-  } catch (err) {
-    console.warn("lookupProductByScanCode: Firestore failed, trying offline cache", err)
-  }
-
-  const cachedRef = await lookupProductFromIdb(trimmed)
-  if (!cachedRef?.id) return null
-  const rows = await loadProductCache()
-  const full = rows.find((row) => row.id === cachedRef.id)
-  if (full) return cachedToProduct(full)
-  return cachedToProduct({
-    id: cachedRef.id,
-    name: cachedRef.name,
-    barcode: cachedRef.barcode,
-    barcodeKeys: cachedRef.barcodeKeys,
-    price: cachedRef.price,
-    mrp: cachedRef.mrp,
-    discountPercent: cachedRef.discountPercent,
-    stock: 0,
-    unit: "pcs",
-    category: "",
-  })
-}
-
 export function useProductScanLookup() {
   const accountMode = useAccountModeScope()
   return useCallback((code: string) => lookupProductByScanCode(code), [accountMode])
@@ -1438,34 +1272,8 @@ export function useProductBarcodeLookup() {
   return useProductScanLookup()
 }
 
-export function useDropdownRegistryNames(collectionName: string) {
-  const accountMode = useAccountModeScope()
-  const [names, setNames] = useState<string[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    setLoading(true)
-    const unsub = onSnapshot(
-      collection(db, col(collectionName)),
-      (snapshot) => {
-        const next = snapshot.docs
-          .map((d) => String((d.data() as { name?: unknown }).name ?? "").trim())
-          .filter(Boolean)
-        setNames(
-          [...new Set(next)].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
-        )
-        setLoading(false)
-      },
-      (err) => {
-        console.error(`${collectionName} registry error:`, err)
-        setLoading(false)
-      }
-    )
-    return () => unsub()
-  }, [accountMode, collectionName])
-
-  return { names, loading }
-}
+export { lookupProductByScanCode }
+export { useDropdownRegistryNames } from "@/hooks/use-dropdown-registry-names"
 
 export function useOpenDraftEntries() {
   const accountMode = useAccountModeScope()
@@ -1503,7 +1311,11 @@ export function useOpenDraftEntries() {
     await approveOpenDraftEntry(db, id)
   }, [])
 
-  return { entries, loading, error, submitEntry, approveEntry }
+  const deleteEntry = useCallback(async (id: string) => {
+    await deleteOpenDraftEntry(db, id)
+  }, [])
+
+  return { entries, loading, error, submitEntry, approveEntry, deleteEntry }
 }
 
 // Orders Hook

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { format } from "date-fns"
-import { Inbox, Search, ShieldCheck } from "lucide-react"
+import { Inbox, Search, ShieldCheck, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { TEST_ACCOUNT_PASSKEY } from "@/lib/account-mode"
 import { useOpenDraftEntries } from "@/hooks/use-firestore"
@@ -35,6 +35,17 @@ import {
   invTableHeadClass,
 } from "@/lib/inventory-ui"
 import { cn } from "@/lib/utils"
+import type { OpenDraftEntry } from "@/lib/types"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -47,12 +58,14 @@ function formatCurrency(amount: number) {
 export default function OpenDraftEntriesPage() {
   const { user } = useSessionUser()
   const isScanner = user?.role === "scanner"
-  const { entries, loading, approveEntry } = useOpenDraftEntries()
+  const { entries, loading, approveEntry, deleteEntry } = useOpenDraftEntries()
   const [search, setSearch] = useState("")
   const [auditMode, setAuditMode] = useState(false)
   const [auditDialogOpen, setAuditDialogOpen] = useState(false)
   const [auditPassword, setAuditPassword] = useState("")
   const [approvingId, setApprovingId] = useState<string | null>(null)
+  const [entryToDelete, setEntryToDelete] = useState<OpenDraftEntry | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const filtered = useMemo(() => {
     const q = search.trim()
@@ -100,6 +113,28 @@ export default function OpenDraftEntriesPage() {
       toast.error(error instanceof Error ? error.message : "Approve failed")
     } finally {
       setApprovingId(null)
+    }
+  }
+
+  const canDeleteEntry = (row: OpenDraftEntry) => {
+    if (isScanner) {
+      return !user?.accountTag || row.editedBy === user.accountTag
+    }
+    return auditMode
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!entryToDelete || !canDeleteEntry(entryToDelete)) return
+    setDeletingId(entryToDelete.id)
+    try {
+      await deleteEntry(entryToDelete.id)
+      toast.success(`Removed pending edit for "${entryToDelete.name}"`)
+      setEntryToDelete(null)
+    } catch (error) {
+      console.error(error)
+      toast.error(error instanceof Error ? error.message : "Delete failed")
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -160,14 +195,14 @@ export default function OpenDraftEntriesPage() {
                   <TableHead className={invTableHeadClass}>Rack</TableHead>
                   <TableHead className={invTableHeadClass}>MRP</TableHead>
                   <TableHead className={invTableHeadClass}>Updated</TableHead>
-                  {!isScanner && <TableHead className={invTableHeadClass}>Action</TableHead>}
+                  <TableHead className={invTableHeadClass}>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading &&
                   Array.from({ length: 4 }).map((_, i) => (
                     <TableRow key={i}>
-                      <TableCell colSpan={isScanner ? 7 : 8}>
+                      <TableCell colSpan={8}>
                         <Skeleton className="h-8 w-full" />
                       </TableCell>
                     </TableRow>
@@ -175,7 +210,7 @@ export default function OpenDraftEntriesPage() {
                 {!loading && filtered.length === 0 && (
                   <TableRow>
                     <TableCell
-                      colSpan={isScanner ? 7 : 8}
+                      colSpan={8}
                       className={cn(invTableCellClass, "text-center text-muted-foreground py-10")}
                     >
                       No open draft entries
@@ -203,17 +238,29 @@ export default function OpenDraftEntriesPage() {
                       <TableCell className={cn(invTableCellClass, "text-xs text-muted-foreground")}>
                         {format(row.updatedAt, "dd MMM yyyy, HH:mm")}
                       </TableCell>
-                      {!isScanner && (
-                        <TableCell className={invTableCellClass}>
+                      <TableCell className={invTableCellClass}>
+                        <div className="flex flex-wrap gap-2">
+                          {!isScanner && (
+                            <Button
+                              size="sm"
+                              disabled={!auditMode || approvingId === row.id}
+                              onClick={() => void handleApprove(row.id, row.name)}
+                            >
+                              {approvingId === row.id ? "Approving…" : "Approve"}
+                            </Button>
+                          )}
                           <Button
                             size="sm"
-                            disabled={!auditMode || approvingId === row.id}
-                            onClick={() => void handleApprove(row.id, row.name)}
+                            variant="outline"
+                            className="text-destructive hover:text-destructive"
+                            disabled={!canDeleteEntry(row) || deletingId === row.id}
+                            onClick={() => setEntryToDelete(row)}
                           >
-                            {approvingId === row.id ? "Approving…" : "Approve"}
+                            <Trash2 className="mr-1 h-3.5 w-3.5" />
+                            Delete
                           </Button>
-                        </TableCell>
-                      )}
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
               </TableBody>
@@ -221,6 +268,36 @@ export default function OpenDraftEntriesPage() {
           </div>
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!entryToDelete} onOpenChange={(open) => !open && setEntryToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete pending edit?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {entryToDelete ? (
+                <>
+                  Discard the proposed changes for{" "}
+                  <span className="font-medium text-foreground">{entryToDelete.name}</span>. The live
+                  product stays unchanged.
+                </>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!deletingId}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={!!deletingId}
+              onClick={(e) => {
+                e.preventDefault()
+                void handleConfirmDelete()
+              }}
+            >
+              {deletingId ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={auditDialogOpen} onOpenChange={setAuditDialogOpen}>
         <DialogContent>

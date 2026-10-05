@@ -4,16 +4,16 @@ import { useCallback, useMemo, useState } from "react"
 import Link from "next/link"
 import { ScanBarcode, Package, Send } from "lucide-react"
 import { toast } from "sonner"
-import {
-  useDropdownRegistryNames,
-  useProductScanLookup,
-} from "@/hooks/use-firestore"
+import { useProductScanLookup } from "@/hooks/use-firestore"
+import { useDropdownRegistryNames } from "@/hooks/use-dropdown-registry-names"
 import { submitOpenDraftEntry } from "@/lib/features/inventory/services/open_draft_entry_service"
 import { db } from "@/lib/firebase"
 import { useSessionUser } from "@/lib/auth-session"
 import { BarcodeScannerInput } from "@/components/inventory/barcode-scanner-input"
 import { InventoryFieldSelect } from "@/components/inventory/inventory-field-select"
 import { isRegisteredDropdownValue } from "@/lib/inventory/dropdown-registry"
+import { isRegisteredSupplierName } from "@/lib/inventory/supplier-registry"
+import { useSupplierRegistrySnapshot } from "@/hooks/use-supplier-registry-snapshot"
 import { RACK_OPTIONS } from "@/lib/rack-options"
 import { STATUS_OPTIONS, STATUS_OPTIONS_SET } from "@/lib/status-options"
 import type { Product } from "@/lib/types"
@@ -51,8 +51,7 @@ export function ScanEditPage() {
   const isFieldStaff = user?.role === "scanner"
   const { names: brandOptions } = useDropdownRegistryNames("product_brands")
   const { names: categoryOptions } = useDropdownRegistryNames("product_categories")
-  const { names: supplierNameOptions } = useDropdownRegistryNames("product_supplier_names")
-  const { names: supplierContactOptions } = useDropdownRegistryNames("product_supplier_contacts")
+  const { names: supplierNameOptions, contactForName } = useSupplierRegistrySnapshot()
 
   const accountTag = user?.accountTag ?? user?.name ?? "STAFF"
 
@@ -147,12 +146,8 @@ export function ScanEditPage() {
       return
     }
     if (!isFieldStaff) {
-      if (!isRegisteredDropdownValue(form.supplierName, supplierNameOptions)) {
-        toast.error("Select a supplier name from the list (or leave empty)")
-        return
-      }
-      if (!isRegisteredDropdownValue(form.supplierContact, supplierContactOptions)) {
-        toast.error("Select a supplier contact from the list (or leave empty)")
+      if (!isRegisteredSupplierName(form.supplierName, supplierNameOptions)) {
+        toast.error("Select a supplier from Manage Dropdown (or leave empty)")
         return
       }
     }
@@ -180,7 +175,9 @@ export function ScanEditPage() {
           : form.supplierName.trim() || undefined,
         supplierContact: isFieldStaff
           ? product.supplierContact?.trim() || undefined
-          : form.supplierContact.trim() || undefined,
+          : form.supplierName.trim()
+            ? contactForName(form.supplierName.trim()) || undefined
+            : undefined,
         mrp: product.mrp,
         discountPercent: product.discountPercent,
         price: product.price,
@@ -380,22 +377,26 @@ export function ScanEditPage() {
                         <Label className={labelClass}>Supplier name</Label>
                         <InventoryFieldSelect
                           value={form.supplierName}
-                          onChange={(supplierName) => setForm({ ...form, supplierName })}
+                          onChange={(supplierName) =>
+                            setForm({
+                              ...form,
+                              supplierName,
+                              supplierContact: contactForName(supplierName),
+                            })
+                          }
                           options={supplierNameOptions}
-                          placeholder="Select supplier name"
+                          placeholder="Select supplier"
                           triggerClassName={inputClass}
                         />
                       </div>
                       <div className={fieldGroup}>
-                        <Label className={labelClass}>Supplier contact</Label>
-                        <InventoryFieldSelect
+                        <Label className={labelClass}>Supplier contact (auto)</Label>
+                        <Input
+                          readOnly
+                          tabIndex={-1}
                           value={form.supplierContact}
-                          onChange={(supplierContact) =>
-                            setForm({ ...form, supplierContact })
-                          }
-                          options={supplierContactOptions}
-                          placeholder="Select supplier contact"
-                          triggerClassName={inputClass}
+                          placeholder="Select supplier above"
+                          className={cn(inputClass, "bg-muted/40 text-muted-foreground")}
                         />
                       </div>
                     </>

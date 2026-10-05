@@ -143,6 +143,15 @@ export async function approveOpenDraftEntry(
   await deleteDoc(entryRef)
 }
 
+export async function deleteOpenDraftEntry(db: Firestore, entryId: string): Promise<void> {
+  const entryRef = doc(db, col(COL), entryId)
+  const snap = await getDoc(entryRef)
+  if (!snap.exists()) {
+    throw new Error("Open draft entry not found")
+  }
+  await deleteDoc(entryRef)
+}
+
 export function mapOpenDraftEntryDoc(id: string, data: Record<string, unknown>): OpenDraftEntry {
   return entryFromSnap(id, data)
 }

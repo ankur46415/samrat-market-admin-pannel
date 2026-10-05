@@ -82,6 +82,15 @@ export async function updateDraftProductStatus(
   })
 }
 
+export async function deleteDraftProduct(db: Firestore, draftId: string): Promise<void> {
+  const draftRef = doc(db, col("draft_products"), draftId)
+  const snap = await getDoc(draftRef)
+  if (!snap.exists()) {
+    throw new Error("Draft entry not found")
+  }
+  await deleteDoc(draftRef)
+}
+
 function draftPayloadFromInput(input: DraftProductInput): Record<string, unknown> {
   const unit = input.unit
   const payload: Record<string, unknown> = {
@@ -99,6 +108,14 @@ function draftPayloadFromInput(input: DraftProductInput): Record<string, unknown
     stock: Math.max(0, Math.floor(Number(input.quantity) || 0)),
     updatedAt: Timestamp.now(),
   }
+  const stock = Math.max(0, Math.floor(Number(input.quantity) || 0))
+  const totalCost =
+    input.totalCost != null && Number.isFinite(input.totalCost) && input.totalCost >= 0
+      ? input.totalCost
+      : stock > 0
+        ? stock * input.costPrice
+        : null
+  payload.totalCost = totalCost
   if (input.brand?.trim()) payload.brand = input.brand.trim()
   else payload.brand = null
   if (input.supplierName?.trim()) payload.supplierName = input.supplierName.trim()
@@ -113,6 +130,11 @@ function draftPayloadFromInput(input: DraftProductInput): Record<string, unknown
     payload.discountPercent = input.discountPercent
   } else {
     payload.discountPercent = null
+  }
+  if (input.gstPercent != null && Number.isFinite(input.gstPercent) && input.gstPercent >= 0) {
+    payload.gstPercent = Math.round(input.gstPercent * 10) / 10
+  } else {
+    payload.gstPercent = null
   }
   if (input.noExpiry) {
     payload.noExpiry = true
@@ -183,6 +205,11 @@ export async function approveDraftProduct(
     price: Number(data.price ?? 0),
     category: String(data.category ?? ""),
     costPrice: Number(data.costPrice ?? 0),
+    totalCost: (() => {
+      const tc = Number(data.totalCost ?? NaN)
+      if (Number.isFinite(tc) && tc >= 0) return tc
+      return qty > 0 ? qty * Number(data.costPrice ?? 0) : undefined
+    })(),
     unit: String(data.unit ?? data.units ?? "pcs"),
     minStock: Number(data.minStock ?? 10),
     brand: typeof data.brand === "string" ? data.brand : undefined,
@@ -204,6 +231,12 @@ export async function approveDraftProduct(
       Number(data.discountPercent) > 0 && Number.isFinite(Number(data.discountPercent))
         ? Number(data.discountPercent)
         : undefined,
+    gstPercent: (() => {
+      const raw = data.gstPercent ?? data.gst_percent
+      const n = Number(raw ?? NaN)
+      if (!Number.isFinite(n) || n < 0) return undefined
+      return Math.round(n * 10) / 10
+    })(),
   }
 
   const batchService = new InventoryBatchService(db)
@@ -280,6 +313,12 @@ export async function moveProductToDraftList(
     mrp: Number.isFinite(mrpVal) && mrpVal > 0 ? mrpVal : undefined,
     discountPercent:
       Number.isFinite(disc) && disc > 0 ? Math.min(100, Math.max(0, disc)) : undefined,
+    gstPercent: (() => {
+      const raw = data.gstPercent ?? data.gst_percent
+      const n = Number(raw ?? NaN)
+      if (!Number.isFinite(n) || n < 0) return undefined
+      return Math.round(n * 10) / 10
+    })(),
   })
 
   for (const batchDoc of batchesSnap.docs) {

@@ -11,9 +11,8 @@ import {
   useDraftProducts,
   useProductBrands,
   useProductTags,
-  useProductSupplierNames,
-  useProductSupplierContacts,
 } from "@/hooks/use-firestore"
+import { useSupplierRegistrySnapshot } from "@/hooks/use-supplier-registry-snapshot"
 import { InventoryFieldSelect } from "@/components/inventory/inventory-field-select"
 import { db } from "@/lib/firebase"
 import { col } from "@/lib/account-mode"
@@ -37,6 +36,9 @@ import { RACK_OPTIONS } from "@/lib/rack-options"
 import { STATUS_OPTIONS, STATUS_OPTIONS_SET } from "@/lib/status-options"
 import { cn } from "@/lib/utils"
 import { isRegisteredDropdownValue } from "@/lib/inventory/dropdown-registry"
+import { isRegisteredSupplierName } from "@/lib/inventory/supplier-registry"
+import { GstPercentSelect } from "@/components/inventory/gst-percent-select"
+import { priceWithGst } from "@/lib/inventory/gst-percent"
 
 const labelClass = "text-sm font-medium text-foreground"
 const inputClass = "h-11 rounded-lg border-border/80 shadow-sm"
@@ -60,8 +62,7 @@ export default function EditDraftEntryPage({ params }: { params: Promise<{ id: s
   const { categories } = useCategories()
   const { names: brandOptions } = useProductBrands()
   const { names: tagOptions } = useProductTags()
-  const { names: supplierNameOptions } = useProductSupplierNames()
-  const { names: supplierContactOptions } = useProductSupplierContacts()
+  const { names: supplierNameOptions, contactForName } = useSupplierRegistrySnapshot()
   const [saving, setSaving] = useState(false)
   const [showNewCategory, setShowNewCategory] = useState(false)
   const [newCategory, setNewCategory] = useState("")
@@ -88,6 +89,7 @@ export default function EditDraftEntryPage({ params }: { params: Promise<{ id: s
     expiry: "",
     noExpiry: false,
     minStock: "10",
+    gstPercent: undefined as number | undefined,
   })
 
   useEffect(() => {
@@ -125,14 +127,17 @@ export default function EditDraftEntryPage({ params }: { params: Promise<{ id: s
         barcode: draft.barcode || "",
         brand: draft.brand || "",
         supplierName: draft.supplierName || "",
-        supplierContact: draft.supplierContact || "",
+        supplierContact: draft.supplierName
+          ? contactForName(draft.supplierName) || draft.supplierContact || ""
+          : "",
         expiry: draft.expiry || "",
         noExpiry,
         minStock: String(draft.minStock ?? 10),
+        gstPercent: draft.gstPercent,
       })
       setFormReady(true)
     })()
-  }, [draft, id])
+  }, [draft, id, contactForName])
 
   const handleMrpChange = (mrp: string) => {
     setFormData((prev) => {
@@ -176,12 +181,8 @@ export default function EditDraftEntryPage({ params }: { params: Promise<{ id: s
       toast.error("Select a tag from Manage Dropdown (or leave empty)")
       return
     }
-    if (!isRegisteredDropdownValue(formData.supplierName, supplierNameOptions)) {
-      toast.error("Select a supplier name from Manage Dropdown (or leave empty)")
-      return
-    }
-    if (!isRegisteredDropdownValue(formData.supplierContact, supplierContactOptions)) {
-      toast.error("Select a supplier contact from Manage Dropdown (or leave empty)")
+    if (!isRegisteredSupplierName(formData.supplierName, supplierNameOptions)) {
+      toast.error("Select a supplier from Manage Dropdown → Suppliers (or leave empty)")
       return
     }
 
@@ -217,10 +218,13 @@ export default function EditDraftEntryPage({ params }: { params: Promise<{ id: s
         barcode: formData.barcode,
         brand: formData.brand || undefined,
         supplierName: formData.supplierName || undefined,
-        supplierContact: formData.supplierContact || undefined,
+        supplierContact: formData.supplierName
+          ? contactForName(formData.supplierName) || undefined
+          : undefined,
         expiry: formData.noExpiry ? undefined : formData.expiry || undefined,
         noExpiry: formData.noExpiry || undefined,
         minStock: parseMinStockInput(formData.minStock, 10),
+        gstPercent: formData.gstPercent,
       })
       toast.success("Draft entry updated")
       router.push("/draft-entries")
@@ -307,22 +311,26 @@ export default function EditDraftEntryPage({ params }: { params: Promise<{ id: s
                 <Label className={labelClass}>Supplier name</Label>
                 <InventoryFieldSelect
                   value={formData.supplierName}
-                  onChange={(supplierName) => setFormData({ ...formData, supplierName })}
+                  onChange={(supplierName) =>
+                    setFormData({
+                      ...formData,
+                      supplierName,
+                      supplierContact: contactForName(supplierName),
+                    })
+                  }
                   options={supplierNameOptions}
-                  placeholder="Select supplier name"
+                  placeholder="Select supplier"
                   triggerClassName={inputClass}
                 />
               </div>
               <div className={fieldGroup}>
-                <Label className={labelClass}>Supplier contact</Label>
-                <InventoryFieldSelect
+                <Label className={labelClass}>Supplier contact (auto)</Label>
+                <Input
+                  readOnly
+                  tabIndex={-1}
+                  className={cn(inputClass, "bg-muted/40 text-muted-foreground")}
+                  placeholder="Select supplier name above"
                   value={formData.supplierContact}
-                  onChange={(supplierContact) =>
-                    setFormData({ ...formData, supplierContact })
-                  }
-                  options={supplierContactOptions}
-                  placeholder="Select supplier contact"
-                  triggerClassName={inputClass}
                 />
               </div>
               <div className={fieldGroup}>
@@ -481,6 +489,22 @@ export default function EditDraftEntryPage({ params }: { params: Promise<{ id: s
                   value={formData.costPrice}
                   onChange={(e) => setFormData({ ...formData, costPrice: e.target.value })}
                 />
+              </div>
+              <div className={fieldGroup}>
+                <Label className={labelClass}>GST %</Label>
+                <GstPercentSelect
+                  value={formData.gstPercent}
+                  onChange={(gstPercent) => setFormData((prev) => ({ ...prev, gstPercent }))}
+                />
+                {formData.gstPercent != null && parseFloat(formData.price) > 0 ? (
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    Selling price + GST: ₹
+                    {priceWithGst(parseFloat(formData.price), formData.gstPercent).toLocaleString(
+                      "en-IN",
+                      { maximumFractionDigits: 2 }
+                    )}
+                  </p>
+                ) : null}
               </div>
             </div>
 

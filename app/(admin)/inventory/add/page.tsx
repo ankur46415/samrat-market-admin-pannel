@@ -4,14 +4,9 @@ import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, ImagePlus, Package, Layers, X } from "lucide-react"
-import {
-  useProducts,
-  useCategories,
-  useProductBrands,
-  useProductTags,
-  useProductSupplierNames,
-  useProductSupplierContacts,
-} from "@/hooks/use-firestore"
+import { useProducts, useCategories } from "@/hooks/use-firestore"
+import { useDropdownRegistryNames } from "@/hooks/use-dropdown-registry-names"
+import { lookupProductByScanCode } from "@/lib/features/inventory/services/product_lookup_service"
 import { BarcodeScannerInput } from "@/components/inventory/barcode-scanner-input"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -38,7 +33,11 @@ import {
   validateProductImageFile,
 } from "@/lib/features/inventory/services/product_image_service"
 import { InventoryFieldSelect } from "@/components/inventory/inventory-field-select"
+import { GstPercentSelect } from "@/components/inventory/gst-percent-select"
+import { priceWithGst } from "@/lib/inventory/gst-percent"
 import { isRegisteredDropdownValue } from "@/lib/inventory/dropdown-registry"
+import { isRegisteredSupplierName } from "@/lib/inventory/supplier-registry"
+import { useSupplierRegistrySnapshot } from "@/hooks/use-supplier-registry-snapshot"
 import { doc, Timestamp, updateDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { col } from "@/lib/account-mode"
@@ -56,13 +55,11 @@ function sellingPriceFromMrp(mrp: string, discountPercent: string): string | nul
 
 export default function AddProductPage() {
   const router = useRouter()
-  const { addProduct, addDraftProduct, getProductByBarcode, getDraftByBarcode, updateProduct } =
-    useProducts()
+  const { addProduct, addDraftProduct, getDraftByBarcode, updateProduct } = useProducts()
   const { categories } = useCategories()
-  const { names: brandOptions } = useProductBrands()
-  const { names: tagOptions } = useProductTags()
-  const { names: supplierNameOptions } = useProductSupplierNames()
-  const { names: supplierContactOptions } = useProductSupplierContacts()
+  const { names: brandOptions } = useDropdownRegistryNames("product_brands")
+  const { names: tagOptions } = useDropdownRegistryNames("product_tags")
+  const { names: supplierNameOptions, contactForName } = useSupplierRegistrySnapshot()
   const [loading, setLoading] = useState(false)
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
@@ -90,6 +87,7 @@ export default function AddProductPage() {
     expiry: "",
     noExpiry: false,
     minStock: "10",
+    gstPercent: undefined as number | undefined,
   })
 
   useEffect(() => {
@@ -148,11 +146,6 @@ export default function AddProductPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (activeTab !== "batch") {
-      setActiveTab("batch")
-      toast.info("Review batch details (optional) and save")
-      return
-    }
 
     if (!formData.barcode.trim()) {
       toast.error("Barcode is required")
@@ -198,19 +191,15 @@ export default function AddProductPage() {
       toast.error("Select a tag from Manage Dropdown (or leave empty)")
       return
     }
-    if (!isRegisteredDropdownValue(formData.supplierName, supplierNameOptions)) {
-      toast.error("Select a supplier name from Manage Dropdown (or leave empty)")
-      return
-    }
-    if (!isRegisteredDropdownValue(formData.supplierContact, supplierContactOptions)) {
-      toast.error("Select a supplier contact from Manage Dropdown (or leave empty)")
+    if (!isRegisteredSupplierName(formData.supplierName, supplierNameOptions)) {
+      toast.error("Select a supplier from Manage Dropdown → Suppliers (or leave empty)")
       return
     }
 
     setLoading(true)
 
     try {
-      const existing = await getProductByBarcode(formData.barcode)
+      const existing = await lookupProductByScanCode(formData.barcode.trim())
       const pendingDraft = existing ? null : await getDraftByBarcode(formData.barcode)
       if (pendingDraft) {
         toast.error("This barcode is already pending in Draft Entries")
@@ -222,7 +211,7 @@ export default function AddProductPage() {
         category,
         rack: formData.rack,
         tag: formData.tag,
-        status: existing ? formData.status : "deactive",
+        status: formData.status,
         price: parseFloat(formData.price),
         costPrice: formData.costPrice.trim() ? parseFloat(formData.costPrice) : 0,
         mrp: formData.mrp.trim() ? parseFloat(formData.mrp) : undefined,
@@ -232,10 +221,13 @@ export default function AddProductPage() {
         barcode: formData.barcode || undefined,
         brand: formData.brand || undefined,
         supplierName: formData.supplierName || undefined,
-        supplierContact: formData.supplierContact || undefined,
+        supplierContact: formData.supplierName
+          ? contactForName(formData.supplierName) || undefined
+          : undefined,
         expiry: formData.noExpiry ? undefined : formData.expiry || undefined,
         noExpiry: formData.noExpiry || undefined,
         minStock: parseMinStockInput(formData.minStock, 10),
+        gstPercent: formData.gstPercent,
       }
 
       let productId: string
@@ -271,7 +263,7 @@ export default function AddProductPage() {
       }
     } catch (error) {
       console.error("Error adding product:", error)
-      toast.error("Failed to save")
+      toast.error(error instanceof Error ? error.message : "Failed to save")
     } finally {
       setLoading(false)
     }
@@ -376,9 +368,15 @@ export default function AddProductPage() {
                     <InventoryFieldSelect
                       id="supplierName"
                       value={formData.supplierName}
-                      onChange={(supplierName) => setFormData({ ...formData, supplierName })}
+                      onChange={(supplierName) =>
+                        setFormData({
+                          ...formData,
+                          supplierName,
+                          supplierContact: contactForName(supplierName),
+                        })
+                      }
                       options={supplierNameOptions}
-                      placeholder="Select supplier name"
+                      placeholder="Select supplier"
                       triggerClassName={inputClass}
                     />
                   </div>
@@ -386,15 +384,15 @@ export default function AddProductPage() {
                   <div className={fieldGroup}>
                     <Label htmlFor="supplierContact" className={labelClass}>
                       Supplier contact{" "}
-                      <span className="font-normal text-muted-foreground">(optional)</span>
+                      <span className="font-normal text-muted-foreground">(auto)</span>
                     </Label>
-                    <InventoryFieldSelect
+                    <Input
                       id="supplierContact"
+                      readOnly
+                      tabIndex={-1}
+                      placeholder="Select supplier name above"
                       value={formData.supplierContact}
-                      onChange={(supplierContact) => setFormData({ ...formData, supplierContact })}
-                      options={supplierContactOptions}
-                      placeholder="Select supplier contact"
-                      triggerClassName={inputClass}
+                      className={cn(inputClass, "bg-muted/40 text-muted-foreground")}
                     />
                   </div>
 
@@ -676,6 +674,25 @@ export default function AddProductPage() {
                         onChange={(e) => setFormData({ ...formData, costPrice: e.target.value })}
                         className={cn(inputClass, "tabular-nums")}
                       />
+                    </div>
+                    <div className={fieldGroup}>
+                      <Label htmlFor="gstPercent" className={labelClass}>
+                        GST %
+                      </Label>
+                      <GstPercentSelect
+                        id="gstPercent"
+                        value={formData.gstPercent}
+                        onChange={(gstPercent) => setFormData((prev) => ({ ...prev, gstPercent }))}
+                      />
+                      {formData.gstPercent != null && parseFloat(formData.price) > 0 ? (
+                        <p className="text-xs text-muted-foreground tabular-nums">
+                          Selling price + GST: ₹
+                          {priceWithGst(parseFloat(formData.price), formData.gstPercent).toLocaleString(
+                            "en-IN",
+                            { maximumFractionDigits: 2 }
+                          )}
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                 </div>

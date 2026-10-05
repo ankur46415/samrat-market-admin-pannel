@@ -28,6 +28,7 @@ export type ProductWithBatchInput = {
   price: number
   category: string
   costPrice: number
+  totalCost?: number
   unit: string
   minStock: number
   brand?: string
@@ -39,6 +40,7 @@ export type ProductWithBatchInput = {
   imageUrl?: string
   mrp?: number
   discountPercent?: number
+  gstPercent?: number
 }
 
 export class InventoryBatchService {
@@ -61,6 +63,7 @@ export class InventoryBatchService {
     price: number
     category: string
     costPrice: number
+    totalCost?: number
     unit: string
     minStock: number
     stock: number
@@ -70,6 +73,7 @@ export class InventoryBatchService {
     productExpiry?: Date
     mrp?: number
     discountPercent?: number
+    gstPercent?: number
     imageUrl?: string
   }): Record<string, unknown> {
     const unitStr = normalizeProductUnit(fields.unit)
@@ -82,6 +86,11 @@ export class InventoryBatchService {
       price: fields.price,
       category: fields.category.trim(),
       costPrice: fields.costPrice,
+      ...(fields.totalCost != null &&
+      Number.isFinite(fields.totalCost) &&
+      fields.totalCost >= 0
+        ? { totalCost: fields.totalCost }
+        : {}),
       unit: unitStr,
       units: unitStr,
       rack,
@@ -100,6 +109,10 @@ export class InventoryBatchService {
     const disc = Number(fields.discountPercent)
     if (Number.isFinite(disc) && disc > 0) {
       d.discountPercent = Math.min(100, Math.max(0, Math.round(disc * 100) / 100))
+    }
+    const gst = Number(fields.gstPercent)
+    if (Number.isFinite(gst) && gst >= 0) {
+      d.gstPercent = Math.round(gst * 10) / 10
     }
     const b = fields.brand?.trim()
     if (b) d.brand = b
@@ -205,6 +218,13 @@ export class InventoryBatchService {
     const hasBatch = hasExpiryBatch || hasNoExpiryBatch
     const existing = await this.getProductByBarcode(normalizedBarcode)
 
+    const resolvedTotalCost =
+      input.totalCost != null && Number.isFinite(input.totalCost) && input.totalCost >= 0
+        ? input.totalCost
+        : qty > 0
+          ? qty * costPrice
+          : undefined
+
     const payloadFields = {
       name,
       barcode: normalizedBarcode,
@@ -214,6 +234,7 @@ export class InventoryBatchService {
       price,
       category,
       costPrice,
+      totalCost: resolvedTotalCost,
       unit,
       minStock,
       brand,
@@ -222,6 +243,7 @@ export class InventoryBatchService {
       productExpiry: hasExpiryBatch ? expiryDate! : undefined,
       mrp: input.mrp,
       discountPercent: input.discountPercent,
+      gstPercent: input.gstPercent,
       imageUrl: input.imageUrl,
     }
 

@@ -10,9 +10,8 @@ import {
   useCategories,
   useProductBrands,
   useProductTags,
-  useProductSupplierNames,
-  useProductSupplierContacts,
 } from "@/hooks/use-firestore"
+import { useSupplierRegistrySnapshot } from "@/hooks/use-supplier-registry-snapshot"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -53,6 +52,7 @@ import {
 import { cn } from "@/lib/utils"
 import { InventoryFieldSelect } from "@/components/inventory/inventory-field-select"
 import { isRegisteredDropdownValue } from "@/lib/inventory/dropdown-registry"
+import { isRegisteredSupplierName } from "@/lib/inventory/supplier-registry"
 import { batchQuantitiesForTarget, syncProductStockWithBatches } from "@/lib/inventory/sync-product-stock-batches"
 import { col } from "@/lib/account-mode"
 
@@ -116,8 +116,7 @@ export default function EditProductPage({
 
   const { names: brandOptions } = useProductBrands()
   const { names: tagOptions } = useProductTags()
-  const { names: supplierNameOptions } = useProductSupplierNames()
-  const { names: supplierContactOptions } = useProductSupplierContacts()
+  const { names: supplierNameOptions, contactForName } = useSupplierRegistrySnapshot()
   const formHydratedForId = useRef<string | null>(null)
   const batchesHydratedForId = useRef<string | null>(null)
 
@@ -246,12 +245,8 @@ export default function EditProductPage({
       toast.error("Select a tag from Manage Dropdown (or leave empty)")
       return
     }
-    if (!isRegisteredDropdownValue(formData.supplierName, supplierNameOptions)) {
-      toast.error("Select a supplier name from Manage Dropdown (or leave empty)")
-      return
-    }
-    if (!isRegisteredDropdownValue(formData.supplierContact, supplierContactOptions)) {
-      toast.error("Select a supplier contact from Manage Dropdown (or leave empty)")
+    if (!isRegisteredSupplierName(formData.supplierName, supplierNameOptions)) {
+      toast.error("Select a supplier from Manage Dropdown → Suppliers (or leave empty)")
       return
     }
 
@@ -280,8 +275,11 @@ export default function EditProductPage({
       if (formData.brand) {
         updatePayload.brand = formData.brand
       }
-      updatePayload.supplierName = formData.supplierName.trim() || null
-      updatePayload.supplierContact = formData.supplierContact.trim() || null
+      const supplierName = formData.supplierName.trim()
+      updatePayload.supplierName = supplierName || null
+      updatePayload.supplierContact = supplierName
+        ? contactForName(supplierName) || null
+        : null
       if (formData.expiry) {
         updatePayload.expiry = formData.expiry
       }
@@ -456,26 +454,30 @@ export default function EditProductPage({
                     <InventoryFieldSelect
                       id="supplierName"
                       value={formData.supplierName}
-                      onChange={(supplierName) => setFormData({ ...formData, supplierName })}
+                      onChange={(supplierName) =>
+                        setFormData({
+                          ...formData,
+                          supplierName,
+                          supplierContact: contactForName(supplierName),
+                        })
+                      }
                       options={supplierNameOptions}
-                      placeholder="Select supplier name"
+                      placeholder="Select supplier"
                       triggerClassName={inputClass}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="supplierContact" className={labelClass}>
                       Supplier contact{" "}
-                      <span className="font-normal text-muted-foreground">(optional)</span>
+                      <span className="font-normal text-muted-foreground">(auto)</span>
                     </Label>
-                    <InventoryFieldSelect
+                    <Input
                       id="supplierContact"
+                      readOnly
+                      tabIndex={-1}
                       value={formData.supplierContact}
-                      onChange={(supplierContact) =>
-                        setFormData({ ...formData, supplierContact })
-                      }
-                      options={supplierContactOptions}
-                      placeholder="Select supplier contact"
-                      triggerClassName={inputClass}
+                      placeholder="Select supplier name above"
+                      className={cn(inputClass, "bg-muted/40 text-muted-foreground")}
                     />
                   </div>
                   <div className="space-y-2">

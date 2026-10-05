@@ -27,6 +27,8 @@ export interface Product {
   status: string
   price: number
   costPrice: number
+  /** Line/purchase total (e.g. qty × unit cost); stored on product doc when set at audit. */
+  totalCost?: number
   stock: number
   unit: string
   barcode?: string
@@ -43,6 +45,8 @@ export interface Product {
   mrp?: number
   /** MRP discount % from product details (drives selling price). */
   discountPercent?: number
+  /** GST % slab (0, 5, 12, 18, 28, etc.) when set at product entry. */
+  gstPercent?: number
   minStock: number
   expiry?: string
   /** Derived from subcollection; may be empty for legacy docs without batches. */
