@@ -57,6 +57,7 @@ import {
 import { cn } from "@/lib/utils"
 import {
   cancelLiveBillingSession,
+  clearAdminScanSessionStorage,
   completeLiveBillingSession,
   forceNewScannerBillingSession,
   getOrCreateScannerBillingSession,
@@ -86,6 +87,15 @@ import {
 import type { ReceiptData } from "@/lib/printing/receipt-data"
 import { attachCatalogMrp } from "@/lib/printing/receipt-data"
 import { printReceiptInBrowser } from "@/lib/printing/receipt-html"
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      window.setTimeout(() => reject(new Error(label)), ms)
+    }),
+  ])
+}
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -555,18 +565,32 @@ export function PosTerminal({
           }
           return
         }
-        const id = await Promise.race([
-          getOrCreateScannerBillingSession(cashierName),
-          new Promise<string>((_, reject) => {
-            window.setTimeout(() => reject(new Error("POS session timeout")), 4000)
-          }),
-        ])
+        const bootSession = async () =>
+          withTimeout(
+            getOrCreateScannerBillingSession(cashierName),
+            20000,
+            "POS session timeout"
+          )
+
+        let id: string | null = null
+        try {
+          id = await bootSession()
+        } catch {
+          clearAdminScanSessionStorage()
+          id = await bootSession()
+        }
+
         if (!cancelled) {
           setOfflineMode(false)
           setSessionId(id)
         }
       } catch (e) {
-        console.error(e)
+        const msg = e instanceof Error ? e.message : ""
+        if (msg.includes("timeout")) {
+          console.warn("POS session boot slow; using offline billing.", e)
+        } else {
+          console.error(e)
+        }
         if (!cancelled) {
           setOfflineMode(true)
           setSessionId(`offline-${crypto.randomUUID()}`)
@@ -1711,12 +1735,16 @@ export function PosTerminal({
 
       <CameraBarcodeScannerDialog
         open={cameraScanOpen}
-        onOpenChange={setCameraScanOpen}
+        onOpenChange={(open) => {
+          setCameraScanOpen(open)
+          if (!open) focusScanInput()
+        }}
         title="Scan products for bill"
-        continuous
         toastOnScan={false}
         onScan={(code) => {
           scanner.submitScan(code)
+          setCameraScanOpen(false)
+          focusScanInput()
         }}
       />
     </div>

@@ -44,6 +44,7 @@ export function BarcodeScannerInput({
     onChange(cleaned)
     onCommit?.(cleaned)
     if (showToast) toast.success(`Barcode: ${cleaned}`)
+    requestAnimationFrame(() => inputRef.current?.focus())
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

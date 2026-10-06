@@ -84,6 +84,15 @@ function scanSessionStorageKey(): string {
   return accountScopedKey(ADMIN_SCAN_SESSION_STORAGE_KEY)
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(label)), ms)
+    }),
+  ])
+}
+
 let scannerSessionCreatePromise: Promise<string> | null = null
 
 export function clearAdminScanSessionStorage(): void {
@@ -558,26 +567,24 @@ export async function getOrCreateScannerBillingSession(
     )
 
     if (stored) {
-      const snap = await getDoc(
-        doc(
-          db,
-          col("live_sessions"),
-          stored
+      try {
+        const snap = await withTimeout(
+          getDoc(doc(db, col("live_sessions"), stored)),
+          8000,
+          "session-verify-timeout"
         )
-      )
 
-      if (
-        snap.exists() &&
-        String(
-          snap.data()?.status ?? ""
-        ) === "active"
-      ) {
-        return stored
+        if (
+          snap.exists() &&
+          String(snap.data()?.status ?? "") === "active"
+        ) {
+          return stored
+        }
+      } catch {
+        // Slow network or stale id — create a fresh session below.
       }
 
-      sessionStorage.removeItem(
-        scanSessionStorageKey()
-      )
+      sessionStorage.removeItem(scanSessionStorageKey())
     }
   }
 

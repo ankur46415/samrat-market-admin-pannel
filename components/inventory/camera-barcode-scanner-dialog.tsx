@@ -36,6 +36,39 @@ function pickPreferredCameraDeviceId(
   return devices[devices.length - 1]?.deviceId
 }
 
+function waitForVideoElement(
+  getVideo: () => HTMLVideoElement | null,
+  timeoutMs = 4000
+): Promise<HTMLVideoElement> {
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + timeoutMs
+    const tick = () => {
+      const el = getVideo()
+      if (el) {
+        resolve(el)
+        return
+      }
+      if (Date.now() >= deadline) {
+        reject(new Error("Camera preview not ready. Close and try again."))
+        return
+      }
+      requestAnimationFrame(tick)
+    }
+    tick()
+  })
+}
+
+async function ensureVideoPlaying(video: HTMLVideoElement) {
+  video.setAttribute("playsinline", "true")
+  video.setAttribute("webkit-playsinline", "true")
+  video.muted = true
+  try {
+    await video.play()
+  } catch {
+    /* iOS may reject until stream is attached — decodeFromVideoDevice sets srcObject */
+  }
+}
+
 export function CameraBarcodeScannerDialog({
   open,
   onOpenChange,
@@ -50,19 +83,36 @@ export function CameraBarcodeScannerDialog({
   const handledRef = useRef(false)
   const lastCodeRef = useRef("")
   const lastCodeAtRef = useRef(0)
+  const [videoMounted, setVideoMounted] = useState(false)
   const [starting, setStarting] = useState(false)
+  const [previewReady, setPreviewReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const onScanRef = useRef(onScan)
+  const onOpenChangeRef = useRef(onOpenChange)
+  onScanRef.current = onScan
+  onOpenChangeRef.current = onOpenChange
+
+  const setVideoRef = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node
+    setVideoMounted(!!node)
+  }, [])
 
   const stopScanner = useCallback(() => {
     controlsRef.current?.stop()
     controlsRef.current = null
     readerRef.current = null
+    const video = videoRef.current
+    if (video?.srcObject instanceof MediaStream) {
+      video.srcObject.getTracks().forEach((t) => t.stop())
+      video.srcObject = null
+    }
   }, [])
 
   useEffect(() => {
     if (!open) {
       stopScanner()
       setStarting(false)
+      setPreviewReady(false)
       setError(null)
       handledRef.current = false
       lastCodeRef.current = ""
@@ -70,13 +120,55 @@ export function CameraBarcodeScannerDialog({
       return
     }
 
+    if (!videoMounted) return
+
     handledRef.current = false
     lastCodeRef.current = ""
     lastCodeAtRef.current = 0
     let cancelled = false
 
+    const onDecode = (
+      result: { getText: () => string } | undefined,
+      err: Error | undefined,
+      ctrl: IScannerControls
+    ) => {
+      if (cancelled) return
+      if (result) {
+        const cleaned = normalizeScannedBarcode(result.getText())
+        if (!cleaned) return
+
+        if (continuous) {
+          const now = Date.now()
+          if (
+            cleaned === lastCodeRef.current &&
+            now - lastCodeAtRef.current < 1200
+          ) {
+            return
+          }
+          lastCodeRef.current = cleaned
+          lastCodeAtRef.current = now
+          onScanRef.current(cleaned)
+          if (toastOnScan) toast.success(`Scanned: ${cleaned}`)
+          return
+        }
+
+        if (handledRef.current) return
+        handledRef.current = true
+        ctrl.stop()
+        controlsRef.current = null
+        onScanRef.current(cleaned)
+        onOpenChangeRef.current(false)
+        if (toastOnScan) toast.success(`Scanned: ${cleaned}`)
+        return
+      }
+      if (err && err.name !== "NotFoundException") {
+        console.debug("Camera scan frame:", err)
+      }
+    }
+
     const start = async () => {
       setStarting(true)
+      setPreviewReady(false)
       setError(null)
 
       if (typeof window !== "undefined" && !window.isSecureContext) {
@@ -91,63 +183,48 @@ export function CameraBarcodeScannerDialog({
         return
       }
 
-      const video = videoRef.current
-      if (!video) {
-        setStarting(false)
-        return
-      }
-
       try {
+        const video = await waitForVideoElement(() => videoRef.current)
+        if (cancelled) return
+
         const reader = new BrowserMultiFormatReader()
         readerRef.current = reader
-        const devices = await BrowserMultiFormatReader.listVideoInputDevices()
-        const deviceId = pickPreferredCameraDeviceId(devices)
 
-        const controls = await reader.decodeFromVideoDevice(
-          deviceId,
-          video,
-          (result, err, ctrl) => {
-            if (cancelled) return
-            if (result) {
-              const cleaned = normalizeScannedBarcode(result.getText())
-              if (!cleaned) return
+        let controls: IScannerControls | null = null
 
-              if (continuous) {
-                const now = Date.now()
-                if (
-                  cleaned === lastCodeRef.current &&
-                  now - lastCodeAtRef.current < 1200
-                ) {
-                  return
-                }
-                lastCodeRef.current = cleaned
-                lastCodeAtRef.current = now
-                onScan(cleaned)
-                if (toastOnScan) toast.success(`Scanned: ${cleaned}`)
-                return
-              }
-
-              if (handledRef.current) return
-              handledRef.current = true
-              ctrl.stop()
-              controlsRef.current = null
-              onScan(cleaned)
-              onOpenChange(false)
-              if (toastOnScan) toast.success(`Scanned: ${cleaned}`)
-              return
-            }
-            if (err && err.name !== "NotFoundException") {
-              console.debug("Camera scan frame:", err)
-            }
-          }
-        )
+        try {
+          controls = await reader.decodeFromConstraints(
+            { video: { facingMode: { ideal: "environment" } } },
+            video,
+            onDecode
+          )
+        } catch {
+          const devices = await BrowserMultiFormatReader.listVideoInputDevices()
+          const deviceId = pickPreferredCameraDeviceId(devices)
+          controls = await reader.decodeFromVideoDevice(deviceId, video, onDecode)
+        }
 
         if (cancelled) {
-          controls.stop()
+          controls?.stop()
           return
         }
+
         controlsRef.current = controls
-        setStarting(false)
+        await ensureVideoPlaying(video)
+
+        const markReady = () => {
+          if (!cancelled) {
+            setPreviewReady(true)
+            setStarting(false)
+          }
+        }
+
+        if (video.readyState >= 2) {
+          markReady()
+        } else {
+          video.addEventListener("loadeddata", markReady, { once: true })
+          window.setTimeout(markReady, 2500)
+        }
       } catch (e) {
         console.error(e)
         const msg =
@@ -158,6 +235,7 @@ export function CameraBarcodeScannerDialog({
             : "Could not start camera"
         setError(msg)
         setStarting(false)
+        setPreviewReady(false)
       }
     }
 
@@ -167,11 +245,14 @@ export function CameraBarcodeScannerDialog({
       cancelled = true
       stopScanner()
     }
-  }, [open, onOpenChange, onScan, stopScanner, continuous, toastOnScan])
+  }, [open, videoMounted, stopScanner, continuous, toastOnScan])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
+      <DialogContent
+        className="gap-0 overflow-hidden p-0 sm:max-w-md"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
         <DialogHeader className="space-y-1 px-4 pb-2 pt-4 text-left">
           <DialogTitle className="flex items-center gap-2">
             <Camera className="h-5 w-5 text-primary" />
@@ -179,28 +260,34 @@ export function CameraBarcodeScannerDialog({
           </DialogTitle>
           <DialogDescription>
             {continuous
-              ? "Scan each product — camera stays open until you close. Rear camera is used on phones when available."
-              : "Point the camera at the barcode. On phones, the rear camera is used when available."}
+              ? "Scan each product — camera stays open until you tap Done. Rear camera is used on phones when available."
+              : "Point at the barcode once — camera closes and the code is sent to the scan field."}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="relative aspect-[4/3] w-full bg-black">
+        <div className="relative aspect-[4/3] min-h-[240px] w-full bg-black">
           <video
-            ref={videoRef}
-            className="h-full w-full object-cover"
+            ref={setVideoRef}
+            className="absolute inset-0 h-full w-full object-cover"
             muted
             playsInline
             autoPlay
           />
           {starting ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/50 text-white">
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-black/60 text-white">
               <Loader2 className="h-8 w-8 animate-spin" />
               <span className="text-sm">Starting camera…</span>
             </div>
           ) : null}
-          {!starting && !error ? (
+          {!starting && !previewReady && !error ? (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-black/60 px-4 text-center text-sm text-white">
+              <Loader2 className="h-7 w-7 animate-spin" />
+              Waiting for camera feed…
+            </div>
+          ) : null}
+          {previewReady && !error ? (
             <div
-              className="pointer-events-none absolute inset-[12%] rounded-lg border-2 border-primary/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)_inset]"
+              className="pointer-events-none absolute inset-[12%] z-10 rounded-lg border-2 border-primary/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)_inset]"
               aria-hidden
             />
           ) : null}
