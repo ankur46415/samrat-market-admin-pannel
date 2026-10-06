@@ -316,7 +316,7 @@ export function AdminSidebar() {
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton size="sm" className="text-xs text-muted-foreground">
-              <span>v1.0.2</span>
+              <span>v1.0.3</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
