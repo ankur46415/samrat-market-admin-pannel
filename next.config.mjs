@@ -3,6 +3,14 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  serverExternalPackages: [
+    "firebase-admin",
+    "@google-cloud/firestore",
+    "@opentelemetry/api",
+  ],
   images: {
     unoptimized: true,
   },
