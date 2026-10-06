@@ -108,6 +108,8 @@ function draftPayloadFromInput(input: DraftProductInput): Record<string, unknown
     stock: Math.max(0, Math.floor(Number(input.quantity) || 0)),
     updatedAt: Timestamp.now(),
   }
+  const ownerTag = input.ownerAccountTag?.trim()
+  if (ownerTag) payload.ownerAccountTag = ownerTag.toUpperCase()
   const stock = Math.max(0, Math.floor(Number(input.quantity) || 0))
   const totalCost =
     input.totalCost != null && Number.isFinite(input.totalCost) && input.totalCost >= 0

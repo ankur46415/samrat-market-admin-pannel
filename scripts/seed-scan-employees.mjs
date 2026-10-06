@@ -84,14 +84,16 @@ async function ensureUser(auth, db, { username, password }) {
   await setDoc(
     doc(db, "users", uid),
     {
-      role: "scanner",
+      role: "staff",
       accountTag: username.toUpperCase(),
+      username,
       email,
       displayName: username.toUpperCase(),
+      permissions: ["scan-edit", "open-draft-entries"],
     },
     { merge: true }
   )
-  console.log(`Firestore users/${uid} → role scanner, accountTag ${username.toUpperCase()}`)
+  console.log(`Firestore users/${uid} → role staff, accountTag ${username.toUpperCase()}`)
   await signOut(auth)
 }
 

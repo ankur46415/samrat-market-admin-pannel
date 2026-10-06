@@ -41,6 +41,7 @@ export type ProductWithBatchInput = {
   mrp?: number
   discountPercent?: number
   gstPercent?: number
+  ownerAccountTag?: string
 }
 
 export class InventoryBatchService {

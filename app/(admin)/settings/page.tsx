@@ -9,9 +9,13 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
 import Image from "next/image"
+import { AccountManagementSettings } from "@/components/settings/account-management"
+import { useSessionUser } from "@/lib/auth-session"
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme()
+  const { user } = useSessionUser()
+  const isAdmin = user?.role === "admin"
 
   return (
     <div className="space-y-6">
@@ -23,6 +27,8 @@ export default function SettingsPage() {
       </div>
 
       <div className="grid gap-6">
+        {isAdmin ? <AccountManagementSettings /> : null}
+
         {/* Appearance */}
         <Card>
           <CardHeader>

@@ -1,11 +1,12 @@
 "use client"
 
 import { useRef, useState } from "react"
-import { ScanBarcode } from "lucide-react"
+import { Camera, ScanBarcode } from "lucide-react"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { CameraBarcodeScannerDialog } from "@/components/inventory/camera-barcode-scanner-dialog"
 import { normalizeScannedBarcode } from "@/lib/stock"
 import { cn } from "@/lib/utils"
 
@@ -16,6 +17,8 @@ type BarcodeScannerInputProps = {
   placeholder?: string
   className?: string
   disabled?: boolean
+  /** Show button to scan with device camera (mobile-friendly). */
+  enableCamera?: boolean
   /** Called after Enter / scanner commit with normalized code */
   onCommit?: (code: string) => void
 }
@@ -28,10 +31,12 @@ export function BarcodeScannerInput({
   placeholder = "Scan or type barcode…",
   className,
   disabled,
+  enableCamera = true,
   onCommit,
 }: BarcodeScannerInputProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [focused, setFocused] = useState(false)
+  const [cameraOpen, setCameraOpen] = useState(false)
 
   const applyBarcode = (raw: string, showToast = true) => {
     const cleaned = normalizeScannedBarcode(raw)
@@ -65,20 +70,42 @@ export function BarcodeScannerInput({
           onBlur={() => setFocused(false)}
           className={cn("font-mono text-base", className)}
         />
-        <Button
-          type="button"
-          variant="outline"
-          disabled={disabled}
-          className="shrink-0 gap-2 sm:h-11"
-          onClick={() => {
-            inputRef.current?.focus()
-            toast.message("Scanner ready — scan barcode with gun")
-          }}
-        >
-          <ScanBarcode className="h-4 w-4" />
-          Use Scanner
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          {enableCamera ? (
+            <Button
+              type="button"
+              variant="default"
+              disabled={disabled}
+              className="gap-2 sm:h-11"
+              onClick={() => setCameraOpen(true)}
+            >
+              <Camera className="h-4 w-4" />
+              <span className="sm:inline">Camera</span>
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            disabled={disabled}
+            className="gap-2 sm:h-11"
+            onClick={() => {
+              inputRef.current?.focus()
+              toast.message("Scanner ready — scan barcode with gun")
+            }}
+          >
+            <ScanBarcode className="h-4 w-4" />
+            <span className="hidden sm:inline">Gun</span>
+          </Button>
+        </div>
       </div>
+
+      {enableCamera ? (
+        <CameraBarcodeScannerDialog
+          open={cameraOpen}
+          onOpenChange={setCameraOpen}
+          onScan={(code) => applyBarcode(code, false)}
+        />
+      ) : null}
 
       {focused ? (
         <div className="flex flex-wrap items-center gap-2">
@@ -95,7 +122,8 @@ export function BarcodeScannerInput({
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Click <span className="font-medium">Use Scanner</span> or focus the field, then scan with gun.
+          Use <span className="font-medium">Camera</span> on mobile, <span className="font-medium">Gun</span>{" "}
+          for USB/Bluetooth scanner, or type manually.
         </p>
       )}
     </div>

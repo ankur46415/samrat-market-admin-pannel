@@ -15,8 +15,8 @@ export function AdminAuthGuard({ children }: { children: React.ReactNode }) {
       router.replace("/login")
       return
     }
-    if (!canAccessPath(user.role, pathname)) {
-      router.replace(defaultHomePath(user.role))
+    if (!canAccessPath(user, pathname)) {
+      router.replace(defaultHomePath(user))
     }
   }, [ready, user, pathname, router])
 
@@ -24,7 +24,7 @@ export function AdminAuthGuard({ children }: { children: React.ReactNode }) {
     return <div className="p-6 text-sm text-muted-foreground">Loading...</div>
   }
 
-  if (!user || !canAccessPath(user.role, pathname)) return null
+  if (!user || !canAccessPath(user, pathname)) return null
 
   return <>{children}</>
 }

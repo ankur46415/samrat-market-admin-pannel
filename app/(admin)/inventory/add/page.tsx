@@ -41,6 +41,7 @@ import { useSupplierRegistrySnapshot } from "@/hooks/use-supplier-registry-snaps
 import { doc, Timestamp, updateDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { col } from "@/lib/account-mode"
+import { useSessionUser } from "@/lib/auth-session"
 
 const labelClass = "text-sm font-medium text-foreground"
 const inputClass = "h-11 rounded-lg border-border/80 shadow-sm"
@@ -55,6 +56,7 @@ function sellingPriceFromMrp(mrp: string, discountPercent: string): string | nul
 
 export default function AddProductPage() {
   const router = useRouter()
+  const { user } = useSessionUser()
   const { addProduct, addDraftProduct, getDraftByBarcode, updateProduct } = useProducts()
   const { categories } = useCategories()
   const { names: brandOptions } = useDropdownRegistryNames("product_brands")
@@ -228,6 +230,9 @@ export default function AddProductPage() {
         noExpiry: formData.noExpiry || undefined,
         minStock: parseMinStockInput(formData.minStock, 10),
         gstPercent: formData.gstPercent,
+        ...(user?.accountTag
+          ? { ownerAccountTag: user.accountTag.trim().toUpperCase() }
+          : {}),
       }
 
       let productId: string

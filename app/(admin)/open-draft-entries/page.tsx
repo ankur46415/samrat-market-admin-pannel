@@ -6,7 +6,14 @@ import { Inbox, Search, ShieldCheck, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { TEST_ACCOUNT_PASSKEY } from "@/lib/account-mode"
 import { useOpenDraftEntries } from "@/hooks/use-firestore"
-import { useSessionUser } from "@/lib/auth-session"
+import { isRestrictedStaff, useSessionUser } from "@/lib/auth-session"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import { ChevronDown } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -57,7 +64,8 @@ function formatCurrency(amount: number) {
 
 export default function OpenDraftEntriesPage() {
   const { user } = useSessionUser()
-  const isScanner = user?.role === "scanner"
+  const isStaffAccount = user ? isRestrictedStaff(user) : false
+  const isMainAdmin = user?.role === "admin"
   const { entries, loading, approveEntry, deleteEntry } = useOpenDraftEntries()
   const [search, setSearch] = useState("")
   const [auditMode, setAuditMode] = useState(false)
@@ -71,7 +79,7 @@ export default function OpenDraftEntriesPage() {
     const q = search.trim()
     const qLower = q.toLowerCase()
     return entries.filter((row) => {
-      if (isScanner && user?.accountTag && row.editedBy !== user.accountTag) {
+      if (isStaffAccount && user?.accountTag && row.editedBy !== user.accountTag) {
         return false
       }
       if (!q) return true
@@ -84,7 +92,21 @@ export default function OpenDraftEntriesPage() {
           (barcodesMatch(row.barcode, q) || row.barcode.toLowerCase().includes(qLower)))
       )
     })
-  }, [entries, search, isScanner, user?.accountTag])
+  }, [entries, search, isStaffAccount, user?.accountTag])
+
+  const groupedByAccount = useMemo(() => {
+    if (!isMainAdmin) return null
+    const map = new Map<string, OpenDraftEntry[]>()
+    for (const row of filtered) {
+      const key = row.editedBy?.trim() || row.tag?.trim() || "Unknown"
+      const list = map.get(key) ?? []
+      list.push(row)
+      map.set(key, list)
+    }
+    return [...map.entries()].sort(([a], [b]) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    )
+  }, [filtered, isMainAdmin])
 
   const startAudit = () => {
     if (auditPassword.trim() !== TEST_ACCOUNT_PASSKEY) {
@@ -117,7 +139,7 @@ export default function OpenDraftEntriesPage() {
   }
 
   const canDeleteEntry = (row: OpenDraftEntry) => {
-    if (isScanner) {
+    if (isStaffAccount) {
       return !user?.accountTag || row.editedBy === user.accountTag
     }
     return auditMode
@@ -138,6 +160,65 @@ export default function OpenDraftEntriesPage() {
     }
   }
 
+  const renderEntryRow = (row: OpenDraftEntry) => (
+    <TableRow key={row.id}>
+      <TableCell className={invTableCellClass}>
+        <div className="font-medium">{row.name}</div>
+        <div className="text-xs text-muted-foreground">{row.category}</div>
+      </TableCell>
+      <TableCell className={cn(invTableCellClass, "font-mono text-xs")}>{row.barcode || "—"}</TableCell>
+      <TableCell className={invTableCellClass}>
+        <span className="font-mono text-xs font-semibold">{row.tag || row.editedBy}</span>
+      </TableCell>
+      <TableCell className={invTableCellClass}>{row.brand || "—"}</TableCell>
+      <TableCell className={invTableCellClass}>{row.rack || "—"}</TableCell>
+      <TableCell className={invTableCellClass}>
+        {row.mrp != null && row.mrp > 0 ? formatCurrency(row.mrp) : "—"}
+      </TableCell>
+      <TableCell className={cn(invTableCellClass, "text-xs text-muted-foreground")}>
+        {format(row.updatedAt, "dd MMM yyyy, HH:mm")}
+      </TableCell>
+      <TableCell className={invTableCellClass}>
+        <div className="flex flex-wrap gap-2">
+          {!isStaffAccount && (
+            <Button
+              size="sm"
+              disabled={!auditMode || approvingId === row.id}
+              onClick={() => void handleApprove(row.id, row.name)}
+            >
+              {approvingId === row.id ? "Approving…" : "Approve"}
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-destructive hover:text-destructive"
+            disabled={!canDeleteEntry(row) || deletingId === row.id}
+            onClick={() => setEntryToDelete(row)}
+          >
+            <Trash2 className="mr-1 h-3.5 w-3.5" />
+            Delete
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  )
+
+  const tableHeader = (
+    <TableHeader>
+      <TableRow>
+        <TableHead className={invTableHeadClass}>Product</TableHead>
+        <TableHead className={invTableHeadClass}>Barcode</TableHead>
+        <TableHead className={invTableHeadClass}>Tag / Editor</TableHead>
+        <TableHead className={invTableHeadClass}>Brand</TableHead>
+        <TableHead className={invTableHeadClass}>Rack</TableHead>
+        <TableHead className={invTableHeadClass}>MRP</TableHead>
+        <TableHead className={invTableHeadClass}>Updated</TableHead>
+        <TableHead className={invTableHeadClass}>Actions</TableHead>
+      </TableRow>
+    </TableHeader>
+  )
+
   return (
     <div className="space-y-6 p-4 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -147,12 +228,12 @@ export default function OpenDraftEntriesPage() {
             Open Draft Entries
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {isScanner
+            {isStaffAccount
               ? "Your submitted edits waiting for admin approval."
-              : "Review Scan & Edit changes. Tag shows which account submitted the edit."}
+              : "Review Scan & Edit changes — grouped by account (editor tag)."}
           </p>
         </div>
-        {!isScanner && (
+        {!isStaffAccount && (
           <div className="flex flex-wrap gap-2">
             {auditMode ? (
               <Button variant="outline" size="sm" onClick={endAudit}>
@@ -184,88 +265,46 @@ export default function OpenDraftEntriesPage() {
             />
           </div>
 
-          <div className={inventoryTableFrameClassName()}>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className={invTableHeadClass}>Product</TableHead>
-                  <TableHead className={invTableHeadClass}>Barcode</TableHead>
-                  <TableHead className={invTableHeadClass}>Tag / Editor</TableHead>
-                  <TableHead className={invTableHeadClass}>Brand</TableHead>
-                  <TableHead className={invTableHeadClass}>Rack</TableHead>
-                  <TableHead className={invTableHeadClass}>MRP</TableHead>
-                  <TableHead className={invTableHeadClass}>Updated</TableHead>
-                  <TableHead className={invTableHeadClass}>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading &&
-                  Array.from({ length: 4 }).map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell colSpan={8}>
-                        <Skeleton className="h-8 w-full" />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                {!loading && filtered.length === 0 && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={8}
-                      className={cn(invTableCellClass, "text-center text-muted-foreground py-10")}
-                    >
-                      No open draft entries
-                    </TableCell>
-                  </TableRow>
-                )}
-                {!loading &&
-                  filtered.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell className={invTableCellClass}>
-                        <div className="font-medium">{row.name}</div>
-                        <div className="text-xs text-muted-foreground">{row.category}</div>
-                      </TableCell>
-                      <TableCell className={cn(invTableCellClass, "font-mono text-xs")}>
-                        {row.barcode || "—"}
-                      </TableCell>
-                      <TableCell className={invTableCellClass}>
-                        <span className="font-mono text-xs font-semibold">{row.tag || row.editedBy}</span>
-                      </TableCell>
-                      <TableCell className={invTableCellClass}>{row.brand || "—"}</TableCell>
-                      <TableCell className={invTableCellClass}>{row.rack || "—"}</TableCell>
-                      <TableCell className={invTableCellClass}>
-                        {row.mrp != null && row.mrp > 0 ? formatCurrency(row.mrp) : "—"}
-                      </TableCell>
-                      <TableCell className={cn(invTableCellClass, "text-xs text-muted-foreground")}>
-                        {format(row.updatedAt, "dd MMM yyyy, HH:mm")}
-                      </TableCell>
-                      <TableCell className={invTableCellClass}>
-                        <div className="flex flex-wrap gap-2">
-                          {!isScanner && (
-                            <Button
-                              size="sm"
-                              disabled={!auditMode || approvingId === row.id}
-                              onClick={() => void handleApprove(row.id, row.name)}
-                            >
-                              {approvingId === row.id ? "Approving…" : "Approve"}
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-destructive hover:text-destructive"
-                            disabled={!canDeleteEntry(row) || deletingId === row.id}
-                            onClick={() => setEntryToDelete(row)}
-                          >
-                            <Trash2 className="mr-1 h-3.5 w-3.5" />
-                            Delete
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-              </TableBody>
-            </Table>
-          </div>
+          {loading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-24 w-full rounded-lg" />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">No open draft entries</p>
+          ) : isMainAdmin && groupedByAccount ? (
+            <div className="space-y-3">
+              {groupedByAccount.map(([accountKey, rows]) => (
+                <Collapsible key={accountKey} defaultOpen className="rounded-lg border">
+                  <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left hover:bg-muted/40">
+                    <span className="flex items-center gap-2 font-semibold">
+                      <ChevronDown className="h-4 w-4 shrink-0" />
+                      Account <span className="font-mono text-primary">{accountKey}</span>
+                    </span>
+                    <Badge variant="secondary" className="tabular-nums">
+                      {rows.length} item{rows.length === 1 ? "" : "s"}
+                    </Badge>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className={cn(inventoryTableFrameClassName(), "border-0 rounded-none")}>
+                      <Table>
+                        {tableHeader}
+                        <TableBody>{rows.map((row) => renderEntryRow(row))}</TableBody>
+                      </Table>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              ))}
+            </div>
+          ) : (
+            <div className={inventoryTableFrameClassName()}>
+              <Table>
+                {tableHeader}
+                <TableBody>{filtered.map((row) => renderEntryRow(row))}</TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 

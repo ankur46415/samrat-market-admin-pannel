@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft,
+  Camera,
   Check,
   CheckCircle2,
   Clock,
@@ -75,6 +76,7 @@ import { generateOfflineBillNo, generateOnlineBillNo } from "@/lib/features/sale
 import type { EditableLiveItem } from "@/components/live-billing/live-bill-items-editor"
 import { PosLineDiscountCell } from "@/components/live-billing/pos-line-discount-cell"
 import { PosManualItemDialog } from "@/components/live-billing/pos-manual-item-dialog"
+import { CameraBarcodeScannerDialog } from "@/components/inventory/camera-barcode-scanner-dialog"
 import {
   discountedUnitPrice,
   lineItemAmount,
@@ -191,6 +193,7 @@ export function PosTerminal({
   const [pendingCustomerName, setPendingCustomerName] = useState(initialCustomerName?.trim() || "")
   const [printing, setPrinting] = useState(false)
   const [manualDialogOpen, setManualDialogOpen] = useState(false)
+  const [cameraScanOpen, setCameraScanOpen] = useState(false)
   const [phoneDialogOpen, setPhoneDialogOpen] = useState(false)
   const [printDialogOpen, setPrintDialogOpen] = useState(false)
   const [printPhoneDraft, setPrintPhoneDraft] = useState("")
@@ -251,6 +254,7 @@ export function PosTerminal({
       isActive &&
       view === "billing" &&
       !manualDialogOpen &&
+      !cameraScanOpen &&
       !phoneDialogOpen &&
       !printDialogOpen &&
       !editingItemId,
@@ -258,7 +262,14 @@ export function PosTerminal({
   })
 
   const scannerFocusPaused =
-    manualDialogOpen || phoneDialogOpen || printDialogOpen || editingItemId != null || view !== "billing" || itemsLoading || booting
+    manualDialogOpen ||
+    cameraScanOpen ||
+    phoneDialogOpen ||
+    printDialogOpen ||
+    editingItemId != null ||
+    view !== "billing" ||
+    itemsLoading ||
+    booting
 
   const focusScanInput = useCallback(() => {
     if (!scannerFocusPaused && isActive) {
@@ -1238,16 +1249,27 @@ export function PosTerminal({
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck={false}
-                    placeholder="Scan barcode — scanner gun auto-focuses here…"
+                    placeholder="Scan gun, type barcode, or use Camera scan on mobile…"
                     className="h-12 w-full rounded-lg border-2 border-primary/30 bg-background pl-12 pr-4 font-mono text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
                 </form>
-                <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  <Button
+                    type="button"
+                    variant="default"
+                    disabled={!isActive || scanner.isProcessing}
+                    className="h-12 gap-2 px-4 sm:h-11"
+                    title="Use phone camera when barcode gun is unavailable"
+                    onClick={() => setCameraScanOpen(true)}
+                  >
+                    <Camera className="h-5 w-5" />
+                    Camera scan
+                  </Button>
                   <Button
                     type="button"
                     variant="secondary"
                     disabled={resettingScan || acting}
-                    className="gap-2"
+                    className="gap-2 sm:h-11"
                     title="Use if barcode gun stops scanning (F3)"
                     onClick={() => void handleResetScan()}
                   >
@@ -1275,6 +1297,11 @@ export function PosTerminal({
                 <p className={cn("truncate text-sm font-medium transition-colors", statusColors[scanner.statusTone])}>
                   {scanner.isProcessing && <Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" />}
                   {scanner.statusMessage}
+                </p>
+                <p className="w-full text-xs text-muted-foreground sm:w-auto">
+                  On mobile, open this page in the browser and tap{" "}
+                  <span className="font-medium text-foreground">Camera scan</span> — HTTPS required for
+                  camera access.
                 </p>
                 {scanner.statusTone === "error" && scanner.lastFailedBarcode ? (
                   <Link
@@ -1681,6 +1708,17 @@ export function PosTerminal({
           </div>
         </aside>
       </div>
+
+      <CameraBarcodeScannerDialog
+        open={cameraScanOpen}
+        onOpenChange={setCameraScanOpen}
+        title="Scan products for bill"
+        continuous
+        toastOnScan={false}
+        onScan={(code) => {
+          scanner.submitScan(code)
+        }}
+      />
     </div>
   )
 }

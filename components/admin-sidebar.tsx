@@ -168,15 +168,15 @@ export function AdminSidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const { user } = useSessionUser()
-  const role = user?.role ?? "employee"
-  const homeHref = defaultHomePath(role)
+  const session = user ?? { email: "", role: "employee" as const, name: "Guest" }
+  const homeHref = defaultHomePath(session)
   const visibleMainItems = mainNavItems
-    .filter((item) => canAccessPath(role, item.url))
+    .filter((item) => canAccessPath(session, item.url))
     .map((item) => {
       if (!item.subItems) return item
       return {
         ...item,
-        subItems: item.subItems.filter((subItem) => canAccessPath(role, subItem.url)),
+        subItems: item.subItems.filter((subItem) => canAccessPath(session, subItem.url)),
       }
     })
 
@@ -271,13 +271,13 @@ export function AdminSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {role !== "scanner" && (
+        {user?.role === "admin" && (
         <SidebarGroup>
           <SidebarGroupLabel>System</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {settingsNavItems
-                .filter((item) => canAccessPath(role, item.url))
+                .filter((item) => canAccessPath(session, item.url))
                 .map((item) => {
                 const isActive = pathname === item.url
                 const Icon = item.icon
@@ -299,7 +299,7 @@ export function AdminSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border">
-        {role !== "scanner" && <AccountModeSwitcher />}
+        {user?.role === "admin" && <AccountModeSwitcher />}
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton

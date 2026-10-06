@@ -8,17 +8,24 @@ import { col } from "@/lib/account-mode"
 import {
   accountTagFromEmail,
   loginEmailFromUsername,
-  SCANNER_ALLOWED_PREFIXES,
 } from "@/lib/scan-employees"
+import {
+  DEFAULT_SCANNER_PERMISSIONS,
+  normalizePermissionIds,
+  pathAllowedByPermissions,
+  type AppPermissionId,
+} from "@/lib/app-permissions"
 
-export type UserRole = "admin" | "employee" | "scanner"
+export type UserRole = "admin" | "employee" | "scanner" | "staff"
 
 export type SessionUser = {
   email: string
   role: UserRole
   name: string
-  /** Field staff id stamped on product tag (e.g. EMP01). */
+  /** Field staff id stamped on edits (e.g. EMP01). */
   accountTag?: string
+  permissions?: AppPermissionId[]
+  disabled?: boolean
 }
 
 function normalizeEmail(v: string): string {
@@ -35,7 +42,7 @@ function fallbackRoleByEmail(email: string): UserRole {
 const SESSION_CACHE_KEY = "samrat_session_user_v1"
 
 function isUserRole(v: unknown): v is UserRole {
-  return v === "admin" || v === "employee" || v === "scanner"
+  return v === "admin" || v === "employee" || v === "scanner" || v === "staff"
 }
 
 function readCachedSessionUser(): SessionUser | null {
@@ -60,7 +67,23 @@ function writeCachedSessionUser(user: SessionUser | null): void {
   localStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(user))
 }
 
-async function resolveRole(user: User): Promise<{ role: UserRole; accountTag?: string }> {
+export function isRestrictedStaff(user: SessionUser): boolean {
+  return user.role === "scanner" || user.role === "staff"
+}
+
+export function effectivePermissions(user: SessionUser): AppPermissionId[] {
+  if (user.role === "admin") return normalizePermissionIds(user.permissions)
+  if (user.permissions?.length) return user.permissions
+  if (user.role === "scanner" || user.role === "staff") return [...DEFAULT_SCANNER_PERMISSIONS]
+  return []
+}
+
+async function resolveRole(user: User): Promise<{
+  role: UserRole
+  accountTag?: string
+  permissions?: AppPermissionId[]
+  disabled?: boolean
+}> {
   let accountTag = accountTagFromEmail(user.email || "")
   try {
     const roleDoc = await Promise.race([
@@ -74,8 +97,10 @@ async function resolveRole(user: User): Promise<{ role: UserRole; accountTag?: s
     if (typeof data?.accountTag === "string" && data.accountTag.trim()) {
       accountTag = data.accountTag.trim().toUpperCase()
     }
+    const permissions = normalizePermissionIds(data?.permissions)
+    const disabled = data?.disabled === true
     if (isUserRole(roleRaw)) {
-      return { role: roleRaw, accountTag }
+      return { role: roleRaw, accountTag, permissions, disabled }
     }
   } catch {
     // Fall back to email mapping when role doc is missing/unavailable/offline.
@@ -91,13 +116,16 @@ function toDisplayName(user: User, accountTag?: string): string {
   return "Samrat Employee"
 }
 
-async function mapFirebaseUser(user: User): Promise<SessionUser> {
-  const { role, accountTag } = await resolveRole(user)
+async function mapFirebaseUser(user: User): Promise<SessionUser | null> {
+  const { role, accountTag, permissions, disabled } = await resolveRole(user)
+  if (disabled) return null
   return {
     email: user.email || "",
     role,
     name: toDisplayName(user, accountTag),
     accountTag,
+    permissions: permissions?.length ? permissions : undefined,
+    disabled: false,
   }
 }
 
@@ -105,6 +133,10 @@ export async function loginWithFirebase(emailOrUsername: string, password: strin
   const email = loginEmailFromUsername(emailOrUsername)
   const credential = await signInWithEmailAndPassword(auth, email, password)
   const mapped = await mapFirebaseUser(credential.user)
+  if (!mapped) {
+    await signOut(auth)
+    throw new Error("This account has been disabled. Contact admin.")
+  }
   writeCachedSessionUser(mapped)
   return mapped
 }
@@ -116,25 +148,30 @@ export async function logoutFirebase(): Promise<void> {
 
 const EMPLOYEE_BLOCKED_PREFIXES = ["/reports"] as const
 
-function pathAllowedForScanner(pathname: string): boolean {
-  const path = pathname || "/"
-  return SCANNER_ALLOWED_PREFIXES.some(
-    (allowed) => path === allowed || path.startsWith(`${allowed}/`)
-  )
+export function defaultHomePath(user: SessionUser): string {
+  if (user.role === "admin" || user.role === "employee") return "/"
+  const perms = effectivePermissions(user)
+  if (perms.includes("scan-edit")) return "/scan-edit"
+  if (perms.includes("open-draft-entries")) return "/open-draft-entries"
+  if (perms.includes("draft-entries")) return "/draft-entries"
+  if (perms.includes("inventory")) return "/inventory"
+  return "/scan-edit"
 }
 
-export function defaultHomePath(role: UserRole): string {
-  if (role === "scanner") return "/scan-edit"
-  return "/"
-}
-
-export function canAccessPath(role: UserRole, pathname: string): boolean {
+export function canAccessPath(user: SessionUser, pathname: string): boolean {
   const path = pathname || "/"
-  if (role === "admin") return true
-  if (role === "scanner") return pathAllowedForScanner(path)
-  return !EMPLOYEE_BLOCKED_PREFIXES.some(
-    (blocked) => path === blocked || path.startsWith(`${blocked}/`)
-  )
+  if (path.startsWith("/settings")) return user.role === "admin"
+  if (user.role === "admin") return true
+  if (user.role === "employee") {
+    return !EMPLOYEE_BLOCKED_PREFIXES.some(
+      (blocked) => path === blocked || path.startsWith(`${blocked}/`)
+    )
+  }
+  if (isRestrictedStaff(user)) {
+    if (path === "/") return false
+    return pathAllowedByPermissions(path, effectivePermissions(user))
+  }
+  return false
 }
 
 export function useSessionUser() {
@@ -172,6 +209,12 @@ export function useSessionUser() {
       const mapped = await mapFirebaseUser(firebaseUser)
       settled = true
       window.clearTimeout(timeout)
+      if (!mapped) {
+        writeCachedSessionUser(null)
+        setUser(null)
+        setReady(true)
+        return
+      }
       writeCachedSessionUser(mapped)
       setUser(mapped)
       setReady(true)

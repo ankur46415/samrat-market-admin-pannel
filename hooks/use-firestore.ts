@@ -525,6 +525,9 @@ export function useProducts() {
           ? Number(product.gstPercent)
           : undefined,
       imageUrl: product.imageUrl?.trim() || undefined,
+      ownerAccountTag: product.ownerAccountTag?.trim()
+        ? product.ownerAccountTag.trim().toUpperCase()
+        : undefined,
     }
 
     return addDraftProductDoc(db, input)

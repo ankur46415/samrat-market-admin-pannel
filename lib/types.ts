@@ -23,6 +23,8 @@ export interface Product {
   rack: string
   /** Optional display tag for merchandising/filtering */
   tag: string
+  /** Staff account that added this draft (for multi-account audit). */
+  ownerAccountTag?: string
   /** Product status label (e.g. active/inactive) */
   status: string
   price: number

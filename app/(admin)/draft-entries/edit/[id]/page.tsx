@@ -39,6 +39,8 @@ import { isRegisteredDropdownValue } from "@/lib/inventory/dropdown-registry"
 import { isRegisteredSupplierName } from "@/lib/inventory/supplier-registry"
 import { GstPercentSelect } from "@/components/inventory/gst-percent-select"
 import { priceWithGst } from "@/lib/inventory/gst-percent"
+import { isRestrictedStaff, useSessionUser } from "@/lib/auth-session"
+import { draftOwnedBySessionAccount } from "@/lib/draft-account"
 
 const labelClass = "text-sm font-medium text-foreground"
 const inputClass = "h-11 rounded-lg border-border/80 shadow-sm"
@@ -58,6 +60,8 @@ function statusLabel(value: string) {
 export default function EditDraftEntryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
+  const { user } = useSessionUser()
+  const isStaffAccount = user ? isRestrictedStaff(user) : false
   const { drafts, loading, updateDraft } = useDraftProducts()
   const { categories } = useCategories()
   const { names: brandOptions } = useProductBrands()
@@ -69,6 +73,14 @@ export default function EditDraftEntryPage({ params }: { params: Promise<{ id: s
   const [formReady, setFormReady] = useState(false)
 
   const draft = drafts.find((d) => d.id === id)
+
+  useEffect(() => {
+    if (loading || !draft || !isStaffAccount) return
+    if (!draftOwnedBySessionAccount(draft, user?.accountTag)) {
+      toast.error("You can only edit drafts from your account")
+      router.replace("/draft-entries")
+    }
+  }, [loading, draft, isStaffAccount, user?.accountTag, router])
 
   const [formData, setFormData] = useState({
     name: "",

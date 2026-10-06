@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { collection, onSnapshot, query, where } from "firebase/firestore"
-import { Monitor, Receipt, ScanBarcode } from "lucide-react"
+import { Camera, Monitor, Receipt, ScanBarcode } from "lucide-react"
 import { db } from "@/lib/firebase"
 import { col } from "@/lib/account-mode"
 import { useAccountModeScope } from "@/components/account-mode-provider"
@@ -116,7 +116,9 @@ export default function GenerateBillPage() {
           <p className="text-xs font-semibold uppercase tracking-wide text-primary">Billing</p>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Generate Bill</h1>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Supermarket POS billing — scan continuously, use keyboard shortcuts, complete bills quickly.
+            Supermarket POS billing — scan with a barcode gun on desktop, or open{" "}
+            <span className="font-medium text-foreground">POS Terminal</span> on your phone and use{" "}
+            <span className="font-medium text-foreground">Camera scan</span> when the gun is unavailable.
             Open POS once while online so this computer can bill later with no network.
           </p>
         </div>
@@ -134,11 +136,33 @@ export default function GenerateBillPage() {
           <CardDescription>Use these keys inside the POS terminal for faster billing</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2 pt-4">
-          {["F2 Scan", "F10 Pay", "Esc Cancel", "Del Remove", "↑↓ Select"].map((key) => (
+          {["Camera (mobile)", "F2 Scan", "F10 Pay", "Esc Cancel", "Del Remove", "↑↓ Select"].map((key) => (
             <span key={key} className="rounded-md border border-border bg-muted/50 px-2.5 py-1 text-xs font-medium text-muted-foreground">
               {key}
             </span>
           ))}
+        </CardContent>
+      </Card>
+
+      <Card className="border-primary/20 bg-primary/5">
+        <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-center">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+            <Camera className="h-6 w-6" />
+          </div>
+          <div className="min-w-0 flex-1 text-sm text-muted-foreground">
+            <p className="font-medium text-foreground">Mobile backup scanner</p>
+            <p className="mt-0.5">
+              On your phone, log in and go to Generate Bill → Open POS Terminal. Tap{" "}
+              <span className="font-medium text-foreground">Camera scan</span> to add items with the
+              rear camera (site must be opened over HTTPS, except localhost).
+            </p>
+          </div>
+          <Button asChild variant="outline" className="shrink-0 gap-2">
+            <Link href="/generate-bill/scan">
+              <Camera className="h-4 w-4" />
+              Mobile POS
+            </Link>
+          </Button>
         </CardContent>
       </Card>
 

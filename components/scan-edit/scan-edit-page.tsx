@@ -8,7 +8,7 @@ import { useProductScanLookup } from "@/hooks/use-firestore"
 import { useDropdownRegistryNames } from "@/hooks/use-dropdown-registry-names"
 import { submitOpenDraftEntry } from "@/lib/features/inventory/services/open_draft_entry_service"
 import { db } from "@/lib/firebase"
-import { useSessionUser } from "@/lib/auth-session"
+import { isRestrictedStaff, useSessionUser } from "@/lib/auth-session"
 import { BarcodeScannerInput } from "@/components/inventory/barcode-scanner-input"
 import { InventoryFieldSelect } from "@/components/inventory/inventory-field-select"
 import { isRegisteredDropdownValue } from "@/lib/inventory/dropdown-registry"
@@ -48,7 +48,7 @@ function formatCurrency(amount: number) {
 export function ScanEditPage() {
   const { user } = useSessionUser()
   const lookupProduct = useProductScanLookup()
-  const isFieldStaff = user?.role === "scanner"
+  const isFieldStaff = user ? isRestrictedStaff(user) : false
   const { names: brandOptions } = useDropdownRegistryNames("product_brands")
   const { names: categoryOptions } = useDropdownRegistryNames("product_categories")
   const { names: supplierNameOptions, contactForName } = useSupplierRegistrySnapshot()
@@ -218,7 +218,8 @@ export function ScanEditPage() {
         <CardHeader>
           <CardTitle className="text-lg">Find product</CardTitle>
           <CardDescription>
-            Scan barcode, type barcode, or paste product document ID — then press Enter or Find
+            Tap Camera to scan on mobile, use a scanner gun, or type barcode / product ID — then
+            Find
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">

@@ -75,6 +75,9 @@ export function productFromData(id: string, data: Record<string, unknown>): Prod
   const rawBatches = data.__batches
   const rack = trimStr(data.rack)
   const tag = trimStr(data.tag)
+  const ownerAccountTagRaw = trimStr(data.ownerAccountTag)
+  const ownerAccountTag =
+    ownerAccountTagRaw.length > 0 ? ownerAccountTagRaw.toUpperCase() : undefined
   const status = trimStr(data.status)
   const barcodeKeys = barcodeValuesFromFirestore(data, id)
   const barcode = optionalBarcode(data.barcode) || optionalBarcode(data.productBarcode)
@@ -93,6 +96,7 @@ export function productFromData(id: string, data: Record<string, unknown>): Prod
     category: trimStr(data.category),
     rack,
     tag,
+    ownerAccountTag,
     status,
     barcode: barcode || undefined,
     barcodeKeys,

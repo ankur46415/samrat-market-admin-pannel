@@ -5,7 +5,12 @@ import { useRouter } from "next/navigation"
 import Image from "next/image"
 import Lottie from "lottie-react"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
-import { defaultHomePath, loginWithFirebase, useSessionUser } from "@/lib/auth-session"
+import {
+  defaultHomePath,
+  isRestrictedStaff,
+  loginWithFirebase,
+  useSessionUser,
+} from "@/lib/auth-session"
 
 // ✅ Correct way to import JSON in Next.js client components
 const manAnimation = require("@/assets/Man with task list.json")
@@ -23,9 +28,9 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (ready && user) {
-      const home = defaultHomePath(user.role)
+      const home = defaultHomePath(user)
       router.replace(
-        typeof navigator !== "undefined" && !navigator.onLine && user.role !== "scanner"
+        typeof navigator !== "undefined" && !navigator.onLine && !isRestrictedStaff(user)
           ? "/generate-bill/scan"
           : home
       )
@@ -38,13 +43,15 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const session = await loginWithFirebase(email, password)
-      router.replace(defaultHomePath(session.role))
+      router.replace(defaultHomePath(session))
     } catch (err: any) {
       setLoading(false)
       const msg =
-        err?.code === "auth/invalid-credential" || err?.code === "auth/wrong-password"
-          ? "Invalid email or password"
-          : "Login failed. Please try again."
+        err instanceof Error && err.message.includes("disabled")
+          ? err.message
+          : err?.code === "auth/invalid-credential" || err?.code === "auth/wrong-password"
+            ? "Invalid email or password"
+            : "Login failed. Please try again."
       setError(msg)
     }
   }

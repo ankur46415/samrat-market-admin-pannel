@@ -3,7 +3,16 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { format } from "date-fns"
-import { Box, FilePenLine, Inbox, Pencil, Search, ShieldCheck, Trash2 } from "lucide-react"
+import {
+  Box,
+  ChevronDown,
+  FilePenLine,
+  Inbox,
+  Pencil,
+  Search,
+  ShieldCheck,
+  Trash2,
+} from "lucide-react"
 import { toast } from "sonner"
 import { TEST_ACCOUNT_PASSKEY } from "@/lib/account-mode"
 import { useDraftProducts } from "@/hooks/use-firestore"
@@ -76,6 +85,17 @@ import {
   type DraftAuditUnitCostMap,
 } from "@/lib/draft-entry-audit-costs"
 import { useClientHydrated } from "@/hooks/use-client-hydrated"
+import { isRestrictedStaff, useSessionUser } from "@/lib/auth-session"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import { Badge } from "@/components/ui/badge"
+import {
+  draftGroupedAccountLabel,
+  draftOwnedBySessionAccount,
+} from "@/lib/draft-account"
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -102,6 +122,9 @@ function resolveDraftBillTotal(
 
 export default function DraftEntriesPage() {
   const hydrated = useClientHydrated()
+  const { user } = useSessionUser()
+  const isStaffAccount = user ? isRestrictedStaff(user) : false
+  const isMainAdmin = user?.role === "admin"
   const { drafts, loading, updateDraftStatus, updateDraft, approveDraft, deleteDraft } =
     useDraftProducts()
   const [search, setSearch] = useState("")
@@ -182,15 +205,33 @@ export default function DraftEntriesPage() {
     const q = search.trim()
     const qLower = q.toLowerCase()
     return drafts.filter((product) => {
+      if (isStaffAccount && !draftOwnedBySessionAccount(product, user?.accountTag)) {
+        return false
+      }
       const matchesSearch =
         !q ||
         product.name.toLowerCase().includes(qLower) ||
         (product.barcode != null &&
-          (barcodesMatch(product.barcode, q) || product.barcode.toLowerCase().includes(qLower)))
+          (barcodesMatch(product.barcode, q) || product.barcode.toLowerCase().includes(qLower))) ||
+        draftGroupedAccountLabel(product).toLowerCase().includes(qLower)
       const matchesCategory = categoryFilter === "all" || product.category === categoryFilter
       return matchesSearch && matchesCategory
     })
-  }, [drafts, search, categoryFilter])
+  }, [drafts, search, categoryFilter, isStaffAccount, user?.accountTag])
+
+  const groupedByAccount = useMemo(() => {
+    if (!isMainAdmin) return null
+    const map = new Map<string, Product[]>()
+    for (const product of filteredDrafts) {
+      const key = draftGroupedAccountLabel(product)
+      const list = map.get(key) ?? []
+      list.push(product)
+      map.set(key, list)
+    }
+    return [...map.entries()].sort(([a], [b]) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    )
+  }, [filteredDrafts, isMainAdmin])
 
   const filteredDraftIds = useMemo(() => filteredDrafts.map((d) => d.id), [filteredDrafts])
 
@@ -374,6 +415,189 @@ export default function DraftEntriesPage() {
     }
   }
 
+  const renderDraftProductRow = (product: Product) => {
+    const rowStatus =
+      product.status && STATUS_OPTIONS.includes(product.status as (typeof STATUS_OPTIONS)[number])
+        ? product.status
+        : "deactive"
+    const resolvedUnit = resolveDraftUnitCost(product, auditUnitCosts)
+    const resolvedBill = resolveDraftBillTotal(product, auditCosts, auditUnitCosts)
+    return (
+      <TableRow
+        key={product.id}
+        className="border-border/50 transition-colors hover:bg-muted/40"
+      >
+        <TableCell className={cn(invTableCellClass, "text-center")}>
+          <label className="inline-flex cursor-pointer flex-col items-center gap-1">
+            <Checkbox
+              checked={auditLocalReady && auditOk[product.id] === true}
+              onCheckedChange={(checked) =>
+                setAuditOk(setDraftAuditOk(product.id, checked === true))
+              }
+              disabled={!auditLocalReady}
+              aria-label={`Mark ${product.name} as OK for bill match`}
+            />
+            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              OK
+            </span>
+          </label>
+        </TableCell>
+        <TableCell className={invTableCellClass}>
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Box className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 space-y-0.5">
+              <p className="font-semibold leading-tight text-foreground">{product.name}</p>
+              {product.barcode ? (
+                <p className="font-mono text-xs text-muted-foreground">{product.barcode}</p>
+              ) : null}
+            </div>
+          </div>
+        </TableCell>
+        <TableCell className={cn(invTableCellClass, "hidden md:table-cell text-muted-foreground")}>
+          {product.category || "—"}
+        </TableCell>
+        <TableCell className={cn(invTableCellClass, "hidden md:table-cell text-muted-foreground")}>
+          {product.rack || "—"}
+        </TableCell>
+        <TableCell className={invTableCellNumeric}>
+          {product.mrp != null && product.mrp > 0 ? formatCurrency(product.mrp) : "—"}
+        </TableCell>
+        <TableCell className={invTableCellNumeric}>{formatCurrency(product.price)}</TableCell>
+        <TableCell
+          className={cn(invTableCellNumeric, "hidden lg:table-cell text-muted-foreground text-sm")}
+        >
+          {product.gstPercent != null ? gstLabel(product.gstPercent) : "—"}
+        </TableCell>
+        <TableCell className={invTableCellNumeric}>
+          <span className="font-semibold">{product.stock}</span>
+          <span className="ml-1 text-muted-foreground">{product.unit}</span>
+        </TableCell>
+        <TableCell className={cn(invTableCellClass, "text-right")}>
+          <Input
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            placeholder="0"
+            className="ml-auto h-9 w-[7.5rem] text-right tabular-nums"
+            value={
+              !auditLocalReady
+                ? ""
+                : auditUnitCostDraft[product.id] ??
+                  (auditUnitCosts[product.id] != null
+                    ? String(auditUnitCosts[product.id])
+                    : resolvedUnit > 0
+                      ? String(resolvedUnit)
+                      : "")
+            }
+            onChange={(e) =>
+              setAuditUnitCostDraft((prev) => ({
+                ...prev,
+                [product.id]: e.target.value,
+              }))
+            }
+            onBlur={(e) => commitAuditUnitCost(product, e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                commitAuditUnitCost(product, e.currentTarget.value)
+              }
+            }}
+          />
+        </TableCell>
+        <TableCell className={cn(invTableCellClass, "text-right")}>
+          <Input
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            placeholder="0"
+            className="ml-auto h-9 w-[7.5rem] text-right tabular-nums"
+            value={
+              !auditLocalReady
+                ? ""
+                : auditCostDraft[product.id] ??
+                  (auditCosts[product.id] != null
+                    ? String(auditCosts[product.id])
+                    : resolvedBill > 0
+                      ? String(resolvedBill)
+                      : "")
+            }
+            onChange={(e) =>
+              setAuditCostDraft((prev) => ({
+                ...prev,
+                [product.id]: e.target.value,
+              }))
+            }
+            onBlur={(e) => commitAuditCost(product, e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                commitAuditCost(product, e.currentTarget.value)
+              }
+            }}
+          />
+        </TableCell>
+        <TableCell
+          className={cn(invTableCellClass, "hidden sm:table-cell text-muted-foreground")}
+          suppressHydrationWarning
+        >
+          {format(product.createdAt, "MMM dd, yyyy")}
+        </TableCell>
+        <TableCell className={invTableCellClass}>
+          <Select
+            value={rowStatus}
+            disabled={isStaffAccount || !auditMode || statusSavingId === product.id}
+            onValueChange={(value) => void handleStatusChange(product, value)}
+          >
+            <SelectTrigger className="h-9 w-[7.5rem]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="deactive">Inactive</SelectItem>
+            </SelectContent>
+          </Select>
+        </TableCell>
+        <TableCell className={cn(invTableCellClass, "pr-4 text-right")}>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" size="sm" variant="outline" asChild>
+              <Link href={`/draft-entries/edit/${product.id}`}>
+                <Pencil className="mr-1 h-3.5 w-3.5" />
+                Edit
+              </Link>
+            </Button>
+            {!isStaffAccount ? (
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={!auditMode || approvingId === product.id}
+                  onClick={() => void handleApprove(product)}
+                >
+                  {approvingId === product.id ? "…" : "Approve"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive hover:text-destructive"
+                  disabled={!auditMode || deletingId === product.id}
+                  onClick={() => setDraftToDelete(product)}
+                >
+                  <Trash2 className="mr-1 h-3.5 w-3.5" />
+                  Delete
+                </Button>
+              </>
+            ) : null}
+          </div>
+        </TableCell>
+      </TableRow>
+    )
+  }
+
   if (loading) {
     return (
       <div className="mx-auto max-w-7xl space-y-6 pb-10">
@@ -393,20 +617,24 @@ export default function DraftEntriesPage() {
           </div>
           <h1 className="text-3xl font-semibold tracking-tight text-foreground">Pending product audit</h1>
           <p className="max-w-2xl text-muted-foreground">
-            New items stay here until you audit and approve them into Inventory → All Products.
+            {isStaffAccount
+              ? "Your pending products — only rows created under your account are shown."
+              : "New items stay here until you audit and approve them into Inventory → All Products. Grouped by staff account."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {auditMode ? (
-            <Button type="button" variant="outline" onClick={endAudit}>
-              End audit
-            </Button>
-          ) : (
-            <Button type="button" className="gap-2" onClick={() => setAuditDialogOpen(true)}>
-              <ShieldCheck className="h-4 w-4" />
-              Start audit
-            </Button>
-          )}
+          {!isStaffAccount ? (
+            auditMode ? (
+              <Button type="button" variant="outline" onClick={endAudit}>
+                End audit
+              </Button>
+            ) : (
+              <Button type="button" className="gap-2" onClick={() => setAuditDialogOpen(true)}>
+                <ShieldCheck className="h-4 w-4" />
+                Start audit
+              </Button>
+            )
+          ) : null}
           <Button asChild variant="outline">
             <Link href="/inventory/add">Add product & batch</Link>
           </Button>
@@ -481,6 +709,88 @@ export default function DraftEntriesPage() {
             </Select>
           </div>
 
+          {filteredDrafts.length === 0 ? (
+            <div className={inventoryTableFrameClassName()}>
+              <Table>
+                <TableBody>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={13} className="h-40 text-center">
+                      <div className="flex flex-col items-center justify-center gap-2 py-6">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                          <Inbox className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                        <p className="font-medium text-foreground">No draft entries</p>
+                        <p className="text-sm text-muted-foreground">
+                          New products from Add product & batch appear here first.
+                        </p>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          ) : isMainAdmin && groupedByAccount ? (
+            <div className="space-y-3">
+              {groupedByAccount.map(([accountKey, rows]) => (
+                <Collapsible key={accountKey} defaultOpen className="rounded-lg border">
+                  <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left hover:bg-muted/40">
+                    <span className="flex items-center gap-2 font-semibold">
+                      <ChevronDown className="h-4 w-4 shrink-0" />
+                      Account{" "}
+                      <span className="font-mono text-primary">{accountKey}</span>
+                    </span>
+                    <Badge variant="secondary" className="tabular-nums">
+                      {rows.length} draft{rows.length === 1 ? "" : "s"}
+                    </Badge>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className={cn(inventoryTableFrameClassName(), "border-0 rounded-none")}>
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="border-b-0 hover:bg-transparent">
+                            <TableHead className={cn(invTableHeadClass, "w-[72px] text-center")}>
+                              OK
+                            </TableHead>
+                            <TableHead className={invTableHeadClass}>Product</TableHead>
+                            <TableHead className={cn(invTableHeadClass, "hidden md:table-cell")}>
+                              Category
+                            </TableHead>
+                            <TableHead className={cn(invTableHeadClass, "hidden md:table-cell")}>
+                              Rack
+                            </TableHead>
+                            <TableHead className={cn(invTableHeadClass, "text-right")}>MRP</TableHead>
+                            <TableHead className={cn(invTableHeadClass, "text-right")}>Sell</TableHead>
+                            <TableHead
+                              className={cn(invTableHeadClass, "text-right hidden lg:table-cell")}
+                            >
+                              GST
+                            </TableHead>
+                            <TableHead className={cn(invTableHeadClass, "text-right")}>Qty</TableHead>
+                            <TableHead className={cn(invTableHeadClass, "text-right w-[120px]")}>
+                              Unit cost
+                            </TableHead>
+                            <TableHead className={cn(invTableHeadClass, "text-right w-[120px]")}>
+                              Bill total
+                            </TableHead>
+                            <TableHead className={cn(invTableHeadClass, "hidden sm:table-cell")}>
+                              Added
+                            </TableHead>
+                            <TableHead className={cn(invTableHeadClass, "w-[140px]")}>Status</TableHead>
+                            <TableHead
+                              className={cn(invTableHeadClass, "min-w-[220px] text-right pr-4")}
+                            >
+                              Actions
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>{rows.map(renderDraftProductRow)}</TableBody>
+                      </Table>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              ))}
+            </div>
+          ) : (
           <div className={inventoryTableFrameClassName()}>
             <Table>
               <TableHeader>
@@ -506,207 +816,10 @@ export default function DraftEntriesPage() {
                   <TableHead className={cn(invTableHeadClass, "min-w-[220px] text-right pr-4")}>Actions</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
-                {filteredDrafts.length === 0 ? (
-                  <TableRow className="hover:bg-transparent">
-                    <TableCell colSpan={13} className="h-40 text-center">
-                      <div className="flex flex-col items-center justify-center gap-2 py-6">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                          <Inbox className="h-6 w-6 text-muted-foreground" />
-                        </div>
-                        <p className="font-medium text-foreground">No draft entries</p>
-                        <p className="text-sm text-muted-foreground">
-                          New products from Add product & batch appear here first.
-                        </p>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredDrafts.map((product) => {
-                    const rowStatus =
-                      product.status && STATUS_OPTIONS.includes(product.status as (typeof STATUS_OPTIONS)[number])
-                        ? product.status
-                        : "deactive"
-                    const resolvedUnit = resolveDraftUnitCost(product, auditUnitCosts)
-                    const resolvedBill = resolveDraftBillTotal(product, auditCosts, auditUnitCosts)
-                    return (
-                      <TableRow
-                        key={product.id}
-                        className="border-border/50 transition-colors hover:bg-muted/40"
-                      >
-                        <TableCell className={cn(invTableCellClass, "text-center")}>
-                          <label className="inline-flex cursor-pointer flex-col items-center gap-1">
-                            <Checkbox
-                              checked={auditLocalReady && auditOk[product.id] === true}
-                              onCheckedChange={(checked) =>
-                                setAuditOk(setDraftAuditOk(product.id, checked === true))
-                              }
-                              disabled={!auditLocalReady}
-                              aria-label={`Mark ${product.name} as OK for bill match`}
-                            />
-                            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                              OK
-                            </span>
-                          </label>
-                        </TableCell>
-                        <TableCell className={invTableCellClass}>
-                          <div className="flex items-start gap-3">
-                            <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                              <Box className="h-4 w-4" />
-                            </div>
-                            <div className="min-w-0 space-y-0.5">
-                              <p className="font-semibold leading-tight text-foreground">{product.name}</p>
-                              {product.barcode ? (
-                                <p className="font-mono text-xs text-muted-foreground">{product.barcode}</p>
-                              ) : null}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className={cn(invTableCellClass, "hidden md:table-cell text-muted-foreground")}>
-                          {product.category || "—"}
-                        </TableCell>
-                        <TableCell className={cn(invTableCellClass, "hidden md:table-cell text-muted-foreground")}>
-                          {product.rack || "—"}
-                        </TableCell>
-                        <TableCell className={invTableCellNumeric}>
-                          {product.mrp != null && product.mrp > 0 ? formatCurrency(product.mrp) : "—"}
-                        </TableCell>
-                        <TableCell className={invTableCellNumeric}>{formatCurrency(product.price)}</TableCell>
-                        <TableCell
-                          className={cn(
-                            invTableCellNumeric,
-                            "hidden lg:table-cell text-muted-foreground text-sm"
-                          )}
-                        >
-                          {product.gstPercent != null ? gstLabel(product.gstPercent) : "—"}
-                        </TableCell>
-                        <TableCell className={invTableCellNumeric}>
-                          <span className="font-semibold">{product.stock}</span>
-                          <span className="ml-1 text-muted-foreground">{product.unit}</span>
-                        </TableCell>
-                        <TableCell className={cn(invTableCellClass, "text-right")}>
-                          <Input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            inputMode="decimal"
-                            placeholder="0"
-                            className="ml-auto h-9 w-[7.5rem] text-right tabular-nums"
-                            value={
-                              !auditLocalReady
-                                ? ""
-                                : auditUnitCostDraft[product.id] ??
-                                  (auditUnitCosts[product.id] != null
-                                    ? String(auditUnitCosts[product.id])
-                                    : resolvedUnit > 0
-                                      ? String(resolvedUnit)
-                                      : "")
-                            }
-                            onChange={(e) =>
-                              setAuditUnitCostDraft((prev) => ({
-                                ...prev,
-                                [product.id]: e.target.value,
-                              }))
-                            }
-                            onBlur={(e) => commitAuditUnitCost(product, e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault()
-                                commitAuditUnitCost(product, e.currentTarget.value)
-                              }
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell className={cn(invTableCellClass, "text-right")}>
-                          <Input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            inputMode="decimal"
-                            placeholder="0"
-                            className="ml-auto h-9 w-[7.5rem] text-right tabular-nums"
-                            value={
-                              !auditLocalReady
-                                ? ""
-                                : auditCostDraft[product.id] ??
-                                  (auditCosts[product.id] != null
-                                    ? String(auditCosts[product.id])
-                                    : resolvedBill > 0
-                                      ? String(resolvedBill)
-                                      : "")
-                            }
-                            onChange={(e) =>
-                              setAuditCostDraft((prev) => ({
-                                ...prev,
-                                [product.id]: e.target.value,
-                              }))
-                            }
-                            onBlur={(e) => commitAuditCost(product, e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault()
-                                commitAuditCost(product, e.currentTarget.value)
-                              }
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell
-                          className={cn(invTableCellClass, "hidden sm:table-cell text-muted-foreground")}
-                          suppressHydrationWarning
-                        >
-                          {format(product.createdAt, "MMM dd, yyyy")}
-                        </TableCell>
-                        <TableCell className={invTableCellClass}>
-                          <Select
-                            value={rowStatus}
-                            disabled={!auditMode || statusSavingId === product.id}
-                            onValueChange={(value) => void handleStatusChange(product, value)}
-                          >
-                            <SelectTrigger className="h-9 w-[7.5rem]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="active">Active</SelectItem>
-                              <SelectItem value="deactive">Inactive</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell className={cn(invTableCellClass, "pr-4 text-right")}>
-                          <div className="flex flex-wrap justify-end gap-2">
-                            <Button type="button" size="sm" variant="outline" asChild>
-                              <Link href={`/draft-entries/edit/${product.id}`}>
-                                <Pencil className="mr-1 h-3.5 w-3.5" />
-                                Edit
-                              </Link>
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              disabled={!auditMode || approvingId === product.id}
-                              onClick={() => void handleApprove(product)}
-                            >
-                              {approvingId === product.id ? "…" : "Approve"}
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="text-destructive hover:text-destructive"
-                              disabled={!auditMode || deletingId === product.id}
-                              onClick={() => setDraftToDelete(product)}
-                            >
-                              <Trash2 className="mr-1 h-3.5 w-3.5" />
-                              Delete
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })
-                )}
-              </TableBody>
+              <TableBody>{filteredDrafts.map(renderDraftProductRow)}</TableBody>
             </Table>
           </div>
+          )}
         </CardContent>
       </Card>
 
