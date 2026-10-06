@@ -47,9 +47,18 @@ export function usePosScanner({
   const [lastScan, setLastScan] = useState<PosScanResult | null>(null)
   const [lastFailedBarcode, setLastFailedBarcode] = useState<string | null>(null)
   const [flashKey, setFlashKey] = useState(0)
+  const [scanFieldValue, setScanFieldValue] = useState("")
 
   const clearScanInput = useCallback(() => {
+    setScanFieldValue("")
     if (inputRef.current) inputRef.current.value = ""
+  }, [])
+
+  const showScanInField = useCallback((raw: string) => {
+    const barcode = normalizeScannedBarcode(raw) || raw.trim()
+    if (!barcode) return
+    setScanFieldValue(barcode)
+    if (inputRef.current) inputRef.current.value = barcode
   }, [])
 
   const focusInput = useCallback(() => {
@@ -136,20 +145,20 @@ export function usePosScanner({
       const barcode = normalizeScannedBarcode(raw)
       if (!barcode) return
 
+      showScanInField(barcode)
       queueRef.current.push(barcode)
-      clearScanInput()
       void processQueue()
     },
-    [clearScanInput, processQueue]
+    [processQueue, showScanInField]
   )
 
   const submitScan = useCallback(
     (raw?: string) => {
-      const value = raw ?? inputRef.current?.value ?? ""
+      const value = raw ?? scanFieldValue ?? inputRef.current?.value ?? ""
       if (!value.trim()) return
       enqueueScan(value)
     },
-    [enqueueScan]
+    [enqueueScan, scanFieldValue]
   )
 
   /** Clear stuck queue/processing and refocus — use when gun stops responding. */
@@ -191,6 +200,8 @@ export function usePosScanner({
 
   return {
     inputRef,
+    scanFieldValue,
+    setScanFieldValue,
     submitScan,
     focusInput,
     recoverScanner,

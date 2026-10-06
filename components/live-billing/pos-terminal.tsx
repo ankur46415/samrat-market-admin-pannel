@@ -1260,7 +1260,8 @@ export function PosTerminal({
                   <ScanBarcode className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-primary" />
                   <input
                     ref={scanner.inputRef}
-                    defaultValue=""
+                    value={scanner.scanFieldValue}
+                    onChange={(e) => scanner.setScanFieldValue(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault()

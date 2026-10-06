@@ -104,7 +104,10 @@ export function BarcodeScannerInput({
         <CameraBarcodeScannerDialog
           open={cameraOpen}
           onOpenChange={setCameraOpen}
-          onScan={(code) => applyBarcode(code, false)}
+          onScan={(code) => {
+            applyBarcode(code, true)
+            setCameraOpen(false)
+          }}
         />
       ) : null}
 
