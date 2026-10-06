@@ -11,6 +11,7 @@ import {
   loginWithFirebase,
   useSessionUser,
 } from "@/lib/auth-session"
+import { loginErrorMessage } from "@/lib/login-error-message"
 
 // ✅ Correct way to import JSON in Next.js client components
 const manAnimation = require("@/assets/Man with task list.json")
@@ -44,15 +45,9 @@ export default function LoginPage() {
     try {
       const session = await loginWithFirebase(email, password)
       router.replace(defaultHomePath(session))
-    } catch (err: any) {
+    } catch (err: unknown) {
       setLoading(false)
-      const msg =
-        err instanceof Error && err.message.includes("disabled")
-          ? err.message
-          : err?.code === "auth/invalid-credential" || err?.code === "auth/wrong-password"
-            ? "Invalid email or password"
-            : "Login failed. Please try again."
-      setError(msg)
+      setError(loginErrorMessage(err))
     }
   }
 

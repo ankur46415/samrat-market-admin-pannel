@@ -89,7 +89,7 @@ async function resolveRole(user: User): Promise<{
     const roleDoc = await Promise.race([
       getDoc(doc(db, col("users"), user.uid)),
       new Promise<never>((_, reject) => {
-        window.setTimeout(() => reject(new Error("role lookup timeout")), 1500)
+        window.setTimeout(() => reject(new Error("role lookup timeout")), 8000)
       }),
     ])
     const data = roleDoc.data()
