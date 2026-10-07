@@ -79,7 +79,7 @@ export function usePosScanner({
     if (processingRef.current) return
 
     const activeSessionId = sessionIdRef.current
-    if (!activeSessionId || !enabledRef.current) return
+    if (!activeSessionId) return
 
     processingRef.current = true
     setIsProcessing(true)
@@ -140,8 +140,10 @@ export function usePosScanner({
   }, [clearScanInput, focusInput])
 
   const enqueueScan = useCallback(
-    (raw: string) => {
-      if (!enabledRef.current || !sessionIdRef.current) return
+    (raw: string, options?: { explicit?: boolean }) => {
+      if (!sessionIdRef.current) return
+      // Camera / programmatic scans while a dialog is open (enabled=false)
+      if (!options?.explicit && !enabledRef.current) return
       const barcode = normalizeScannedBarcode(raw)
       if (!barcode) return
 
@@ -156,7 +158,7 @@ export function usePosScanner({
     (raw?: string) => {
       const value = raw ?? scanFieldValue ?? inputRef.current?.value ?? ""
       if (!value.trim()) return
-      enqueueScan(value)
+      enqueueScan(value, { explicit: raw !== undefined && raw.trim().length > 0 })
     },
     [enqueueScan, scanFieldValue]
   )
