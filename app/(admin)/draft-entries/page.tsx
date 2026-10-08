@@ -69,20 +69,10 @@ import { gstLabel } from "@/lib/inventory/gst-percent"
 import {
   countDraftAuditOk,
   defaultLineBillTotal,
-  loadDraftAuditCosts,
   loadDraftAuditOk,
-  loadDraftAuditUnitCosts,
-  pruneDraftAuditCosts,
   pruneDraftAuditOk,
-  pruneDraftAuditUnitCosts,
-  roundMoney,
-  setDraftAuditCost,
   setDraftAuditOk,
-  setDraftAuditUnitCost,
-  unitCostFromBillTotal,
-  type DraftAuditCostMap,
   type DraftAuditOkMap,
-  type DraftAuditUnitCostMap,
 } from "@/lib/draft-entry-audit-costs"
 import { useClientHydrated } from "@/hooks/use-client-hydrated"
 import { isRestrictedStaff, useSessionUser } from "@/lib/auth-session"
@@ -105,19 +95,21 @@ function formatCurrency(amount: number) {
   }).format(amount)
 }
 
-function resolveDraftUnitCost(product: Product, unitMap: DraftAuditUnitCostMap): number {
-  if (unitMap[product.id] != null) return unitMap[product.id]!
+function formatMoney(amount: number) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 2,
+  }).format(amount)
+}
+
+/** Unit cost is changed only from the draft's Edit page (Cost price). */
+function draftUnitCost(product: Product): number {
   return product.costPrice ?? 0
 }
 
-function resolveDraftBillTotal(
-  product: Product,
-  costMap: DraftAuditCostMap,
-  unitMap: DraftAuditUnitCostMap
-): number {
-  const explicit = costMap[product.id]
-  if (explicit != null && Number.isFinite(explicit) && explicit >= 0) return explicit
-  return defaultLineBillTotal(product.stock, resolveDraftUnitCost(product, unitMap))
+function draftBillTotal(product: Product): number {
+  return defaultLineBillTotal(product.stock, draftUnitCost(product))
 }
 
 export default function DraftEntriesPage() {
@@ -136,64 +128,18 @@ export default function DraftEntriesPage() {
   const [statusSavingId, setStatusSavingId] = useState<string | null>(null)
   const [draftToDelete, setDraftToDelete] = useState<Product | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [auditCosts, setAuditCosts] = useState<DraftAuditCostMap>({})
-  const [auditCostDraft, setAuditCostDraft] = useState<Record<string, string>>({})
-  const [auditUnitCosts, setAuditUnitCosts] = useState<DraftAuditUnitCostMap>({})
-  const [auditUnitCostDraft, setAuditUnitCostDraft] = useState<Record<string, string>>({})
   const [auditOk, setAuditOk] = useState<DraftAuditOkMap>({})
   const [auditLocalReady, setAuditLocalReady] = useState(false)
 
   useEffect(() => {
     if (!hydrated) return
-    const loaded = loadDraftAuditCosts()
-    const loadedOk = loadDraftAuditOk()
-    const loadedUnit = loadDraftAuditUnitCosts()
-    setAuditCosts(loaded)
-    setAuditOk(loadedOk)
-    setAuditUnitCosts(loadedUnit)
-    setAuditCostDraft(() => {
-      const draftStrings: Record<string, string> = {}
-      for (const [id, amount] of Object.entries(loaded)) {
-        if (amount > 0) draftStrings[id] = String(amount)
-      }
-      return draftStrings
-    })
+    setAuditOk(loadDraftAuditOk())
     setAuditLocalReady(true)
   }, [hydrated])
 
   useEffect(() => {
     if (!auditLocalReady) return
-    const ids = drafts.map((d) => d.id)
-    const pruned = pruneDraftAuditCosts(ids)
-    const prunedOk = pruneDraftAuditOk(ids)
-    const prunedUnit = pruneDraftAuditUnitCosts(ids)
-    setAuditCosts(pruned)
-    setAuditOk(prunedOk)
-    setAuditUnitCosts(prunedUnit)
-    setAuditCostDraft((prev) => {
-      const next: Record<string, string> = {}
-      for (const id of ids) {
-        const fromPrev = prev[id]
-        if (fromPrev !== undefined) {
-          next[id] = fromPrev
-        } else if (pruned[id] != null && pruned[id]! > 0) {
-          next[id] = String(pruned[id])
-        }
-      }
-      return next
-    })
-    setAuditUnitCostDraft((prev) => {
-      const next: Record<string, string> = {}
-      for (const id of ids) {
-        const fromPrev = prev[id]
-        if (fromPrev !== undefined) {
-          next[id] = fromPrev
-        } else if (prunedUnit[id] != null) {
-          next[id] = String(prunedUnit[id])
-        }
-      }
-      return next
-    })
+    setAuditOk(pruneDraftAuditOk(drafts.map((d) => d.id)))
   }, [drafts, auditLocalReady])
 
   const categories = useMemo(() => {
@@ -235,13 +181,10 @@ export default function DraftEntriesPage() {
 
   const filteredDraftIds = useMemo(() => filteredDrafts.map((d) => d.id), [filteredDrafts])
 
-  const totalAuditBillCost = useMemo(() => {
-    if (!auditLocalReady) return 0
-    return filteredDrafts.reduce(
-      (sum, p) => sum + resolveDraftBillTotal(p, auditCosts, auditUnitCosts),
-      0
-    )
-  }, [auditLocalReady, filteredDrafts, auditCosts, auditUnitCosts])
+  const totalAuditBillCost = useMemo(
+    () => filteredDrafts.reduce((sum, p) => sum + draftBillTotal(p), 0),
+    [filteredDrafts]
+  )
 
   const okMarkedCount = useMemo(
     () => (auditLocalReady ? countDraftAuditOk(filteredDraftIds, auditOk) : 0),
@@ -252,76 +195,12 @@ export default function DraftEntriesPage() {
     if (!auditLocalReady) return 0
     return filteredDrafts.reduce((sum, p) => {
       if (auditOk[p.id] !== true) return sum
-      return sum + resolveDraftBillTotal(p, auditCosts, auditUnitCosts)
+      return sum + draftBillTotal(p)
     }, 0)
-  }, [auditLocalReady, filteredDrafts, auditOk, auditCosts, auditUnitCosts])
+  }, [auditLocalReady, filteredDrafts, auditOk])
 
   const clearAuditLineOverrides = (draftId: string) => {
-    setAuditCosts(setDraftAuditCost(draftId, null))
-    setAuditUnitCosts(setDraftAuditUnitCost(draftId, null))
     setAuditOk(setDraftAuditOk(draftId, false))
-    setAuditCostDraft((prev) => {
-      const next = { ...prev }
-      delete next[draftId]
-      return next
-    })
-    setAuditUnitCostDraft((prev) => {
-      const next = { ...prev }
-      delete next[draftId]
-      return next
-    })
-  }
-
-  const commitAuditCost = (product: Product, raw: string) => {
-    const draftId = product.id
-    const trimmed = raw.trim()
-    if (!trimmed) {
-      setAuditCosts(setDraftAuditCost(draftId, null))
-      setAuditUnitCosts(setDraftAuditUnitCost(draftId, null))
-      setAuditUnitCostDraft((prev) => {
-        const next = { ...prev }
-        delete next[draftId]
-        return next
-      })
-      return
-    }
-    const n = parseFloat(trimmed)
-    if (!Number.isFinite(n) || n < 0) {
-      toast.error("Enter a valid bill total")
-      return
-    }
-    const total = roundMoney(n)
-    setAuditCosts(setDraftAuditCost(draftId, total))
-    const unit = unitCostFromBillTotal(total, product.stock)
-    if (product.stock > 0) {
-      setAuditUnitCosts(setDraftAuditUnitCost(draftId, unit))
-      setAuditUnitCostDraft((prev) => ({ ...prev, [draftId]: String(unit) }))
-    }
-  }
-
-  const commitAuditUnitCost = (product: Product, raw: string) => {
-    const draftId = product.id
-    const trimmed = raw.trim()
-    if (!trimmed) {
-      setAuditUnitCosts(setDraftAuditUnitCost(draftId, null))
-      setAuditCosts(setDraftAuditCost(draftId, null))
-      setAuditCostDraft((prev) => {
-        const next = { ...prev }
-        delete next[draftId]
-        return next
-      })
-      return
-    }
-    const n = parseFloat(trimmed)
-    if (!Number.isFinite(n) || n < 0) {
-      toast.error("Enter a valid unit cost")
-      return
-    }
-    const unit = roundMoney(n)
-    setAuditUnitCosts(setDraftAuditUnitCost(draftId, unit))
-    const total = defaultLineBillTotal(product.stock, unit)
-    setAuditCosts(setDraftAuditCost(draftId, total))
-    setAuditCostDraft((prev) => ({ ...prev, [draftId]: String(total) }))
   }
 
   const startAudit = () => {
@@ -361,8 +240,8 @@ export default function DraftEntriesPage() {
         product.status && STATUS_OPTIONS.includes(product.status as (typeof STATUS_OPTIONS)[number])
           ? product.status
           : "deactive"
-      const unitCost = resolveDraftUnitCost(product, auditUnitCosts)
-      const totalCost = resolveDraftBillTotal(product, auditCosts, auditUnitCosts)
+      const unitCost = draftUnitCost(product)
+      const totalCost = draftBillTotal(product)
       const noExpiry = product.stock > 0 && !product.expiry ? true : undefined
 
       await updateDraft(product.id, {
@@ -420,8 +299,8 @@ export default function DraftEntriesPage() {
       product.status && STATUS_OPTIONS.includes(product.status as (typeof STATUS_OPTIONS)[number])
         ? product.status
         : "deactive"
-    const resolvedUnit = resolveDraftUnitCost(product, auditUnitCosts)
-    const resolvedBill = resolveDraftBillTotal(product, auditCosts, auditUnitCosts)
+    const unitCost = draftUnitCost(product)
+    const billTotal = draftBillTotal(product)
     return (
       <TableRow
         key={product.id}
@@ -474,71 +353,11 @@ export default function DraftEntriesPage() {
           <span className="font-semibold">{product.stock}</span>
           <span className="ml-1 text-muted-foreground">{product.unit}</span>
         </TableCell>
-        <TableCell className={cn(invTableCellClass, "text-right")}>
-          <Input
-            type="number"
-            min={0}
-            step="0.01"
-            inputMode="decimal"
-            placeholder="0"
-            className="ml-auto h-9 w-[7.5rem] text-right tabular-nums"
-            value={
-              !auditLocalReady
-                ? ""
-                : auditUnitCostDraft[product.id] ??
-                  (auditUnitCosts[product.id] != null
-                    ? String(auditUnitCosts[product.id])
-                    : resolvedUnit > 0
-                      ? String(resolvedUnit)
-                      : "")
-            }
-            onChange={(e) =>
-              setAuditUnitCostDraft((prev) => ({
-                ...prev,
-                [product.id]: e.target.value,
-              }))
-            }
-            onBlur={(e) => commitAuditUnitCost(product, e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault()
-                commitAuditUnitCost(product, e.currentTarget.value)
-              }
-            }}
-          />
+        <TableCell className={invTableCellNumeric}>
+          {unitCost > 0 ? formatMoney(unitCost) : "—"}
         </TableCell>
-        <TableCell className={cn(invTableCellClass, "text-right")}>
-          <Input
-            type="number"
-            min={0}
-            step="0.01"
-            inputMode="decimal"
-            placeholder="0"
-            className="ml-auto h-9 w-[7.5rem] text-right tabular-nums"
-            value={
-              !auditLocalReady
-                ? ""
-                : auditCostDraft[product.id] ??
-                  (auditCosts[product.id] != null
-                    ? String(auditCosts[product.id])
-                    : resolvedBill > 0
-                      ? String(resolvedBill)
-                      : "")
-            }
-            onChange={(e) =>
-              setAuditCostDraft((prev) => ({
-                ...prev,
-                [product.id]: e.target.value,
-              }))
-            }
-            onBlur={(e) => commitAuditCost(product, e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault()
-                commitAuditCost(product, e.currentTarget.value)
-              }
-            }}
-          />
+        <TableCell className={cn(invTableCellNumeric, "font-semibold")}>
+          {billTotal > 0 ? formatMoney(billTotal) : "—"}
         </TableCell>
         <TableCell
           className={cn(invTableCellClass, "hidden sm:table-cell text-muted-foreground")}
