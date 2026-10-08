@@ -5,6 +5,7 @@ import { signInWithEmailAndPassword, signOut, onAuthStateChanged, type User } fr
 import { doc, getDoc } from "firebase/firestore"
 import { auth, db } from "@/lib/firebase"
 import { col } from "@/lib/account-mode"
+import { accessTag, clearAllStoredAccess, readStoredAccess } from "@/lib/access-codes"
 import {
   accountTagFromEmail,
   loginEmailFromUsername,
@@ -26,6 +27,11 @@ export type SessionUser = {
   accountTag?: string
   permissions?: AppPermissionId[]
   disabled?: boolean
+  /** Shared login: each person must enter a personal 6-digit access code after login. */
+  requiresAccessCode?: boolean
+  /** Person who entered the access code on this device. */
+  accessName?: string
+  accessCode?: string
 }
 
 function normalizeEmail(v: string): string {
@@ -83,6 +89,7 @@ async function resolveRole(user: User): Promise<{
   accountTag?: string
   permissions?: AppPermissionId[]
   disabled?: boolean
+  requiresAccessCode?: boolean
 }> {
   let accountTag = accountTagFromEmail(user.email || "")
   try {
@@ -99,8 +106,9 @@ async function resolveRole(user: User): Promise<{
     }
     const permissions = normalizePermissionIds(data?.permissions)
     const disabled = data?.disabled === true
+    const requiresAccessCode = data?.requiresAccessCode === true
     if (isUserRole(roleRaw)) {
-      return { role: roleRaw, accountTag, permissions, disabled }
+      return { role: roleRaw, accountTag, permissions, disabled, requiresAccessCode }
     }
   } catch {
     // Fall back to email mapping when role doc is missing/unavailable/offline.
@@ -117,15 +125,26 @@ function toDisplayName(user: User, accountTag?: string): string {
 }
 
 async function mapFirebaseUser(user: User): Promise<SessionUser | null> {
-  const { role, accountTag, permissions, disabled } = await resolveRole(user)
+  const { role, accountTag, permissions, disabled, requiresAccessCode } = await resolveRole(user)
   if (disabled) return null
-  return {
+  const base: SessionUser = {
     email: user.email || "",
     role,
     name: toDisplayName(user, accountTag),
     accountTag,
     permissions: permissions?.length ? permissions : undefined,
     disabled: false,
+  }
+  if (!requiresAccessCode || role === "admin") return base
+  const access = readStoredAccess(base.email)
+  if (!access) return { ...base, requiresAccessCode: true }
+  return {
+    ...base,
+    requiresAccessCode: true,
+    accessName: access.name,
+    accessCode: access.code,
+    accountTag: accessTag(access),
+    name: access.name,
   }
 }
 
@@ -143,6 +162,7 @@ export async function loginWithFirebase(emailOrUsername: string, password: strin
 
 export async function logoutFirebase(): Promise<void> {
   writeCachedSessionUser(null)
+  clearAllStoredAccess()
   await signOut(auth)
 }
 
@@ -154,6 +174,7 @@ export function defaultHomePath(user: SessionUser): string {
   if (perms.includes("scan-edit")) return "/scan-edit"
   if (perms.includes("open-draft-entries")) return "/open-draft-entries"
   if (perms.includes("draft-entries")) return "/draft-entries"
+  if (perms.includes("draft-catalog")) return "/inventory/draft-catalog"
   if (perms.includes("inventory")) return "/inventory"
   return "/scan-edit"
 }

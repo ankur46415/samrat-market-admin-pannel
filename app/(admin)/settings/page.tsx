@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
 import Image from "next/image"
 import { AccountManagementSettings } from "@/components/settings/account-management"
+import { AccessCodesSettings } from "@/components/settings/access-codes"
 import { useSessionUser } from "@/lib/auth-session"
 
 export default function SettingsPage() {
@@ -28,6 +29,7 @@ export default function SettingsPage() {
 
       <div className="grid gap-6">
         {isAdmin ? <AccountManagementSettings /> : null}
+        {isAdmin ? <AccessCodesSettings /> : null}
 
         {/* Appearance */}
         <Card>

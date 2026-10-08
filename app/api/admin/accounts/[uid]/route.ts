@@ -22,6 +22,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     permissions?: AppPermissionId[]
     password?: string
     disabled?: boolean
+    requiresAccessCode?: boolean
   }
   try {
     body = (await request.json()) as typeof body
@@ -47,6 +48,9 @@ export async function PATCH(request: Request, context: RouteContext) {
         return NextResponse.json({ error: "At least one permission is required" }, { status: 400 })
       }
       patch.permissions = permissions
+    }
+    if (typeof body.requiresAccessCode === "boolean") {
+      patch.requiresAccessCode = body.requiresAccessCode
     }
     if (typeof body.disabled === "boolean") {
       patch.disabled = body.disabled

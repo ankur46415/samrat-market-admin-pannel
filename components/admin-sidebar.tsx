@@ -72,6 +72,8 @@ const mainNavItems = [
     url: "/inventory",
     icon: Package,
     subItems: [
+      { title: "Catalog Items", url: "/inventory/catalog" },
+      { title: "Draft Catalog", url: "/inventory/draft-catalog" },
       { title: "All Products", url: "/inventory" },
       { title: "Add product & batch", url: "/inventory/add" },
       { title: "Categories", url: "/inventory/categories" },
@@ -171,7 +173,6 @@ export function AdminSidebar() {
   const session = user ?? { email: "", role: "employee" as const, name: "Guest" }
   const homeHref = defaultHomePath(session)
   const visibleMainItems = mainNavItems
-    .filter((item) => canAccessPath(session, item.url))
     .map((item) => {
       if (!item.subItems) return item
       return {
@@ -179,6 +180,9 @@ export function AdminSidebar() {
         subItems: item.subItems.filter((subItem) => canAccessPath(session, subItem.url)),
       }
     })
+    .filter((item) =>
+      item.subItems ? item.subItems.length > 0 : canAccessPath(session, item.url)
+    )
 
   return (
     <Sidebar collapsible="icon" variant="sidebar">

@@ -8,6 +8,7 @@ export type ManagedAccountRecord = {
   role: "admin" | "staff" | "employee" | "scanner"
   permissions: AppPermissionId[]
   disabled?: boolean
+  requiresAccessCode?: boolean
   createdAt?: string
   updatedAt?: string
 }

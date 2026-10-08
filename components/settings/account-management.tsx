@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/table"
 
 const STAFF_PERMISSION_OPTIONS = APP_PERMISSIONS.filter((p) =>
-  ["scan-edit", "open-draft-entries", "draft-entries"].includes(p.id)
+  ["scan-edit", "open-draft-entries", "draft-entries", "draft-catalog"].includes(p.id)
 )
 
 export function AccountManagementSettings() {
@@ -45,17 +45,18 @@ export function AccountManagementSettings() {
   ])
   const [saving, setSaving] = useState(false)
 
+  const { listAccounts } = api
   const reload = useCallback(async () => {
     setLoadError(null)
     try {
-      const rows = await api.listAccounts()
+      const rows = await listAccounts()
       setAccounts(rows)
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to load accounts"
       setLoadError(msg)
       setAccounts([])
     }
-  }, [api])
+  }, [listAccounts])
 
   useEffect(() => {
     void reload()
@@ -134,6 +135,12 @@ export function AccountManagementSettings() {
         </Button>
       </CardHeader>
       <CardContent className="space-y-4">
+        {api.usingFallback ? (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-muted-foreground">
+            Using direct Firebase access. You can create logins, change features, and disable logins. Changing an
+            existing password needs the server key (FIREBASE_SERVICE_ACCOUNT_JSON).
+          </div>
+        ) : null}
         {loadError ? (
           <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             {loadError}
@@ -146,7 +153,7 @@ export function AccountManagementSettings() {
           </div>
         ) : null}
 
-        {api.loading && accounts.length === 0 ? (
+        {api.loading && accounts.length === 0 && !loadError ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             Loading accounts…

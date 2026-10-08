@@ -1,13 +1,26 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { auth } from "@/lib/firebase"
+import {
+  createAccountClient,
+  listAccountsClient,
+  updateAccountClient,
+} from "@/lib/client-accounts"
 import type { ManagedAccountRecord, CreateManagedAccountInput } from "@/lib/managed-account-types"
 import type { AppPermissionId } from "@/lib/app-permissions"
 
-async function adminFetch(path: string, init?: RequestInit) {
-  const token = await auth.currentUser?.getIdToken()
-  if (!token) throw new Error("Not signed in")
+class ServerNotConfigured extends Error {}
+
+async function adminFetch(path: string, init?: RequestInit, retried = false): Promise<{
+  error?: string
+  accounts?: ManagedAccountRecord[]
+  account?: ManagedAccountRecord
+}> {
+  await auth.authStateReady()
+  const user = auth.currentUser
+  if (!user) throw new Error("Not signed in. Log in again.")
+  const token = await user.getIdToken(retried)
   const res = await fetch(path, {
     ...init,
     headers: {
@@ -16,63 +29,106 @@ async function adminFetch(path: string, init?: RequestInit) {
       ...(init?.headers as Record<string, string> | undefined),
     },
   })
-  const data = (await res.json().catch(() => ({}))) as { error?: string; accounts?: ManagedAccountRecord[]; account?: ManagedAccountRecord }
+  const data = (await res.json().catch(() => ({}))) as {
+    error?: string
+    accounts?: ManagedAccountRecord[]
+    account?: ManagedAccountRecord
+  }
+  if (res.status === 503 || (data.error || "").includes("FIREBASE_SERVICE_ACCOUNT_JSON")) {
+    throw new ServerNotConfigured(data.error || "Server account key is not set.")
+  }
+  if (res.status === 401 && !retried) return adminFetch(path, init, true)
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`)
   return data
 }
 
+let serverReady: boolean | null = null
+
+async function withFallback<T>(server: () => Promise<T>, client: () => Promise<T>): Promise<T> {
+  if (serverReady === false) return client()
+  try {
+    const result = await server()
+    serverReady = true
+    return result
+  } catch (e) {
+    if (e instanceof ServerNotConfigured) {
+      serverReady = false
+      return client()
+    }
+    throw e
+  }
+}
+
 export function useAdminAccountsApi() {
   const [loading, setLoading] = useState(false)
+  const [usingFallback, setUsingFallback] = useState(false)
 
-  const listAccounts = useCallback(async (): Promise<ManagedAccountRecord[]> => {
+  const run = useCallback(async <T,>(server: () => Promise<T>, client: () => Promise<T>) => {
     setLoading(true)
     try {
-      const data = await adminFetch("/api/admin/accounts")
-      return data.accounts ?? []
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  const createAccount = useCallback(async (input: CreateManagedAccountInput) => {
-    setLoading(true)
-    try {
-      const data = await adminFetch("/api/admin/accounts", {
-        method: "POST",
-        body: JSON.stringify(input),
+      return await withFallback(server, async () => {
+        setUsingFallback(true)
+        return client()
       })
-      return data.account
     } finally {
       setLoading(false)
     }
   }, [])
 
-  const updateAccount = useCallback(
-    async (
-      uid: string,
-      patch: { permissions?: AppPermissionId[]; password?: string; disabled?: boolean }
-    ) => {
-      setLoading(true)
-      try {
-        await adminFetch(`/api/admin/accounts/${uid}`, {
-          method: "PATCH",
-          body: JSON.stringify(patch),
-        })
-      } finally {
-        setLoading(false)
-      }
-    },
-    []
+  const listAccounts = useCallback(
+    () =>
+      run(
+        async () => (await adminFetch("/api/admin/accounts")).accounts ?? [],
+        listAccountsClient
+      ),
+    [run]
   )
 
-  const disableAccount = useCallback(async (uid: string) => {
-    setLoading(true)
-    try {
-      await adminFetch(`/api/admin/accounts/${uid}`, { method: "DELETE" })
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const createAccount = useCallback(
+    (input: CreateManagedAccountInput) =>
+      run(
+        async () =>
+          (
+            await adminFetch("/api/admin/accounts", {
+              method: "POST",
+              body: JSON.stringify(input),
+            })
+          ).account,
+        () => createAccountClient(input)
+      ),
+    [run]
+  )
 
-  return { loading, listAccounts, createAccount, updateAccount, disableAccount }
+  const updateAccount = useCallback(
+    (
+      uid: string,
+      patch: { permissions?: AppPermissionId[]; password?: string; disabled?: boolean; requiresAccessCode?: boolean }
+    ) =>
+      run(
+        async () => {
+          await adminFetch(`/api/admin/accounts/${uid}`, {
+            method: "PATCH",
+            body: JSON.stringify(patch),
+          })
+        },
+        () => updateAccountClient(uid, patch)
+      ),
+    [run]
+  )
+
+  const disableAccount = useCallback(
+    (uid: string) =>
+      run(
+        async () => {
+          await adminFetch(`/api/admin/accounts/${uid}`, { method: "DELETE" })
+        },
+        () => updateAccountClient(uid, { disabled: true })
+      ),
+    [run]
+  )
+
+  return useMemo(
+    () => ({ loading, usingFallback, listAccounts, createAccount, updateAccount, disableAccount }),
+    [loading, usingFallback, listAccounts, createAccount, updateAccount, disableAccount]
+  )
 }

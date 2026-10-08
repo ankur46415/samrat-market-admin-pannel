@@ -24,6 +24,7 @@ function mapUserDoc(
     role: (data?.role as ManagedAccountRecord["role"]) ?? "staff",
     permissions: normalizePermissionIds(data?.permissions),
     disabled: data?.disabled === true,
+    requiresAccessCode: data?.requiresAccessCode === true,
     createdAt: (() => {
       const t = data?.createdAt as { toDate?: () => Date } | undefined
       return t?.toDate?.()?.toISOString?.() ?? undefined

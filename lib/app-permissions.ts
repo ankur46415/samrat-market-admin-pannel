@@ -5,6 +5,7 @@ export const APP_PERMISSIONS = [
   { id: "open-draft-entries", label: "Open Draft Entries", pathPrefix: "/open-draft-entries" },
   { id: "draft-entries", label: "Draft Entries", pathPrefix: "/draft-entries" },
   { id: "inventory", label: "Inventory", pathPrefix: "/inventory" },
+  { id: "draft-catalog", label: "Inventory → Draft Catalog", pathPrefix: "/inventory/draft-catalog" },
   { id: "generate-bill", label: "Generate Bill", pathPrefix: "/generate-bill" },
   { id: "customers", label: "Customers", pathPrefix: "/customers" },
   { id: "sales", label: "Sales", pathPrefix: "/sales" },
