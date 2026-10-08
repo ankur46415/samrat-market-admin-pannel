@@ -10,9 +10,9 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore"
-import type { Firestore } from "firebase/firestore"
+import type { DocumentData, Firestore } from "firebase/firestore"
 import { col } from "@/lib/account-mode"
-import type { OpenDraftEntry, OpenDraftEntryInput } from "@/lib/types"
+import type { OpenDraftEntry, OpenDraftEntryAdminPatch, OpenDraftEntryInput } from "@/lib/types"
 
 const COL = "open_draft_entries"
 
@@ -38,6 +38,8 @@ function entryFromSnap(id: string, data: Record<string, unknown>): OpenDraftEntr
     stock: Number(data.stock ?? 0),
     editedBy: String(data.editedBy ?? ""),
     editedByEmail: String(data.editedByEmail ?? ""),
+    pricingReviewed: data.pricingReviewed === true,
+    reviewedBy: typeof data.reviewedBy === "string" ? data.reviewedBy : undefined,
     createdAt:
       data.createdAt instanceof Timestamp
         ? data.createdAt.toDate()
@@ -87,6 +89,8 @@ export async function submitOpenDraftEntry(
     stock: input.stock,
     editedBy: input.editedBy.trim(),
     editedByEmail: input.editedByEmail.trim().toLowerCase(),
+    pricingReviewed: false,
+    reviewedBy: null,
     updatedAt: now,
   }
   if (input.brand?.trim()) payload.brand = input.brand.trim()
@@ -138,9 +142,47 @@ export async function approveOpenDraftEntry(
   if (typeof data.supplierContact === "string" && data.supplierContact.trim()) {
     patch.supplierContact = data.supplierContact.trim()
   } else patch.supplierContact = null
+  if (data.pricingReviewed === true) {
+    if (typeof data.mrp === "number" && data.mrp > 0) patch.mrp = data.mrp
+    if (typeof data.discountPercent === "number" && data.discountPercent >= 0) {
+      patch.discountPercent = data.discountPercent
+    }
+    if (typeof data.price === "number" && Number.isFinite(data.price) && data.price >= 0) {
+      patch.price = data.price
+    }
+  }
 
   await updateDoc(doc(db, col("products"), productId), patch)
   await deleteDoc(entryRef)
+}
+
+/** Admin correction of a pending entry before approval. Pricing is applied on approve. */
+export async function updateOpenDraftEntryByAdmin(
+  db: Firestore,
+  entryId: string,
+  input: OpenDraftEntryAdminPatch,
+  reviewer: string
+): Promise<void> {
+  if (!Number.isFinite(input.price) || input.price < 0) throw new Error("Sale rate must be 0 or more")
+  if (input.mrp != null && (!Number.isFinite(input.mrp) || input.mrp < 0)) {
+    throw new Error("MRP must be 0 or more")
+  }
+  if (input.mrp && input.price > input.mrp) throw new Error("Sale rate cannot be more than MRP")
+  const patch: DocumentData = {
+    name: input.name.trim() || "Unnamed Product",
+    category: input.category.trim(),
+    rack: input.rack.trim(),
+    tag: input.tag.trim(),
+    status: input.status.trim() || "active",
+    brand: input.brand?.trim() || null,
+    price: input.price,
+    mrp: input.mrp && input.mrp > 0 ? input.mrp : null,
+    discountPercent: input.discountPercent ?? 0,
+    pricingReviewed: true,
+    reviewedBy: reviewer,
+    updatedAt: Timestamp.now(),
+  }
+  await updateDoc(doc(db, col(COL), entryId), patch)
 }
 
 export async function deleteOpenDraftEntry(db: Firestore, entryId: string): Promise<void> {

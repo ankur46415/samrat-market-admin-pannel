@@ -1,6 +1,6 @@
 "use client"
 
-import { collection, doc, getDoc, getDocs, setDoc, Timestamp } from "firebase/firestore"
+import { collection, doc, getDoc, getDocs, query, setDoc, Timestamp, where } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 
 /** Shared logins (e.g. one delivery login used by several people) ask for a personal 6-digit code. */
@@ -110,6 +110,14 @@ export async function createAccessCode(name: string, accountEmail: string): Prom
 
 export async function setAccessCodeActive(code: string, active: boolean) {
   await setDoc(doc(db, COLLECTION, code), { active, updatedAt: Timestamp.now() }, { merge: true })
+}
+
+/** True when at least one active code exists for this login, so it must ask for a code. */
+export async function loginHasAccessCodes(accountEmail: string): Promise<boolean> {
+  const email = accountEmail.trim().toLowerCase()
+  if (!email) return false
+  const snap = await getDocs(query(collection(db, COLLECTION), where("accountEmail", "==", email)))
+  return snap.docs.some((entry) => entry.data().active !== false)
 }
 
 /** Returns the person for this code if it is active and belongs to this login. */

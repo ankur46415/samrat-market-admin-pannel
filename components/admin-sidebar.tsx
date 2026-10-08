@@ -90,6 +90,8 @@ const mainNavItems = [
       { title: "Brand", url: "/manage-dropdown?tab=brands" },
       { title: "Tag", url: "/manage-dropdown?tab=tags" },
       { title: "Suppliers", url: "/manage-dropdown?tab=suppliers" },
+      { title: "Group name", url: "/manage-dropdown?tab=groups" },
+      { title: "Department", url: "/manage-dropdown?tab=departments" },
     ],
   },
   {

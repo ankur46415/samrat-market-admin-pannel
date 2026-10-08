@@ -77,9 +77,17 @@ export interface OpenDraftEntry {
   stock: number
   editedBy: string
   editedByEmail: string
+  /** Set when the admin edited MRP / discount / sale rate; only then does approval change pricing. */
+  pricingReviewed?: boolean
+  reviewedBy?: string
   createdAt: Date
   updatedAt: Date
 }
+
+export type OpenDraftEntryAdminPatch = Pick<
+  OpenDraftEntry,
+  "name" | "category" | "rack" | "tag" | "status" | "brand" | "mrp" | "discountPercent" | "price"
+>
 
 export type OpenDraftEntryInput = Pick<
   OpenDraftEntry,

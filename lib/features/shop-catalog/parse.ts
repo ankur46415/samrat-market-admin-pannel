@@ -1,3 +1,4 @@
+/** Used only until departments are added in Manage Dropdown. */
 export const DEPARTMENTS = ["grocery", "footwear", "cosmetics", "stationery"] as const
 
 export type CatalogWrite = {
@@ -156,9 +157,6 @@ export function normalizeCatalogItem(
   if (!category) problems.push("category is required")
   if (!groupName) problems.push("group name is required")
   if (!department) problems.push("department is required")
-  else if (!DEPARTMENTS.includes(department as (typeof DEPARTMENTS)[number])) {
-    problems.push("department must be grocery, footwear, cosmetics, or stationery")
-  }
 
   if (problems.length || !inStock.ok || !active.ok || !qty.ok || !sort.ok) {
     const label = id ? `Row ${row} (${id})` : `Row ${row}`

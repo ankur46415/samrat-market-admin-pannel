@@ -1,8 +1,13 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import { format } from "date-fns"
-import { Inbox, Search, ShieldCheck, Trash2 } from "lucide-react"
+import { Inbox, Pencil, Search, ShieldCheck, Trash2 } from "lucide-react"
+import {
+  clampDiscountPercent,
+  discountedUnitPrice,
+  parseDiscountInput,
+} from "@/lib/billing/line-discount"
 import { toast } from "sonner"
 import { TEST_ACCOUNT_PASSKEY } from "@/lib/account-mode"
 import { useOpenDraftEntries } from "@/hooks/use-firestore"
@@ -62,11 +67,53 @@ function formatCurrency(amount: number) {
   }).format(amount)
 }
 
+type EditForm = {
+  name: string
+  category: string
+  rack: string
+  tag: string
+  status: string
+  brand: string
+  mrp: string
+  discountPercent: string
+  price: string
+}
+
+function editFormFrom(row: OpenDraftEntry): EditForm {
+  const mrp = row.mrp != null && row.mrp > 0 ? row.mrp : null
+  const discount =
+    row.discountPercent != null
+      ? row.discountPercent
+      : mrp
+        ? clampDiscountPercent(((mrp - row.price) / mrp) * 100)
+        : 0
+  return {
+    name: row.name,
+    category: row.category,
+    rack: row.rack,
+    tag: row.tag,
+    status: row.status,
+    brand: row.brand ?? "",
+    mrp: mrp ? String(mrp) : "",
+    discountPercent: String(discount),
+    price: String(row.price),
+  }
+}
+
+function saleRateFrom(mrp: string, discountPercent: string): string | null {
+  const m = parseFloat(mrp)
+  if (!Number.isFinite(m) || m <= 0) return null
+  return String(discountedUnitPrice(m, parseDiscountInput(discountPercent) ?? 0))
+}
+
 export default function OpenDraftEntriesPage() {
   const { user } = useSessionUser()
   const isStaffAccount = user ? isRestrictedStaff(user) : false
   const isMainAdmin = user?.role === "admin"
-  const { entries, loading, approveEntry, deleteEntry } = useOpenDraftEntries()
+  const { entries, loading, approveEntry, deleteEntry, updateEntryAsAdmin } = useOpenDraftEntries()
+  const [editRow, setEditRow] = useState<OpenDraftEntry | null>(null)
+  const [editForm, setEditForm] = useState<EditForm | null>(null)
+  const [savingEdit, setSavingEdit] = useState(false)
   const [search, setSearch] = useState("")
   const [auditMode, setAuditMode] = useState(false)
   const [auditDialogOpen, setAuditDialogOpen] = useState(false)
@@ -160,6 +207,70 @@ export default function OpenDraftEntriesPage() {
     }
   }
 
+  const openEdit = (row: OpenDraftEntry) => {
+    setEditRow(row)
+    setEditForm(editFormFrom(row))
+  }
+
+  const setEditField = (field: keyof EditForm, value: string) => {
+    setEditForm((prev) => {
+      if (!prev) return prev
+      const next = { ...prev, [field]: value }
+      if (field === "mrp" || field === "discountPercent") {
+        const auto = saleRateFrom(next.mrp, next.discountPercent)
+        if (auto != null) next.price = auto
+      }
+      if (field === "price") {
+        const m = parseFloat(next.mrp)
+        const p = parseFloat(value)
+        if (Number.isFinite(m) && m > 0 && Number.isFinite(p)) {
+          next.discountPercent = String(clampDiscountPercent(((m - p) / m) * 100))
+        }
+      }
+      return next
+    })
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editRow || !editForm) return
+    const price = Number(editForm.price)
+    const mrp = editForm.mrp.trim() ? Number(editForm.mrp) : undefined
+    const discountPercent = parseDiscountInput(editForm.discountPercent)
+    if (!Number.isFinite(price)) {
+      toast.error("Enter a sale rate")
+      return
+    }
+    if (discountPercent == null) {
+      toast.error("Discount must be a number between 0 and 100")
+      return
+    }
+    setSavingEdit(true)
+    try {
+      await updateEntryAsAdmin(
+        editRow.id,
+        {
+          name: editForm.name,
+          category: editForm.category,
+          rack: editForm.rack,
+          tag: editForm.tag,
+          status: editForm.status,
+          brand: editForm.brand,
+          mrp,
+          discountPercent,
+          price,
+        },
+        user?.accountTag || user?.name || "ADMIN"
+      )
+      toast.success(`Saved changes to "${editForm.name}". Approve to apply them to the product.`)
+      setEditRow(null)
+      setEditForm(null)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save changes")
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
   const renderEntryRow = (row: OpenDraftEntry) => (
     <TableRow key={row.id}>
       <TableCell className={invTableCellClass}>
@@ -175,11 +286,32 @@ export default function OpenDraftEntriesPage() {
       <TableCell className={invTableCellClass}>
         {row.mrp != null && row.mrp > 0 ? formatCurrency(row.mrp) : "—"}
       </TableCell>
+      {isMainAdmin && (
+        <>
+          <TableCell className={invTableCellClass}>
+            {row.discountPercent != null ? `${row.discountPercent}%` : "—"}
+          </TableCell>
+          <TableCell className={invTableCellClass}>
+            <div className="font-medium">{formatCurrency(row.price)}</div>
+            {row.pricingReviewed ? (
+              <Badge variant="outline" className="mt-1 text-[10px] font-normal">
+                Edited by {row.reviewedBy || "admin"}
+              </Badge>
+            ) : null}
+          </TableCell>
+        </>
+      )}
       <TableCell className={cn(invTableCellClass, "text-xs text-muted-foreground")}>
         {format(row.updatedAt, "dd MMM yyyy, HH:mm")}
       </TableCell>
       <TableCell className={invTableCellClass}>
         <div className="flex flex-wrap gap-2">
+          {isMainAdmin && (
+            <Button size="sm" variant="outline" onClick={() => openEdit(row)}>
+              <Pencil className="mr-1 h-3.5 w-3.5" />
+              Edit
+            </Button>
+          )}
           {!isStaffAccount && (
             <Button
               size="sm"
@@ -213,6 +345,12 @@ export default function OpenDraftEntriesPage() {
         <TableHead className={invTableHeadClass}>Brand</TableHead>
         <TableHead className={invTableHeadClass}>Rack</TableHead>
         <TableHead className={invTableHeadClass}>MRP</TableHead>
+        {isMainAdmin && (
+          <>
+            <TableHead className={invTableHeadClass}>Discount</TableHead>
+            <TableHead className={invTableHeadClass}>Sale rate</TableHead>
+          </>
+        )}
         <TableHead className={invTableHeadClass}>Updated</TableHead>
         <TableHead className={invTableHeadClass}>Actions</TableHead>
       </TableRow>
@@ -338,6 +476,90 @@ export default function OpenDraftEntriesPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      <Dialog
+        open={!!editRow}
+        onOpenChange={(open) => {
+          if (!open && !savingEdit) {
+            setEditRow(null)
+            setEditForm(null)
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Edit pending entry</DialogTitle>
+            <DialogDescription>
+              Submitted by{" "}
+              <span className="font-mono font-semibold">{editRow?.editedBy || editRow?.tag || "unknown"}</span>.
+              Changes are saved on this entry and applied to the live product when you approve it,
+              including MRP, discount and sale rate.
+            </DialogDescription>
+          </DialogHeader>
+          {editForm ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <EditField label="Name" className="sm:col-span-2">
+                <Input value={editForm.name} onChange={(e) => setEditField("name", e.target.value)} />
+              </EditField>
+              <EditField label="Category">
+                <Input value={editForm.category} onChange={(e) => setEditField("category", e.target.value)} />
+              </EditField>
+              <EditField label="Brand">
+                <Input value={editForm.brand} onChange={(e) => setEditField("brand", e.target.value)} />
+              </EditField>
+              <EditField label="Rack">
+                <Input value={editForm.rack} onChange={(e) => setEditField("rack", e.target.value)} />
+              </EditField>
+              <EditField label="Tag">
+                <Input value={editForm.tag} onChange={(e) => setEditField("tag", e.target.value)} />
+              </EditField>
+              <EditField label="Status">
+                <Input value={editForm.status} onChange={(e) => setEditField("status", e.target.value)} />
+              </EditField>
+              <EditField label="MRP (₹)">
+                <Input
+                  inputMode="decimal"
+                  value={editForm.mrp}
+                  onChange={(e) => setEditField("mrp", e.target.value)}
+                />
+              </EditField>
+              <EditField label="Discount %">
+                <Input
+                  inputMode="decimal"
+                  value={editForm.discountPercent}
+                  onChange={(e) => setEditField("discountPercent", e.target.value)}
+                />
+              </EditField>
+              <EditField label="Sale rate (₹)">
+                <Input
+                  inputMode="decimal"
+                  value={editForm.price}
+                  onChange={(e) => setEditField("price", e.target.value)}
+                />
+              </EditField>
+              <p className="text-xs text-muted-foreground sm:col-span-2">
+                Changing MRP or discount recalculates the sale rate. Changing the sale rate
+                recalculates the discount.
+              </p>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={savingEdit}
+              onClick={() => {
+                setEditRow(null)
+                setEditForm(null)
+              }}
+            >
+              Cancel
+            </Button>
+            <Button disabled={savingEdit} onClick={() => void handleSaveEdit()}>
+              {savingEdit ? "Saving…" : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={auditDialogOpen} onOpenChange={setAuditDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -367,6 +589,23 @@ export default function OpenDraftEntriesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+function EditField({
+  label,
+  className,
+  children,
+}: {
+  label: string
+  className?: string
+  children: ReactNode
+}) {
+  return (
+    <div className={cn("space-y-1.5", className)}>
+      <Label>{label}</Label>
+      {children}
     </div>
   )
 }

@@ -5,7 +5,7 @@ import { signInWithEmailAndPassword, signOut, onAuthStateChanged, type User } fr
 import { doc, getDoc } from "firebase/firestore"
 import { auth, db } from "@/lib/firebase"
 import { col } from "@/lib/account-mode"
-import { accessTag, clearAllStoredAccess, readStoredAccess } from "@/lib/access-codes"
+import { accessTag, clearAllStoredAccess, loginHasAccessCodes, readStoredAccess } from "@/lib/access-codes"
 import {
   accountTagFromEmail,
   loginEmailFromUsername,
@@ -110,8 +110,21 @@ async function resolveRole(user: User): Promise<{
     if (isUserRole(roleRaw)) {
       return { role: roleRaw, accountTag, permissions, disabled, requiresAccessCode }
     }
+    if (data) {
+      // Managed logins without a role field are listed as staff in Settings; treat them the same here.
+      return { role: "staff", accountTag, permissions, disabled, requiresAccessCode }
+    }
   } catch {
     // Fall back to email mapping when role doc is missing/unavailable/offline.
+    const cached = readCachedSessionUser()
+    if (cached && normalizeEmail(cached.email) === normalizeEmail(user.email || "")) {
+      return {
+        role: cached.role,
+        accountTag: cached.requiresAccessCode ? undefined : cached.accountTag,
+        permissions: cached.permissions,
+        requiresAccessCode: cached.requiresAccessCode,
+      }
+    }
   }
   return { role: fallbackRoleByEmail(user.email || ""), accountTag }
 }
@@ -135,7 +148,18 @@ async function mapFirebaseUser(user: User): Promise<SessionUser | null> {
     permissions: permissions?.length ? permissions : undefined,
     disabled: false,
   }
-  if (!requiresAccessCode || role === "admin") return base
+  if (role === "admin") return base
+  let needsCode = requiresAccessCode === true
+  if (!needsCode) {
+    try {
+      needsCode = await loginHasAccessCodes(base.email)
+    } catch {
+      const cached = readCachedSessionUser()
+      needsCode =
+        cached?.requiresAccessCode === true && normalizeEmail(cached.email) === normalizeEmail(base.email)
+    }
+  }
+  if (!needsCode) return base
   const access = readStoredAccess(base.email)
   if (!access) return { ...base, requiresAccessCode: true }
   return {

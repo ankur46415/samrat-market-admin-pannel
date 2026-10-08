@@ -44,7 +44,7 @@ export function pathAllowedByPermissions(
     return permissions.includes("dashboard") || permissions.length === 0
   }
   const needed = permissionForPath(path)
-  if (!needed) return true
+  if (!needed) return false
   return permissions.includes(needed)
 }
 

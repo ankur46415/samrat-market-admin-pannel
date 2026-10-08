@@ -7,21 +7,30 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { InventoryNamedListPage } from "@/components/inventory/inventory-named-list-page"
 import { InventorySupplierRegistryPage } from "@/components/inventory/inventory-supplier-registry-page"
-import { useProductBrands, useProductTags } from "@/hooks/use-firestore"
+import {
+  useCatalogDepartments,
+  useCatalogGroupNames,
+  useProductBrands,
+  useProductTags,
+} from "@/hooks/use-firestore"
 import { useProductSupplierRegistry } from "@/hooks/use-product-supplier-registry"
 
 const BASE_PATH = "/manage-dropdown"
 
-type DropdownTab = "brands" | "tags" | "suppliers"
+type DropdownTab = "brands" | "tags" | "suppliers" | "groups" | "departments"
 
 function parseDropdownTab(raw: string | null): DropdownTab {
   if (raw === "tags") return "tags"
   if (raw === "suppliers" || raw === "supplier-names" || raw === "supplier-contacts") {
     return "suppliers"
   }
-  if (raw === "brands") return "brands"
+  if (raw === "groups") return "groups"
+  if (raw === "departments") return "departments"
   return "brands"
 }
+
+const triggerClass =
+  "rounded-lg py-2.5 text-xs sm:text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm"
 
 function ManageDropdownContent() {
   const searchParams = useSearchParams()
@@ -32,6 +41,8 @@ function ManageDropdownContent() {
   const brands = useProductBrands()
   const tags = useProductTags()
   const suppliers = useProductSupplierRegistry()
+  const groups = useCatalogGroupNames()
+  const departments = useCatalogDepartments()
 
   useEffect(() => {
     setTab(parseDropdownTab(paramTab))
@@ -52,37 +63,35 @@ function ManageDropdownContent() {
         </div>
         <h1 className="text-3xl font-semibold tracking-tight">Manage Dropdown</h1>
         <p className="max-w-2xl text-sm text-muted-foreground">
-          Add values here for Brand, Tag, and Suppliers (name + contact together). Product forms
-          pick a supplier name — contact fills in automatically.
+          Add values here for Brand, Tag, Suppliers (name + contact together), Group name, and
+          Department. Product forms pick a supplier name — contact fills in automatically. Catalog
+          items pick Brand, Category, Group name, and Department from these lists.
         </p>
       </div>
 
       <Tabs value={tab} onValueChange={onTabChange} className="w-full">
-        <TabsList className="mb-6 grid h-auto w-full grid-cols-3 gap-1 rounded-xl bg-muted/60 p-1.5">
-          <TabsTrigger
-            value="brands"
-            className="rounded-lg py-2.5 text-xs sm:text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm"
-          >
+        <TabsList className="mb-6 grid h-auto w-full grid-cols-2 gap-1 rounded-xl bg-muted/60 p-1.5 sm:grid-cols-5">
+          <TabsTrigger value="brands" className={triggerClass}>
             Brand
           </TabsTrigger>
-          <TabsTrigger
-            value="tags"
-            className="rounded-lg py-2.5 text-xs sm:text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm"
-          >
+          <TabsTrigger value="tags" className={triggerClass}>
             Tag
           </TabsTrigger>
-          <TabsTrigger
-            value="suppliers"
-            className="rounded-lg py-2.5 text-xs sm:text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm"
-          >
+          <TabsTrigger value="suppliers" className={triggerClass}>
             Suppliers
+          </TabsTrigger>
+          <TabsTrigger value="groups" className={triggerClass}>
+            Group name
+          </TabsTrigger>
+          <TabsTrigger value="departments" className={triggerClass}>
+            Department
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="brands" className="mt-0 focus-visible:outline-none">
           <InventoryNamedListPage
             title="Brands"
-            description="Brand dropdown on Add/Edit product"
+            description="Brand dropdown on Add/Edit product and catalog items"
             emptyHint="No brands yet — add one, then select it on products"
             items={brands.items}
             loading={brands.loading}
@@ -117,6 +126,34 @@ function ManageDropdownContent() {
             addSupplier={suppliers.addSupplier}
             updateSupplier={suppliers.updateSupplier}
             deleteSupplier={suppliers.deleteSupplier}
+            embedded
+          />
+        </TabsContent>
+
+        <TabsContent value="groups" className="mt-0 focus-visible:outline-none">
+          <InventoryNamedListPage
+            title="Group names"
+            description="Group name dropdown on catalog items (Catalog Items and Draft Catalog)"
+            emptyHint="No group names yet — add one, then select it on catalog items"
+            items={groups.items}
+            loading={groups.loading}
+            addItem={groups.addItem}
+            renameItem={groups.renameItem}
+            deleteItem={groups.deleteItem}
+            embedded
+          />
+        </TabsContent>
+
+        <TabsContent value="departments" className="mt-0 focus-visible:outline-none">
+          <InventoryNamedListPage
+            title="Departments"
+            description="Department dropdown on catalog items (Catalog Items and Draft Catalog)"
+            emptyHint="No departments yet — add one (for example grocery), then select it on catalog items"
+            items={departments.items}
+            loading={departments.loading}
+            addItem={departments.addItem}
+            renameItem={departments.renameItem}
+            deleteItem={departments.deleteItem}
             embedded
           />
         </TabsContent>

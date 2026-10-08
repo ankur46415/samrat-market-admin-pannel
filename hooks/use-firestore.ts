@@ -29,6 +29,7 @@ import type {
   DashboardStats,
   Order,
   OpenDraftEntry,
+  OpenDraftEntryAdminPatch,
   OpenDraftEntryInput,
 } from "@/lib/types"
 import {
@@ -36,6 +37,7 @@ import {
   deleteOpenDraftEntry,
   mapOpenDraftEntryDoc,
   submitOpenDraftEntry,
+  updateOpenDraftEntryByAdmin,
 } from "@/lib/features/inventory/services/open_draft_entry_service"
 import { saleFromFirestoreDoc } from "@/lib/sale-from-firestore"
 import { fetchGlobalDashboardStats } from "@/lib/features/dashboard/services/dashboard_aggregate_service"
@@ -1078,7 +1080,8 @@ export type ProductFieldListItem = { id: string; name: string; productCount: num
 
 type ProductDropdownField = "brand" | "tag" | "supplierName" | "supplierContact"
 
-function useProductFieldList(collectionName: string, field: ProductDropdownField) {
+/** `field` is null for lists that are not stored on inventory products (catalog-only lists). */
+function useProductFieldList(collectionName: string, field: ProductDropdownField | null) {
   const accountMode = useAccountModeScope()
   const { products, loading: productsLoading } = useProducts()
   const [stored, setStored] = useState<{ id: string; name: string }[]>([])
@@ -1108,10 +1111,12 @@ function useProductFieldList(collectionName: string, field: ProductDropdownField
 
   const items = useMemo((): ProductFieldListItem[] => {
     const counts = new Map<string, number>()
-    for (const product of products) {
-      const name = String(product[field] ?? "").trim()
-      if (!name) continue
-      counts.set(name, (counts.get(name) ?? 0) + 1)
+    if (field) {
+      for (const product of products) {
+        const name = String(product[field] ?? "").trim()
+        if (!name) continue
+        counts.set(name, (counts.get(name) ?? 0) + 1)
+      }
     }
 
     return stored
@@ -1136,7 +1141,7 @@ function useProductFieldList(collectionName: string, field: ProductDropdownField
 
   const bulkSetFieldOnProducts = useCallback(
     async (productIds: string[], value: string) => {
-      if (productIds.length === 0) return
+      if (!field || productIds.length === 0) return
       const chunks: string[][] = []
       for (let i = 0; i < productIds.length; i += 450) {
         chunks.push(productIds.slice(i, i + 450))
@@ -1179,9 +1184,9 @@ function useProductFieldList(collectionName: string, field: ProductDropdownField
       }
       if (from === to) return
 
-      const productIds = products
-        .filter((p) => String(p[field] ?? "").trim() === from)
-        .map((p) => p.id)
+      const productIds = field
+        ? products.filter((p) => String(p[field] ?? "").trim() === from).map((p) => p.id)
+        : []
       if (productIds.length > 0) {
         await bulkSetFieldOnProducts(productIds, to)
       }
@@ -1210,9 +1215,11 @@ function useProductFieldList(collectionName: string, field: ProductDropdownField
       const name = itemName.trim()
       if (!name) throw new Error("Not found")
 
-      const productIds = products
-        .filter((p) => String(p[field] ?? "").trim().toLowerCase() === name.toLowerCase())
-        .map((p) => p.id)
+      const productIds = field
+        ? products
+            .filter((p) => String(p[field] ?? "").trim().toLowerCase() === name.toLowerCase())
+            .map((p) => p.id)
+        : []
 
       if (productIds.length > 0) {
         const target = (moveProductsTo ?? "").trim()
@@ -1255,6 +1262,14 @@ export function useProductBrands() {
 
 export function useProductTags() {
   return useProductFieldList("product_tags", "tag")
+}
+
+export function useCatalogGroupNames() {
+  return useProductFieldList("catalog_group_names", null)
+}
+
+export function useCatalogDepartments() {
+  return useProductFieldList("catalog_departments", null)
 }
 
 export function useProductSupplierNames() {
@@ -1318,7 +1333,14 @@ export function useOpenDraftEntries() {
     await deleteOpenDraftEntry(db, id)
   }, [])
 
-  return { entries, loading, error, submitEntry, approveEntry, deleteEntry }
+  const updateEntryAsAdmin = useCallback(
+    async (id: string, patch: OpenDraftEntryAdminPatch, reviewer: string) => {
+      await updateOpenDraftEntryByAdmin(db, id, patch, reviewer)
+    },
+    []
+  )
+
+  return { entries, loading, error, submitEntry, approveEntry, deleteEntry, updateEntryAsAdmin }
 }
 
 // Orders Hook

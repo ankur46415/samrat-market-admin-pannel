@@ -14,6 +14,12 @@ import {
   type AuditedCatalogItem,
   type CatalogActor,
 } from "@/lib/features/shop-catalog/service"
+import {
+  useCatalogDepartments,
+  useCatalogGroupNames,
+  useCategories,
+  useProductBrands,
+} from "@/hooks/use-firestore"
 import { inventoryTableFrameClassName, invTableCellClass, invTableHeadClass } from "@/lib/inventory-ui"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -175,6 +181,17 @@ export function ShopCatalogScreen({ draftList }: { draftList: boolean }) {
   const brands = uniqueNames(items.map((item) => item.brand || "NA"))
   const categories = uniqueNames(items.map((item) => item.category))
   const groups = uniqueNames(items.map((item) => item.group_name))
+
+  const brandList = useProductBrands()
+  const { categories: categoryList } = useCategories()
+  const groupList = useCatalogGroupNames()
+  const departmentList = useCatalogDepartments()
+  const brandChoices = uniqueNames(["NA", ...brandList.names])
+  const categoryChoices = uniqueNames(categoryList.map((category) => category.name))
+  const groupChoices = uniqueNames(groupList.names)
+  const departmentChoices = departmentList.names.length
+    ? uniqueNames(departmentList.names.map((name) => name.toLowerCase()))
+    : [...DEPARTMENTS]
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -555,19 +572,13 @@ export function ShopCatalogScreen({ draftList }: { draftList: boolean }) {
                 </Button>
               </div>
             ) : null}
-            <ChoiceField label="Brand" value={form.brand} choices={uniqueNames(["NA", ...brands])} onChange={(brand) => setForm({ ...form, brand })} />
-            <ChoiceField label="Category" value={form.category} choices={categories} required onChange={(category) => setForm({ ...form, category })} />
-            <ChoiceField label="Group name" value={form.group_name} choices={groups} required onChange={(group_name) => setForm({ ...form, group_name })} />
-            <Field label="Department">
-              <Select value={form.department} onValueChange={(department) => setForm({ ...form, department })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {DEPARTMENTS.map((department) => (
-                    <SelectItem key={department} value={department}>{department}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
+            <ChoiceField label="Brand" value={form.brand} choices={brandChoices} onChange={(brand) => setForm({ ...form, brand })} />
+            <ChoiceField label="Category" value={form.category} choices={categoryChoices} required onChange={(category) => setForm({ ...form, category })} />
+            <ChoiceField label="Group name" value={form.group_name} choices={groupChoices} required onChange={(group_name) => setForm({ ...form, group_name })} />
+            <ChoiceField label="Department" value={form.department} choices={departmentChoices} required onChange={(department) => setForm({ ...form, department })} />
+            <p className="text-xs text-muted-foreground sm:col-span-2">
+              Brand, Group name, and Department come from Manage Dropdown. Category comes from Inventory → Categories.
+            </p>
             <Field label="Unit">
               <Input value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value })} required />
             </Field>
@@ -669,51 +680,21 @@ function ChoiceField({
   required?: boolean
   onChange: (value: string) => void
 }) {
-  const [adding, setAdding] = useState(false)
-  const [draft, setDraft] = useState("")
-  const known = choices.includes(value) ? value : ""
+  const known = choices.find((choice) => choice.toLowerCase() === value.trim().toLowerCase()) ?? ""
   return (
     <Field label={label}>
-      {adding ? (
-        <div className="flex gap-2">
-          <Input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={`New ${label.toLowerCase()}`} />
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              const next = draft.trim()
-              if (!next) return
-              onChange(next)
-              setAdding(false)
-              setDraft("")
-            }}
-          >
-            Use
-          </Button>
-        </div>
-      ) : (
-        <Select
-          value={known || (value ? value : undefined)}
-          onValueChange={(next) => {
-            if (next === "__new") {
-              setAdding(true)
-              setDraft("")
-              return
-            }
-            onChange(next)
-          }}
-          required={required}
-        >
-          <SelectTrigger><SelectValue placeholder={`Select ${label.toLowerCase()}`} /></SelectTrigger>
-          <SelectContent>
-            {!known && value ? <SelectItem value={value}>{value}</SelectItem> : null}
-            {choices.map((choice) => (
-              <SelectItem key={choice} value={choice}>{choice}</SelectItem>
-            ))}
-            <SelectItem value="__new">Add new…</SelectItem>
-          </SelectContent>
-        </Select>
-      )}
+      <Select value={known || (value ? value : undefined)} onValueChange={onChange} required={required}>
+        <SelectTrigger><SelectValue placeholder={`Select ${label.toLowerCase()}`} /></SelectTrigger>
+        <SelectContent>
+          {!known && value ? <SelectItem value={value}>{value} (not in list)</SelectItem> : null}
+          {choices.length === 0 ? (
+            <div className="px-2 py-1.5 text-sm text-muted-foreground">No {label.toLowerCase()} values yet</div>
+          ) : null}
+          {choices.map((choice) => (
+            <SelectItem key={choice} value={choice}>{choice}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </Field>
   )
 }
