@@ -35,8 +35,9 @@ function money(n: number) {
 }
 
 function statusBadge(status: OrderSummary["status"]) {
-  if (status === "delivered") return <Badge className="bg-emerald-600 hover:bg-emerald-600">Received</Badge>
+  if (status === "received") return <Badge className="bg-emerald-600 hover:bg-emerald-600">Received</Badge>
   if (status === "pending") return <Badge variant="outline">Pending</Badge>
+  if (status === "cancelled") return <Badge variant="destructive">Cancelled</Badge>
   return <Badge variant="secondary">Not in Order Management</Badge>
 }
 

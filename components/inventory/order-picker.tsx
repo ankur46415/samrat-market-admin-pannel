@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useOrderManagement } from "@/hooks/use-order-management"
-import { orderPieceCount, type OrderMgmtGroup, type OrderMgmtOrder } from "@/lib/features/order-management/models"
+import { isReceivedOrder, orderPieceCount, type OrderMgmtGroup, type OrderMgmtOrder } from "@/lib/features/order-management/models"
 import type { Product } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -33,7 +33,7 @@ export function orderRefText(ref: OrderRef): string {
 export function receivedOrders(group: OrderMgmtGroup | undefined): OrderMgmtOrder[] {
   if (!group) return []
   return group.orders
-    .filter((order) => order.status === "delivered")
+    .filter((order) => isReceivedOrder(order))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
@@ -55,7 +55,7 @@ export function OrderRefLabel({ product }: { product: OrderRef }) {
   )
 }
 
-/** Pick an Order Management card, then one of its received (delivered) orders. */
+/** Pick an Order Management card, then one of its received orders. */
 export function OrderPicker({
   value,
   onChange,

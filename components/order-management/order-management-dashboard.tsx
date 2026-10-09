@@ -30,6 +30,9 @@ import {
   nextOrderId,
   orderAmount,
   orderPieceCount,
+  ORDER_MGMT_STATUSES,
+  ORDER_MGMT_STATUS_LABEL,
+  parseOrderStatus,
   roundMoney,
   sanitizeItem,
   CATALOG_TABLE_COLUMNS,
@@ -1269,12 +1272,14 @@ function GroupDetail({
                         <Badge
                           className={cn(
                             "mt-2",
-                            order.status === "delivered"
+                            parseOrderStatus(order.status) === "received"
                               ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:bg-emerald-950"
-                              : "bg-amber-100 text-amber-800 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-950"
+                              : parseOrderStatus(order.status) === "cancelled"
+                                ? "bg-red-100 text-red-800 hover:bg-red-100 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-950"
+                                : "bg-amber-100 text-amber-800 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-950"
                           )}
                         >
-                          {order.status === "delivered" ? "Delivered" : "Pending"}
+                          {ORDER_MGMT_STATUS_LABEL[parseOrderStatus(order.status)]}
                         </Badge>
                       </button>
                       <Button
@@ -1353,15 +1358,18 @@ function GroupDetail({
                       <div className="w-44">
                         <Label className="mb-1 block text-xs">Status</Label>
                         <Select
-                          value={selectedOrder.status}
+                          value={parseOrderStatus(selectedOrder.status)}
                           onValueChange={(v) => void setOrderStatus(selectedOrder.id, v as OrderMgmtStatus)}
                         >
                           <SelectTrigger>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="pending">Pending</SelectItem>
-                            <SelectItem value="delivered">Delivered</SelectItem>
+                            {ORDER_MGMT_STATUSES.map((status) => (
+                              <SelectItem key={status} value={status}>
+                                {ORDER_MGMT_STATUS_LABEL[status]}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>

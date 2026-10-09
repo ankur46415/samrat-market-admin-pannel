@@ -1,4 +1,22 @@
-export type OrderMgmtStatus = "pending" | "delivered"
+export const ORDER_MGMT_STATUSES = ["pending", "received", "cancelled"] as const
+export type OrderMgmtStatus = (typeof ORDER_MGMT_STATUSES)[number]
+
+export const ORDER_MGMT_STATUS_LABEL: Record<OrderMgmtStatus, string> = {
+  pending: "Pending",
+  received: "Received",
+  cancelled: "Cancelled",
+}
+
+export function parseOrderStatus(raw: unknown): OrderMgmtStatus {
+  const value = String(raw ?? "").trim().toLowerCase()
+  if (value === "received" || value === "delivered") return "received"
+  if (value === "cancelled" || value === "canceled") return "cancelled"
+  return "pending"
+}
+
+export function isReceivedOrder(order: { status: string }): boolean {
+  return parseOrderStatus(order.status) === "received"
+}
 
 export interface OrderMgmtItem {
   id: string
@@ -132,7 +150,7 @@ export function sanitizeOrderLine(raw: Partial<OrderMgmtOrderLine> & Record<stri
 export function sanitizeOrder(raw: Partial<OrderMgmtOrder> & Record<string, unknown>): OrderMgmtOrder | null {
   const id = String(raw.id ?? raw.order_id ?? "").trim()
   if (!id) return null
-  const status: OrderMgmtStatus = raw.status === "delivered" ? "delivered" : "pending"
+  const status = parseOrderStatus(raw.status)
   const lines = Array.isArray(raw.lines)
     ? raw.lines
         .map((line) => sanitizeOrderLine(line as OrderMgmtOrderLine))

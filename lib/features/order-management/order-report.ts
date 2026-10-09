@@ -1,6 +1,14 @@
 import type { Product, Sale } from "@/lib/types"
 import { normalizeScannedBarcode } from "@/lib/stock"
-import { orderPieceCount, roundMoney, type OrderMgmtGroup, type OrderMgmtOrder } from "./models"
+import {
+  isReceivedOrder,
+  orderPieceCount,
+  parseOrderStatus,
+  roundMoney,
+  type OrderMgmtGroup,
+  type OrderMgmtOrder,
+  type OrderMgmtStatus,
+} from "./models"
 
 export type OrderKey = string
 
@@ -30,7 +38,7 @@ export type OrderSummary = {
   groupId: string
   groupName: string
   color: string
-  status: "delivered" | "pending" | "unknown"
+  status: OrderMgmtStatus | "unknown"
   createdAt: Date | null
   orderedPcs: number
   orderAmount: number
@@ -105,7 +113,7 @@ export function listOrders(
         groupId: group?.id ?? groupId,
         groupName: group?.name ?? groupName,
         color: group?.color || "#0d9488",
-        status: order ? order.status : "unknown",
+        status: order ? parseOrderStatus(order.status) : "unknown",
         createdAt: orderDate(order),
         orderedPcs: order ? orderPieceCount(order) : 0,
         orderAmount: order ? roundMoney(order.lines.reduce((s, l) => s + (Number(l.total) || 0), 0)) : 0,
@@ -123,7 +131,7 @@ export function listOrders(
   }
   for (const group of groups) {
     for (const order of group.orders) {
-      if (order.status === "delivered") ensure(group.id, group.name, order.id)
+      if (isReceivedOrder(order)) ensure(group.id, group.name, order.id)
     }
   }
 

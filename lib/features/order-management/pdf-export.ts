@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
 import type { OrderMgmtGroup, OrderMgmtOrder, OrderTableColumn } from "./models"
-import { ORDER_TABLE_COLUMNS, formatPcs, orderAmount, orderPieceCount } from "./models"
+import { ORDER_MGMT_STATUS_LABEL, ORDER_TABLE_COLUMNS, formatPcs, orderAmount, orderPieceCount, parseOrderStatus } from "./models"
 
 function pdfSafe(text: string): string {
   return Array.from(String(text ?? ""))
@@ -115,7 +115,7 @@ export function downloadOrderPdf(
   const meta = [
     `Group: ${pdfSafe(group.name)}`,
     group.source ? `Source: ${pdfSafe(group.source)}` : "",
-    `Status: ${order.status === "delivered" ? "Delivered" : "Pending"}`,
+    `Status: ${ORDER_MGMT_STATUS_LABEL[parseOrderStatus(order.status)]}`,
     `Total: ${formatPdfAmount(orderAmount(order))}`,
     `Items: ${formatPcs(orderPieceCount(order))}`,
   ].filter(Boolean)
