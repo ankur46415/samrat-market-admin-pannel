@@ -14,6 +14,7 @@ import {
 } from "@/hooks/use-firestore"
 import { useSupplierRegistrySnapshot } from "@/hooks/use-supplier-registry-snapshot"
 import { InventoryFieldSelect } from "@/components/inventory/inventory-field-select"
+import { OrderPicker, orderRefOf, type OrderRef } from "@/components/inventory/order-picker"
 import { db } from "@/lib/firebase"
 import { col } from "@/lib/account-mode"
 import { Button } from "@/components/ui/button"
@@ -103,6 +104,7 @@ export default function EditDraftEntryPage({ params }: { params: Promise<{ id: s
     minStock: "10",
     gstPercent: undefined as number | undefined,
   })
+  const [order, setOrder] = useState<OrderRef>({})
 
   useEffect(() => {
     if (!draft) return
@@ -147,6 +149,7 @@ export default function EditDraftEntryPage({ params }: { params: Promise<{ id: s
         minStock: String(draft.minStock ?? 10),
         gstPercent: draft.gstPercent,
       })
+      setOrder(orderRefOf(draft))
       setFormReady(true)
     })()
   }, [draft, id, contactForName])
@@ -237,6 +240,7 @@ export default function EditDraftEntryPage({ params }: { params: Promise<{ id: s
         noExpiry: formData.noExpiry || undefined,
         minStock: parseMinStockInput(formData.minStock, 10),
         gstPercent: formData.gstPercent,
+        ...order,
       })
       toast.success("Draft entry updated")
       router.push("/draft-entries")
@@ -407,6 +411,14 @@ export default function EditDraftEntryPage({ params }: { params: Promise<{ id: s
                   triggerClassName={inputClass}
                 />
               </div>
+              <OrderPicker
+                className="sm:col-span-2"
+                value={order}
+                onChange={setOrder}
+                fieldClassName={fieldGroup}
+                labelClassName={labelClass}
+                triggerClassName={inputClass}
+              />
               <div className={fieldGroup}>
                 <Label className={labelClass}>Status</Label>
                 <Select

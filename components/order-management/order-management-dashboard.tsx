@@ -151,8 +151,8 @@ function ColumnPicker({
 }
 
 const SAMPLE_IMPORT_JSON = `[
-  { "name": "Pen", "brand": "Cello", "buy_rate": 8, "sale_rate": 12 },
-  { "name": "Pencil", "brand": "Apsara", "buy_rate": 3, "sale_rate": 5 }
+  { "name": "Pen", "brand": "Cello", "buy_rate": 8, "sale_rate": 12, "qty": 24 },
+  { "name": "Pencil", "brand": "Apsara", "buy_rate": 3, "sale_rate": 5, "qty": 50 }
 ]`
 
 const CARD_COLORS = [
@@ -307,16 +307,19 @@ function ItemDialog({
   onClose,
   onSave,
   initial,
+  includeQty,
 }: {
   open: boolean
   onClose: () => void
-  onSave: (item: OrderMgmtItem) => Promise<void>
+  onSave: (item: OrderMgmtItem, qty?: number) => Promise<void>
   initial?: OrderMgmtItem | null
+  includeQty?: boolean
 }) {
   const [name, setName] = useState("")
   const [brand, setBrand] = useState("")
   const [buyRate, setBuyRate] = useState("")
   const [saleRate, setSaleRate] = useState("")
+  const [qty, setQty] = useState("1")
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
 
@@ -326,6 +329,7 @@ function ItemDialog({
     setBrand(initial?.brand ?? "")
     setBuyRate(initial ? String(initial.buyRate) : "")
     setSaleRate(initial ? String(initial.saleRate) : "")
+    setQty("1")
     setError("")
   }, [open, initial])
 
@@ -344,15 +348,23 @@ function ItemDialog({
       setError("Valid sale rate required")
       return
     }
+    const q = Math.max(0, Math.floor(Number(qty) || 0))
+    if (includeQty && q <= 0) {
+      setError("Quantity must be at least 1")
+      return
+    }
     setSaving(true)
     try {
-      await onSave({
-        id: initial?.id || newItemId(),
-        name: name.trim(),
-        brand: brand.trim(),
-        buyRate: roundMoney(buy),
-        saleRate: roundMoney(sale),
-      })
+      await onSave(
+        {
+          id: initial?.id || newItemId(),
+          name: name.trim(),
+          brand: brand.trim(),
+          buyRate: roundMoney(buy),
+          saleRate: roundMoney(sale),
+        },
+        includeQty ? q : undefined,
+      )
       onClose()
     } finally {
       setSaving(false)
@@ -384,6 +396,17 @@ function ItemDialog({
               <Input inputMode="decimal" value={saleRate} onChange={(e) => setSaleRate(e.target.value)} />
             </div>
           </div>
+          {includeQty ? (
+            <div className="space-y-1.5">
+              <Label>Qty *</Label>
+              <Input
+                inputMode="numeric"
+                value={qty}
+                onChange={(e) => setQty(e.target.value.replace(/\D/g, ""))}
+                placeholder="1"
+              />
+            </div>
+          ) : null}
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
         </div>
         <DialogFooter>
@@ -400,18 +423,22 @@ function ItemDialog({
   )
 }
 
+type JsonImportRow = { item: OrderMgmtItem; qty: number }
+
 function JsonImportDialog({
   open,
   onClose,
   onImport,
+  forOrder,
 }: {
   open: boolean
   onClose: () => void
-  onImport: (items: OrderMgmtItem[]) => void
+  onImport: (rows: JsonImportRow[]) => void
+  forOrder?: boolean
 }) {
   const [json, setJson] = useState("")
   const [error, setError] = useState("")
-  const [preview, setPreview] = useState<OrderMgmtItem[] | null>(null)
+  const [preview, setPreview] = useState<JsonImportRow[] | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const reset = () => {
@@ -433,24 +460,26 @@ function JsonImportDialog({
         const nested = root.items ?? root.products
         arr = Array.isArray(nested) ? nested : [parsed]
       }
-      const mapped: OrderMgmtItem[] = []
+      const mapped: JsonImportRow[] = []
       for (const item of arr) {
         if (!item || typeof item !== "object") continue
         const rec = item as Record<string, unknown>
         const name = jsonPickString(rec, ["name", "product_name", "productName", "item"])
         const buy = jsonPickNumber(rec, ["buy_rate", "buyRate", "price", "rate"])
         if (!name || buy === null) {
-          setError("Each item needs name and buy_rate (brand and sale_rate optional)")
+          setError("Each item needs name and buy_rate (brand, sale_rate, and qty optional)")
           return
         }
         const sale = jsonPickNumber(rec, ["sale_rate", "saleRate", "sale_price", "mrp"]) ?? buy
+        const qtyRaw = jsonPickNumber(rec, ["qty", "quantity", "pcs", "pieces"])
+        const qty = Math.max(0, Math.floor(qtyRaw ?? (forOrder ? 1 : 0)))
         const next = sanitizeItem({
           name,
           brand: jsonPickString(rec, ["brand", "Brand"]),
           buyRate: buy,
           saleRate: sale,
         })
-        if (next) mapped.push(next)
+        if (next) mapped.push({ item: next, qty: forOrder ? Math.max(1, qty) : qty })
       }
       if (mapped.length === 0) {
         setError("No valid items found in JSON")
@@ -481,11 +510,18 @@ function JsonImportDialog({
         </DialogHeader>
         <p className="text-xs text-muted-foreground">
           Array of objects with <span className="font-mono">name</span>, <span className="font-mono">brand</span>,{" "}
-          <span className="font-mono">buy_rate</span>, <span className="font-mono">sale_rate</span>.
+          <span className="font-mono">buy_rate</span>, <span className="font-mono">sale_rate</span>
+          {forOrder ? (
+            <>
+              , and optional <span className="font-mono">qty</span> (defaults to 1).
+            </>
+          ) : (
+            "."
+          )}
         </p>
         <textarea
           className="min-h-40 w-full rounded-md border bg-muted/30 p-3 font-mono text-xs"
-          placeholder='[{"name":"Pen","brand":"Cello","buy_rate":8,"sale_rate":12}]'
+          placeholder='[{"name":"Pen","brand":"Cello","buy_rate":8,"sale_rate":12,"qty":24}]'
           value={json}
           onChange={(e) => setJson(e.target.value)}
         />
@@ -535,7 +571,10 @@ function JsonImportDialog({
         </div>
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
         {preview ? (
-          <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">{preview.length} item(s) ready to import</p>
+          <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+            {preview.length} item(s) ready to import
+            {forOrder ? ` · ${preview.reduce((sum, row) => sum + row.qty, 0)} pcs` : ""}
+          </p>
         ) : null}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
@@ -603,44 +642,101 @@ function ConfirmDeleteDialog({
   )
 }
 
+function itemMatchKey(name: string, brand: string) {
+  return `${name.trim().toLowerCase()}|${brand.trim().toLowerCase()}`
+}
+
 function CreateOrderView({
   items,
   existingOrderIds,
   initialOrder,
   onCancel,
   onSave,
+  onAddToCatalog,
 }: {
   items: OrderMgmtItem[]
   existingOrderIds: string[]
   initialOrder?: OrderMgmtOrder | null
   onCancel: () => void
   onSave: (order: OrderMgmtOrder) => Promise<void>
+  onAddToCatalog: (items: OrderMgmtItem[]) => Promise<void>
 }) {
+  const [extraItems, setExtraItems] = useState<OrderMgmtItem[]>(() => {
+    const catalogIds = new Set(items.map((item) => item.id))
+    const extras: OrderMgmtItem[] = []
+    for (const line of initialOrder?.lines ?? []) {
+      const id = line.itemId.trim() || newItemId()
+      if (catalogIds.has(id) || extras.some((item) => item.id === id)) continue
+      extras.push({
+        id,
+        name: line.name,
+        brand: line.brand,
+        buyRate: line.buyRate,
+        saleRate: line.saleRate,
+      })
+    }
+    return extras
+  })
   const [selected, setSelected] = useState<Record<string, boolean>>(() => {
     const next: Record<string, boolean> = {}
     for (const line of initialOrder?.lines ?? []) {
-      if (line.itemId) next[line.itemId] = true
+      const id = line.itemId.trim()
+      if (id) next[id] = true
     }
     return next
   })
   const [qty, setQty] = useState<Record<string, string>>(() => {
     const next: Record<string, string> = {}
     for (const line of initialOrder?.lines ?? []) {
-      if (line.itemId) next[line.itemId] = String(line.qty)
+      const id = line.itemId.trim()
+      if (id) next[id] = String(line.qty)
     }
     return next
   })
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState("")
+  const [addOpen, setAddOpen] = useState(false)
+  const [jsonOpen, setJsonOpen] = useState(false)
+  const [orderNo, setOrderNo] = useState(initialOrder?.id ?? "")
   const isEdit = Boolean(initialOrder)
+  const generatedPreview = nextOrderId(
+    existingOrderIds.filter((id) => id !== initialOrder?.id),
+  )
+  const catalogAndExtra = useMemo(() => {
+    const seen = new Set(items.map((item) => item.id))
+    return [...items, ...extraItems.filter((item) => !seen.has(item.id))]
+  }, [items, extraItems])
 
   const rows = useMemo(() => {
-    return items.map((item, index) => {
+    return catalogAndExtra.map((item, index) => {
       const checked = Boolean(selected[item.id])
       const q = Math.max(0, Math.floor(Number(qty[item.id]) || 0))
       return { item, index, checked, q, total: checked ? lineTotal(item.buyRate, q) : 0 }
     })
-  }, [items, qty, selected])
+  }, [catalogAndExtra, qty, selected])
+
+  const addRowsToOrder = (incoming: JsonImportRow[]) => {
+    const extras: OrderMgmtItem[] = []
+    const nextSelected = { ...selected }
+    const nextQty = { ...qty }
+    const known = [...catalogAndExtra]
+    for (const row of incoming) {
+      const existing = known.find(
+        (item) => itemMatchKey(item.name, item.brand) === itemMatchKey(row.item.name, row.item.brand),
+      )
+      const item = existing ?? row.item
+      if (!existing) {
+        extras.push(item)
+        known.push(item)
+      }
+      nextSelected[item.id] = true
+      nextQty[item.id] = String(Math.max(1, row.qty || 1))
+    }
+    if (extras.length) setExtraItems((prev) => [...prev, ...extras])
+    setSelected(nextSelected)
+    setQty(nextQty)
+    toast.success(`Added ${incoming.length} item(s) to this order`)
+  }
 
   const visibleRows = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -679,10 +775,19 @@ function CreateOrderView({
       toast.error("Select at least one item with quantity")
       return
     }
+    const taken = existingOrderIds.filter((id) => id !== initialOrder?.id)
+    const id = orderNo.trim() || nextOrderId(taken)
+    if (taken.some((existing) => existing.toLowerCase() === id.toLowerCase())) {
+      toast.error(`Order no ${id} is already used on this card`)
+      return
+    }
     setSaving(true)
     try {
+      const usedIds = new Set(lines.map((line) => line.itemId))
+      const toCatalog = extraItems.filter((item) => usedIds.has(item.id))
+      if (toCatalog.length) await onAddToCatalog(toCatalog)
       await onSave({
-        id: initialOrder?.id ?? nextOrderId(existingOrderIds),
+        id,
         status: initialOrder?.status ?? "pending",
         createdAt: initialOrder?.createdAt ?? new Date().toISOString(),
         lines,
@@ -697,15 +802,46 @@ function CreateOrderView({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-bold text-foreground">
-            {isEdit ? `Add items to ${initialOrder?.id}` : "Create Order"}
+            {isEdit ? "Edit order" : "Create Order"}
           </h2>
           <p className="text-sm text-muted-foreground">
             {isEdit
-              ? "Select more catalog items or change qty. Existing selections are kept."
-              : "Select catalog items, enter qty. Total uses Buy Rate × Qty."}
+              ? "Pick catalog items, add one by one, or upload JSON. Existing selections are kept."
+              : "Pick catalog items, add one by one, or upload JSON. Total uses Buy Rate × Qty."}
+          </p>
+          <div className="mt-3 flex max-w-sm flex-wrap items-end gap-2">
+            <div className="min-w-[180px] flex-1 space-y-1">
+              <Label htmlFor="order-no">Order no</Label>
+              <Input
+                id="order-no"
+                className="font-mono"
+                value={orderNo}
+                onChange={(e) => setOrderNo(e.target.value)}
+                placeholder={generatedPreview}
+                aria-label="Order number"
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOrderNo(generatedPreview)}
+            >
+              Generate
+            </Button>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Leave blank to use {generatedPreview} when you save.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" className="gap-2" onClick={() => setJsonOpen(true)}>
+            <FileJson className="h-4 w-4" />
+            Upload JSON
+          </Button>
+          <Button type="button" className="gap-2" onClick={() => setAddOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Add item
+          </Button>
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 dark:border-amber-800 dark:bg-amber-950/40">
             <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">Total balance</p>
             <p className="text-lg font-black tabular-nums text-amber-900 dark:text-amber-100">{formatInr(balance)}</p>
@@ -720,9 +856,9 @@ function CreateOrderView({
         </div>
       </div>
 
-      {items.length === 0 ? (
+      {catalogAndExtra.length === 0 ? (
         <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Add items in Catalog first.
+          No items yet. Add one, upload JSON, or add items in Catalog.
         </p>
       ) : (
         <>
@@ -793,6 +929,20 @@ function CreateOrderView({
         </div>
         </>
       )}
+      <ItemDialog
+        open={addOpen}
+        includeQty
+        onClose={() => setAddOpen(false)}
+        onSave={async (item, q) => {
+          addRowsToOrder([{ item, qty: q ?? 1 }])
+        }}
+      />
+      <JsonImportDialog
+        open={jsonOpen}
+        forOrder
+        onClose={() => setJsonOpen(false)}
+        onImport={(rows) => addRowsToOrder(rows)}
+      />
     </div>
   )
 }
@@ -849,9 +999,9 @@ function GroupDetail({
     toast.success(exists ? "Item updated" : "Item added")
   }
 
-  const importItems = async (items: OrderMgmtItem[]) => {
-    await onUpdateItems([...group.items, ...items])
-    toast.success(`Imported ${items.length} item(s)`)
+  const importItems = async (rows: JsonImportRow[]) => {
+    await onUpdateItems([...group.items, ...rows.map((row) => row.item)])
+    toast.success(`Imported ${rows.length} item(s)`)
   }
 
   const removeItem = async (id: string) => {
@@ -883,7 +1033,8 @@ function GroupDetail({
   }
 
   const saveEditedOrder = async (order: OrderMgmtOrder) => {
-    await onUpdateOrders(group.orders.map((o) => (o.id === order.id ? order : o)))
+    const fromId = editingOrder?.id
+    await onUpdateOrders(group.orders.map((o) => (o.id === fromId ? order : o)))
     setSelectedOrderId(order.id)
     setCreating(false)
     setEditingOrder(null)
@@ -961,6 +1112,11 @@ function GroupDetail({
             setEditingOrder(null)
           }}
           onSave={editingOrder ? saveEditedOrder : saveNewOrder}
+          onAddToCatalog={async (fresh) => {
+            const keys = new Set(group.items.map((item) => itemMatchKey(item.name, item.brand)))
+            const next = fresh.filter((item) => !keys.has(itemMatchKey(item.name, item.brand)))
+            if (next.length) await onUpdateItems([...group.items, ...next])
+          }}
         />
       </div>
     )
@@ -1081,7 +1237,7 @@ function GroupDetail({
 
           {group.orders.length === 0 ? (
             <p className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
-              No orders yet. Use Create Order to pick items from the catalog.
+              No orders yet. Create an order from catalog items, add items one by one, or upload JSON.
             </p>
           ) : (
             <>

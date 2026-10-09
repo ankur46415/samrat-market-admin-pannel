@@ -49,6 +49,12 @@ export interface Product {
   discountPercent?: number
   /** GST % slab (0, 5, 12, 18, 28, etc.) when set at product entry. */
   gstPercent?: number
+  /** Received order this stock came from (Order Management order id, e.g. 09102026). */
+  orderId?: string
+  /** Order Management card (`order_management_groups` doc id) that holds `orderId`. */
+  orderGroupId?: string
+  /** Card name at the time the order was picked. */
+  orderGroupName?: string
   minStock: number
   expiry?: string
   /** Derived from subcollection; may be empty for legacy docs without batches. */

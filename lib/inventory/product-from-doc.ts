@@ -65,6 +65,20 @@ function expiryFromFirestore(data: Record<string, unknown>): string | undefined 
   return s.length > 0 ? s : undefined
 }
 
+export function orderRefFromData(
+  data: Record<string, unknown>
+): Pick<Product, "orderId" | "orderGroupId" | "orderGroupName"> {
+  const orderId = trimStr(data.orderId)
+  if (!orderId) return {}
+  const orderGroupId = trimStr(data.orderGroupId)
+  const orderGroupName = trimStr(data.orderGroupName)
+  return {
+    orderId,
+    ...(orderGroupId ? { orderGroupId } : {}),
+    ...(orderGroupName ? { orderGroupName } : {}),
+  }
+}
+
 /** Map Firestore product doc → Product */
 export function productFromData(id: string, data: Record<string, unknown>): Product {
   const brand = trimStr(data.brand)
@@ -123,6 +137,7 @@ export function productFromData(id: string, data: Record<string, unknown>): Prod
       return Math.min(100, Math.max(0, Math.round(n * 100) / 100))
     })(),
     gstPercent: gstPercentFromFirestore(data),
+    ...orderRefFromData(data),
     stock: Number.isFinite(totalStock) ? totalStock : coerceProductStockFromFirestore(data),
     batches,
     minStock: (() => {

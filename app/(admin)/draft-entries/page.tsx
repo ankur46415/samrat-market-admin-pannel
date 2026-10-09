@@ -82,6 +82,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { Badge } from "@/components/ui/badge"
+import { OrderRefLabel } from "@/components/inventory/order-picker"
 import {
   draftGroupedAccountLabel,
   draftOwnedBySessionAccount,
@@ -266,6 +267,9 @@ export default function DraftEntriesPage() {
         expiry: product.expiry,
         noExpiry,
         imageUrl: product.imageUrl,
+        orderId: product.orderId,
+        orderGroupId: product.orderGroupId,
+        orderGroupName: product.orderGroupName,
       })
       await approveDraft(product.id)
       clearAuditLineOverrides(product.id)
@@ -336,6 +340,15 @@ export default function DraftEntriesPage() {
         </TableCell>
         <TableCell className={cn(invTableCellClass, "hidden md:table-cell text-muted-foreground")}>
           {product.category || "—"}
+        </TableCell>
+        <TableCell className={cn(invTableCellClass, "hidden md:table-cell text-muted-foreground")}>
+          {product.brand || "—"}
+        </TableCell>
+        <TableCell className={cn(invTableCellClass, "hidden md:table-cell text-muted-foreground")}>
+          {product.tag || "—"}
+        </TableCell>
+        <TableCell className={cn(invTableCellClass, "hidden md:table-cell")}>
+          <OrderRefLabel product={product} />
         </TableCell>
         <TableCell className={cn(invTableCellClass, "hidden md:table-cell text-muted-foreground")}>
           {product.rack || "—"}
@@ -533,7 +546,7 @@ export default function DraftEntriesPage() {
               <Table>
                 <TableBody>
                   <TableRow className="hover:bg-transparent">
-                    <TableCell colSpan={13} className="h-40 text-center">
+                    <TableCell colSpan={16} className="h-40 text-center">
                       <div className="flex flex-col items-center justify-center gap-2 py-6">
                         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
                           <Inbox className="h-6 w-6 text-muted-foreground" />
@@ -573,6 +586,15 @@ export default function DraftEntriesPage() {
                             <TableHead className={invTableHeadClass}>Product</TableHead>
                             <TableHead className={cn(invTableHeadClass, "hidden md:table-cell")}>
                               Category
+                            </TableHead>
+                            <TableHead className={cn(invTableHeadClass, "hidden md:table-cell")}>
+                              Brand
+                            </TableHead>
+                            <TableHead className={cn(invTableHeadClass, "hidden md:table-cell")}>
+                              Tag
+                            </TableHead>
+                            <TableHead className={cn(invTableHeadClass, "hidden md:table-cell")}>
+                              Order
                             </TableHead>
                             <TableHead className={cn(invTableHeadClass, "hidden md:table-cell")}>
                               Rack
@@ -617,6 +639,9 @@ export default function DraftEntriesPage() {
                   <TableHead className={cn(invTableHeadClass, "w-[72px] text-center")}>OK</TableHead>
                   <TableHead className={invTableHeadClass}>Product</TableHead>
                   <TableHead className={cn(invTableHeadClass, "hidden md:table-cell")}>Category</TableHead>
+                  <TableHead className={cn(invTableHeadClass, "hidden md:table-cell")}>Brand</TableHead>
+                  <TableHead className={cn(invTableHeadClass, "hidden md:table-cell")}>Tag</TableHead>
+                  <TableHead className={cn(invTableHeadClass, "hidden md:table-cell")}>Order</TableHead>
                   <TableHead className={cn(invTableHeadClass, "hidden md:table-cell")}>Rack</TableHead>
                   <TableHead className={cn(invTableHeadClass, "text-right")}>MRP</TableHead>
                   <TableHead className={cn(invTableHeadClass, "text-right")}>Sell</TableHead>

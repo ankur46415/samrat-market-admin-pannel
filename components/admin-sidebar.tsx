@@ -132,6 +132,10 @@ const mainNavItems = [
     title: "Reports",
     url: "/reports",
     icon: FileText,
+    subItems: [
+      { title: "Sales report", url: "/reports" },
+      { title: "Order report", url: "/reports/orders" },
+    ],
   },
   {
     title: "Master Plan",

@@ -51,6 +51,8 @@ import {
 } from "@/lib/inventory-ui"
 import { cn } from "@/lib/utils"
 import { InventoryFieldSelect } from "@/components/inventory/inventory-field-select"
+import { OrderPicker, orderRefOf, type OrderRef } from "@/components/inventory/order-picker"
+import { orderRefPayload } from "@/lib/features/inventory/services/inventory_batch_service"
 import { isRegisteredDropdownValue } from "@/lib/inventory/dropdown-registry"
 import { isRegisteredSupplierName } from "@/lib/inventory/supplier-registry"
 import { batchQuantitiesForTarget, syncProductStockWithBatches } from "@/lib/inventory/sync-product-stock-batches"
@@ -111,6 +113,7 @@ export default function EditProductPage({
     minStock: "10",
     stock: "0",
   })
+  const [order, setOrder] = useState<OrderRef>({})
 
   const product = products.find((p) => p.id === id)
 
@@ -148,6 +151,7 @@ export default function EditProductPage({
         minStock: String(product.minStock),
         stock: String(product.stock),
       })
+      setOrder(orderRefOf(product))
     }
   }, [product])
 
@@ -289,6 +293,7 @@ export default function EditProductPage({
       }
       const disc = parseDiscountInput(formData.discountPercent) ?? 0
       updatePayload.discountPercent = disc
+      Object.assign(updatePayload, orderRefPayload(order))
 
       if (productBatches.length > 0) {
         const currentTotal = productBatches.reduce((s, b) => s + b.quantity, 0)
@@ -480,6 +485,14 @@ export default function EditProductPage({
                       className={cn(inputClass, "bg-muted/40 text-muted-foreground")}
                     />
                   </div>
+                  <OrderPicker
+                    className="sm:col-span-2"
+                    value={order}
+                    onChange={setOrder}
+                    fieldClassName="space-y-2"
+                    labelClassName={labelClass}
+                    triggerClassName={inputClass}
+                  />
                   <div className="space-y-2">
                     <Label htmlFor="tag" className={labelClass}>
                       Tag

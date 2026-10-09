@@ -16,8 +16,10 @@ import { isNoExpiryBatch } from "@/lib/inventory/no-expiry-batch"
 import { col } from "@/lib/account-mode"
 import {
   InventoryBatchService,
+  orderRefPayload,
   type ProductWithBatchInput,
 } from "@/lib/features/inventory/services/inventory_batch_service"
+import { orderRefFromData } from "@/lib/inventory/product-from-doc"
 import { firestoreNumber } from "@/lib/stock"
 
 /** Shown in Generate Bill when a draft row is not Active. */
@@ -138,6 +140,7 @@ function draftPayloadFromInput(input: DraftProductInput): Record<string, unknown
   } else {
     payload.gstPercent = null
   }
+  Object.assign(payload, orderRefPayload(input))
   if (input.noExpiry) {
     payload.noExpiry = true
     payload.expiry = null
@@ -239,6 +242,7 @@ export async function approveDraftProduct(
       if (!Number.isFinite(n) || n < 0) return undefined
       return Math.round(n * 10) / 10
     })(),
+    ...orderRefFromData(data),
   }
 
   const batchService = new InventoryBatchService(db)
@@ -321,6 +325,7 @@ export async function moveProductToDraftList(
       if (!Number.isFinite(n) || n < 0) return undefined
       return Math.round(n * 10) / 10
     })(),
+    ...orderRefFromData(data),
   })
 
   for (const batchDoc of batchesSnap.docs) {

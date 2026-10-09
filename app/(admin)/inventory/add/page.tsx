@@ -33,6 +33,7 @@ import {
   validateProductImageFile,
 } from "@/lib/features/inventory/services/product_image_service"
 import { InventoryFieldSelect } from "@/components/inventory/inventory-field-select"
+import { OrderPicker, type OrderRef } from "@/components/inventory/order-picker"
 import { GstPercentSelect } from "@/components/inventory/gst-percent-select"
 import { priceWithGst } from "@/lib/inventory/gst-percent"
 import { isRegisteredDropdownValue } from "@/lib/inventory/dropdown-registry"
@@ -91,6 +92,7 @@ export default function AddProductPage() {
     minStock: "10",
     gstPercent: undefined as number | undefined,
   })
+  const [order, setOrder] = useState<OrderRef>({})
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -230,6 +232,7 @@ export default function AddProductPage() {
         noExpiry: formData.noExpiry || undefined,
         minStock: parseMinStockInput(formData.minStock, 10),
         gstPercent: formData.gstPercent,
+        ...order,
         ...(user?.accountTag
           ? { ownerAccountTag: user.accountTag.trim().toUpperCase() }
           : {}),
@@ -400,6 +403,15 @@ export default function AddProductPage() {
                       className={cn(inputClass, "bg-muted/40 text-muted-foreground")}
                     />
                   </div>
+
+                  <OrderPicker
+                    className="sm:col-span-2"
+                    value={order}
+                    onChange={setOrder}
+                    fieldClassName={fieldGroup}
+                    labelClassName={labelClass}
+                    triggerClassName={inputClass}
+                  />
 
                   <div className={cn(fieldGroup, "sm:col-span-2")}>
                     <Label htmlFor="productImage" className={labelClass}>

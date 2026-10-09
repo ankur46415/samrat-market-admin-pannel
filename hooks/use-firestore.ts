@@ -317,6 +317,9 @@ export function useProducts() {
           ? Number(product.gstPercent)
           : undefined,
       imageUrl: product.imageUrl?.trim() || undefined,
+      orderId: product.orderId?.trim() || undefined,
+      orderGroupId: product.orderGroupId?.trim() || undefined,
+      orderGroupName: product.orderGroupName?.trim() || undefined,
     })
 
     return result.productId
@@ -530,6 +533,9 @@ export function useProducts() {
       ownerAccountTag: product.ownerAccountTag?.trim()
         ? product.ownerAccountTag.trim().toUpperCase()
         : undefined,
+      orderId: product.orderId?.trim() || undefined,
+      orderGroupId: product.orderGroupId?.trim() || undefined,
+      orderGroupName: product.orderGroupName?.trim() || undefined,
     }
 
     return addDraftProductDoc(db, input)
@@ -687,6 +693,9 @@ export function useDraftProducts() {
             ? Number(product.gstPercent)
             : undefined,
         imageUrl: product.imageUrl?.trim() || undefined,
+        orderId: product.orderId?.trim() || undefined,
+        orderGroupId: product.orderGroupId?.trim() || undefined,
+        orderGroupName: product.orderGroupName?.trim() || undefined,
       }
 
       await updateDraftProduct(db, draftId, input)

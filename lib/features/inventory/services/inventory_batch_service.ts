@@ -42,6 +42,24 @@ export type ProductWithBatchInput = {
   discountPercent?: number
   gstPercent?: number
   ownerAccountTag?: string
+} & OrderRefFields
+
+/** Order Management order this stock came from. */
+export type OrderRefFields = {
+  orderId?: string
+  orderGroupId?: string
+  orderGroupName?: string
+}
+
+/** Firestore fields for an order ref; clears all three when `orderId` is empty. */
+export function orderRefPayload(fields: OrderRefFields): Record<string, string | null> {
+  const orderId = fields.orderId?.trim() ?? ""
+  if (!orderId) return { orderId: null, orderGroupId: null, orderGroupName: null }
+  return {
+    orderId,
+    orderGroupId: fields.orderGroupId?.trim() || null,
+    orderGroupName: fields.orderGroupName?.trim() || null,
+  }
 }
 
 export class InventoryBatchService {
@@ -76,7 +94,7 @@ export class InventoryBatchService {
     discountPercent?: number
     gstPercent?: number
     imageUrl?: string
-  }): Record<string, unknown> {
+  } & OrderRefFields): Record<string, unknown> {
     const unitStr = normalizeProductUnit(fields.unit)
     const rack = fields.rack.trim()
     const tag = fields.tag.trim()
@@ -123,6 +141,7 @@ export class InventoryBatchService {
     if (sc) d.supplierContact = sc
     const imageUrl = fields.imageUrl?.trim()
     if (imageUrl) d.imageUrl = imageUrl
+    if (fields.orderId?.trim()) Object.assign(d, orderRefPayload(fields))
     return d
   }
 
@@ -145,7 +164,7 @@ export class InventoryBatchService {
     mrp?: number
     discountPercent?: number
     imageUrl?: string
-  }): Promise<string> {
+  } & OrderRefFields): Promise<string> {
     const now = Timestamp.now()
     const ref = await addDoc(collection(this.db, col("products")), {
       ...this.productDocPayload(fields),
@@ -246,6 +265,9 @@ export class InventoryBatchService {
       discountPercent: input.discountPercent,
       gstPercent: input.gstPercent,
       imageUrl: input.imageUrl,
+      orderId: input.orderId,
+      orderGroupId: input.orderGroupId,
+      orderGroupName: input.orderGroupName,
     }
 
     if (existing?.id) {
