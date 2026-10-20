@@ -10,7 +10,9 @@ import {
 } from "@/lib/billing/line-discount"
 import { toast } from "sonner"
 import { TEST_ACCOUNT_PASSKEY } from "@/lib/account-mode"
-import { useOpenDraftEntries } from "@/hooks/use-firestore"
+import { useOpenDraftEntries, useProducts } from "@/hooks/use-firestore"
+import { useDropdownRegistryNames } from "@/hooks/use-dropdown-registry-names"
+import { openDraftDisplayTag } from "@/lib/features/inventory/services/open_draft_entry_service"
 import { isRestrictedStaff, useSessionUser } from "@/lib/auth-session"
 import {
   Collapsible,
@@ -22,6 +24,13 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -79,7 +88,7 @@ type EditForm = {
   price: string
 }
 
-function editFormFrom(row: OpenDraftEntry): EditForm {
+function editFormFrom(row: OpenDraftEntry, liveProductTag = ""): EditForm {
   const mrp = row.mrp != null && row.mrp > 0 ? row.mrp : null
   const discount =
     row.discountPercent != null
@@ -91,7 +100,7 @@ function editFormFrom(row: OpenDraftEntry): EditForm {
     name: row.name,
     category: row.category,
     rack: row.rack,
-    tag: row.tag,
+    tag: openDraftDisplayTag(row, liveProductTag),
     status: row.status,
     brand: row.brand ?? "",
     mrp: mrp ? String(mrp) : "",
@@ -111,6 +120,13 @@ export default function OpenDraftEntriesPage() {
   const isStaffAccount = user ? isRestrictedStaff(user) : false
   const isMainAdmin = user?.role === "admin"
   const { entries, loading, approveEntry, deleteEntry, updateEntryAsAdmin } = useOpenDraftEntries()
+  const { products } = useProducts()
+  const { names: tagOptions } = useDropdownRegistryNames("product_tags")
+  const liveTagByProductId = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const product of products) map.set(product.id, product.tag || "")
+    return map
+  }, [products])
   const [editRow, setEditRow] = useState<OpenDraftEntry | null>(null)
   const [editForm, setEditForm] = useState<EditForm | null>(null)
   const [savingEdit, setSavingEdit] = useState(false)
@@ -130,16 +146,17 @@ export default function OpenDraftEntriesPage() {
         return false
       }
       if (!q) return true
+      const productTag = openDraftDisplayTag(row, liveTagByProductId.get(row.productId) ?? "")
       return (
         row.name.toLowerCase().includes(qLower) ||
         row.productId.toLowerCase().includes(qLower) ||
-        row.tag.toLowerCase().includes(qLower) ||
+        productTag.toLowerCase().includes(qLower) ||
         row.editedBy.toLowerCase().includes(qLower) ||
         (row.barcode != null &&
           (barcodesMatch(row.barcode, q) || row.barcode.toLowerCase().includes(qLower)))
       )
     })
-  }, [entries, search, isStaffAccount, user?.accountTag])
+  }, [entries, search, isStaffAccount, user?.accountTag, liveTagByProductId])
 
   const groupedByAccount = useMemo(() => {
     if (!isMainAdmin) return null
@@ -209,7 +226,7 @@ export default function OpenDraftEntriesPage() {
 
   const openEdit = (row: OpenDraftEntry) => {
     setEditRow(row)
-    setEditForm(editFormFrom(row))
+    setEditForm(editFormFrom(row, liveTagByProductId.get(row.productId) ?? ""))
   }
 
   const setEditField = (field: keyof EditForm, value: string) => {
@@ -278,7 +295,9 @@ export default function OpenDraftEntriesPage() {
         <div className="text-xs text-muted-foreground">{row.category}</div>
       </TableCell>
       <TableCell className={cn(invTableCellClass, "font-mono text-xs")}>{row.barcode || "—"}</TableCell>
-      <TableCell className={invTableCellClass}>{row.tag || "—"}</TableCell>
+      <TableCell className={invTableCellClass}>
+        {openDraftDisplayTag(row, liveTagByProductId.get(row.productId) ?? "") || "—"}
+      </TableCell>
       <TableCell className={invTableCellClass}>
         <div className="font-mono text-xs font-semibold">{row.editedBy || "—"}</div>
         {row.editedByEmail ? (
@@ -514,8 +533,27 @@ export default function OpenDraftEntriesPage() {
               <EditField label="Rack">
                 <Input value={editForm.rack} onChange={(e) => setEditField("rack", e.target.value)} />
               </EditField>
-              <EditField label="Product tag">
-                <Input value={editForm.tag} onChange={(e) => setEditField("tag", e.target.value)} />
+              <EditField label="Product tag" className="sm:col-span-2">
+                <Select
+                  value={editForm.tag.trim() ? editForm.tag : "__none__"}
+                  onValueChange={(value) => setEditField("tag", value === "__none__" ? "" : value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select tag" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    {editForm.tag.trim() &&
+                    !tagOptions.some((name) => name.toLowerCase() === editForm.tag.trim().toLowerCase()) ? (
+                      <SelectItem value={editForm.tag}>{editForm.tag}</SelectItem>
+                    ) : null}
+                    {tagOptions.map((name) => (
+                      <SelectItem key={name} value={name}>
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </EditField>
               <EditField label="Status">
                 <Input value={editForm.status} onChange={(e) => setEditField("status", e.target.value)} />

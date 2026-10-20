@@ -59,7 +59,7 @@ export function InventoryFieldSelect({
   const display = isRegistered ? trimmed : placeholder
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover modal open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           id={id}
@@ -78,7 +78,7 @@ export function InventoryFieldSelect({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className={cn("w-[var(--radix-popover-trigger-width)] p-0", className)} align="start">
+      <PopoverContent className={cn("z-[200] w-[var(--radix-popover-trigger-width)] p-0", className)} align="start">
         <Command>
           <CommandInput placeholder="Search…" />
           <CommandList>

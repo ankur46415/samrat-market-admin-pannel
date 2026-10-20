@@ -16,6 +16,37 @@ import type { OpenDraftEntry, OpenDraftEntryAdminPatch, OpenDraftEntryInput } fr
 
 const COL = "open_draft_entries"
 
+/** True when Scan & Edit stored the staff account in `tag` instead of the product tag. */
+export function isEditorNameStoredAsTag(tag: string, editedBy: string): boolean {
+  const stored = tag.trim().toLowerCase()
+  const editor = editedBy.trim().toLowerCase()
+  return Boolean(stored) && Boolean(editor) && stored === editor
+}
+
+/** Product dropdown tag: never the editor account. */
+export function openDraftDisplayTag(entry: Pick<OpenDraftEntry, "tag" | "editedBy">, liveProductTag = ""): string {
+  const stored = entry.tag.trim()
+  if (!stored || isEditorNameStoredAsTag(stored, entry.editedBy)) {
+    return liveProductTag.trim()
+  }
+  return stored
+}
+
+async function liveProductTag(db: Firestore, productId: string): Promise<string> {
+  const snap = await getDoc(doc(db, col("products"), productId))
+  if (!snap.exists()) return ""
+  return String((snap.data() as Record<string, unknown>).tag ?? "").trim()
+}
+
+async function productTagForWrite(
+  db: Firestore,
+  productId: string,
+  storedTag: string,
+  editedBy: string
+): Promise<string> {
+  return openDraftDisplayTag({ tag: storedTag, editedBy }, await liveProductTag(db, productId))
+}
+
 function entryFromSnap(id: string, data: Record<string, unknown>): OpenDraftEntry {
   return {
     id,
@@ -77,13 +108,14 @@ export async function submitOpenDraftEntry(
   }
 
   const now = Timestamp.now()
+  const tag = await productTagForWrite(db, productId, input.tag, input.editedBy)
   const payload: Record<string, unknown> = {
     productId,
     barcode,
     name: input.name.trim() || "Unnamed Product",
     category: input.category.trim(),
     rack: input.rack.trim(),
-    tag: input.tag.trim(),
+    tag,
     status: input.status.trim() || "active",
     price: input.price,
     stock: input.stock,
@@ -126,11 +158,13 @@ export async function approveOpenDraftEntry(
   const productId = String(data.productId ?? "").trim()
   if (!productId) throw new Error("Missing product id on open draft entry")
 
+  const editor = String(data.editedBy ?? "")
+  const tag = await productTagForWrite(db, productId, String(data.tag ?? ""), editor)
   const patch: Record<string, unknown> = {
     name: String(data.name ?? "").trim() || "Unnamed Product",
     category: String(data.category ?? "").trim(),
     rack: String(data.rack ?? "").trim(),
-    tag: String(data.tag ?? "").trim(),
+    tag,
     status: String(data.status ?? "active").trim() || "active",
     updatedAt: Timestamp.now(),
   }
@@ -168,11 +202,17 @@ export async function updateOpenDraftEntryByAdmin(
     throw new Error("MRP must be 0 or more")
   }
   if (input.mrp && input.price > input.mrp) throw new Error("Sale rate cannot be more than MRP")
+  const existing = await getDoc(doc(db, col(COL), entryId))
+  if (!existing.exists()) throw new Error("Open draft entry not found")
+  const existingData = existing.data() as Record<string, unknown>
+  const productId = String(existingData.productId ?? "").trim()
+  const editor = String(existingData.editedBy ?? "")
+  const tag = await productTagForWrite(db, productId, input.tag, editor)
   const patch: DocumentData = {
     name: input.name.trim() || "Unnamed Product",
     category: input.category.trim(),
     rack: input.rack.trim(),
-    tag: input.tag.trim(),
+    tag,
     status: input.status.trim() || "active",
     brand: input.brand?.trim() || null,
     price: input.price,
