@@ -104,6 +104,19 @@ function jsonPickNumber(rec: Record<string, unknown>, keys: string[]): number | 
   return null
 }
 
+/** Same name can appear twice with different rates; skip only a true duplicate row. */
+function catalogImportKey(product: GstCatalogProduct): string {
+  return [
+    product.product_name.trim().toLowerCase(),
+    String(product.order_id ?? "").trim().toLowerCase(),
+    String(product.order_tag ?? "").trim().toLowerCase(),
+    String(roundMoney(Number(product.price) || 0)),
+    product.sale_price == null ? "" : String(roundMoney(Number(product.sale_price) || 0)),
+    String(Number(product.moq) || 0),
+    product.gst_percent == null ? "" : String(product.gst_percent),
+  ].join("|")
+}
+
 function SalePriceEditFields({
   buyPrice,
   salePrice,
@@ -1749,11 +1762,29 @@ function CatalogDetailView({
   }
 
   const handleJsonImport = async (imported: GstCatalogProduct[]) => {
-    // Merge: avoid exact duplicates by product_name
-    const existing = new Set(products.map((p) => p.product_name.toLowerCase()))
-    const newOnes = imported.filter((p) => !existing.has(p.product_name.toLowerCase()))
-    const merged = [...products, ...newOnes]
-    await syncProducts(merged)
+    const existing = new Set(products.map((p) => catalogImportKey(p)))
+    const newOnes: GstCatalogProduct[] = []
+    for (const product of imported) {
+      const key = catalogImportKey(product)
+      if (existing.has(key)) continue
+      existing.add(key)
+      newOnes.push(product)
+    }
+    const skipped = imported.length - newOnes.length
+    if (newOnes.length === 0) {
+      toast.message(
+        skipped
+          ? `None imported — ${skipped} row(s) already in this catalog (same name, order, price, MOQ).`
+          : "No products to import."
+      )
+      return
+    }
+    await syncProducts([...products, ...newOnes])
+    toast.success(
+      skipped
+        ? `Imported ${newOnes.length}. Skipped ${skipped} exact duplicate${skipped === 1 ? "" : "s"}.`
+        : `Imported ${newOnes.length} product${newOnes.length === 1 ? "" : "s"}.`
+    )
   }
 
   const availableOrderTags = useMemo(() => {

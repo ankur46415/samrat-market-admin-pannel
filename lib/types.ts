@@ -71,7 +71,7 @@ export interface OpenDraftEntry {
   name: string
   category: string
   rack: string
-  /** Set to editor account (e.g. EMP01) to track who submitted the change */
+  /** Product merchandising tag (same as All Products / Draft Entries). */
   tag: string
   status: string
   brand?: string

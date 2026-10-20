@@ -11,6 +11,7 @@ import {
   updateDoc,
   where,
   type Firestore,
+  type QueryDocumentSnapshot,
 } from "firebase/firestore"
 import { isNoExpiryBatch } from "@/lib/inventory/no-expiry-batch"
 import { col } from "@/lib/account-mode"
@@ -20,7 +21,13 @@ import {
   type ProductWithBatchInput,
 } from "@/lib/features/inventory/services/inventory_batch_service"
 import { orderRefFromData } from "@/lib/inventory/product-from-doc"
-import { firestoreNumber } from "@/lib/stock"
+import {
+  BARCODE_FIELD_KEYS,
+  barcodeQueryValues,
+  barcodesLooseMatch,
+  firestoreNumber,
+  normalizeScannedBarcode,
+} from "@/lib/stock"
 
 /** Shown in Generate Bill when a draft row is not Active. */
 export const DRAFT_BILLING_BLOCKED_MESSAGE = "Item is still in draft list"
@@ -45,18 +52,47 @@ function expiryFromDraftData(data: Record<string, unknown>): Date | null {
   return null
 }
 
+function draftBarcodeValues(data: Record<string, unknown>, docId: string): unknown[] {
+  const values: unknown[] = [docId]
+  for (const key of BARCODE_FIELD_KEYS) {
+    if (data[key] !== undefined) values.push(data[key])
+  }
+  return values
+}
+
+export async function findDraftProductSnap(
+  db: Firestore,
+  barcode: string
+): Promise<QueryDocumentSnapshot | null> {
+  const scanned = normalizeScannedBarcode(barcode)
+  if (!scanned) return null
+
+  const byId = await getDoc(doc(db, col("draft_products"), scanned))
+  if (byId.exists()) return byId as QueryDocumentSnapshot
+
+  for (const value of barcodeQueryValues(scanned)) {
+    const snap = await getDocs(
+      query(collection(db, col("draft_products")), where("barcode", "==", value), limit(1))
+    )
+    if (!snap.empty) return snap.docs[0]
+  }
+
+  const all = await getDocs(collection(db, col("draft_products")))
+  for (const row of all.docs) {
+    const data = row.data() as Record<string, unknown>
+    if (draftBarcodeValues(data, row.id).some((value) => barcodesLooseMatch(value, scanned))) {
+      return row
+    }
+  }
+  return null
+}
+
 export async function getDraftProductByBarcode(
   db: Firestore,
   barcode: string
 ): Promise<{ id: string } | null> {
-  const q = query(
-    collection(db, col("draft_products")),
-    where("barcode", "==", barcode.trim()),
-    limit(1)
-  )
-  const snap = await getDocs(q)
-  if (snap.empty) return null
-  return { id: snap.docs[0].id }
+  const hit = await findDraftProductSnap(db, barcode)
+  return hit ? { id: hit.id } : null
 }
 
 export async function addDraftProductDoc(
@@ -341,15 +377,9 @@ export async function deductDraftStockByBarcode(
   barcode: string,
   quantity: number
 ): Promise<boolean> {
-  const q = query(
-    collection(db, col("draft_products")),
-    where("barcode", "==", barcode.trim()),
-    limit(1)
-  )
-  const snap = await getDocs(q)
-  if (snap.empty) return false
+  const draftDoc = await findDraftProductSnap(db, barcode)
+  if (!draftDoc) return false
 
-  const draftDoc = snap.docs[0]
   const data = draftDoc.data() as Record<string, unknown>
   if (!isDraftBillableStatus(data.status)) return false
 

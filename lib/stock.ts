@@ -141,7 +141,43 @@ export function getBarcodeLookupCandidates(raw: string): string[] {
   return normalized ? [normalized] : []
 }
 
-const BARCODE_FIELD_KEYS = ["barcode", "barCode", "BarCode", "productBarcode"] as const
+/** Collapse spaces/hyphens so "890 1030" matches "8901030". */
+export function compactBarcode(raw: string): string {
+  return normalizeScannedBarcode(raw).replace(/[\s-]/g, "")
+}
+
+/** String/number forms to try against Firestore `barcode` (guns often drop or add leading zeros). */
+export function barcodeQueryValues(raw: string): Array<string | number> {
+  const compact = compactBarcode(raw)
+  if (!compact) return []
+  const values = new Set<string | number>([compact])
+  const trimmed = normalizeScannedBarcode(raw)
+  if (trimmed && trimmed !== compact) values.add(trimmed)
+  if (/^\d+$/.test(compact)) {
+    values.add(Number(compact))
+    const stripped = compact.replace(/^0+/, "")
+    if (stripped && stripped !== compact) {
+      values.add(stripped)
+      values.add(Number(stripped))
+    }
+  }
+  return [...values]
+}
+
+export function barcodesLooseMatch(stored: unknown, scanned: string): boolean {
+  const a = compactBarcode(String(stored ?? ""))
+  const b = compactBarcode(scanned)
+  if (!a || !b) return false
+  if (a === b) return true
+  if (/^\d+$/.test(a) && /^\d+$/.test(b)) {
+    const as = a.replace(/^0+/, "")
+    const bs = b.replace(/^0+/, "")
+    return Boolean(as) && as === bs
+  }
+  return false
+}
+
+export const BARCODE_FIELD_KEYS = ["barcode", "barCode", "BarCode", "productBarcode"] as const
 
 /** Collect barcode and document id as stored — no fuzzy variants. */
 export function barcodeValuesFromFirestore(data: Record<string, unknown>, docId?: string): string[] {
@@ -187,8 +223,9 @@ export function findCachedProductByBarcode(
   const cleaned = normalizeScannedBarcode(scanned)
   if (!cleaned || products.length === 0) return null
   return (
-    products.find((product) => normalizeScannedBarcode(product.id) === cleaned) ??
-    products.find((product) => normalizeScannedBarcode(product.barcode ?? "") === cleaned) ??
+    products.find((product) => barcodesLooseMatch(product.id, cleaned)) ??
+    products.find((product) => barcodesLooseMatch(product.barcode ?? "", cleaned)) ??
+    products.find((product) => (product.barcodeKeys ?? []).some((key) => barcodesLooseMatch(key, cleaned))) ??
     null
   )
 }

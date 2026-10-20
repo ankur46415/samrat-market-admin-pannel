@@ -145,7 +145,7 @@ export default function OpenDraftEntriesPage() {
     if (!isMainAdmin) return null
     const map = new Map<string, OpenDraftEntry[]>()
     for (const row of filtered) {
-      const key = row.editedBy?.trim() || row.tag?.trim() || "Unknown"
+      const key = row.editedBy?.trim() || "Unknown"
       const list = map.get(key) ?? []
       list.push(row)
       map.set(key, list)
@@ -278,8 +278,12 @@ export default function OpenDraftEntriesPage() {
         <div className="text-xs text-muted-foreground">{row.category}</div>
       </TableCell>
       <TableCell className={cn(invTableCellClass, "font-mono text-xs")}>{row.barcode || "—"}</TableCell>
+      <TableCell className={invTableCellClass}>{row.tag || "—"}</TableCell>
       <TableCell className={invTableCellClass}>
-        <span className="font-mono text-xs font-semibold">{row.tag || row.editedBy}</span>
+        <div className="font-mono text-xs font-semibold">{row.editedBy || "—"}</div>
+        {row.editedByEmail ? (
+          <div className="text-[11px] text-muted-foreground">{row.editedByEmail}</div>
+        ) : null}
       </TableCell>
       <TableCell className={invTableCellClass}>{row.brand || "—"}</TableCell>
       <TableCell className={invTableCellClass}>{row.rack || "—"}</TableCell>
@@ -341,7 +345,8 @@ export default function OpenDraftEntriesPage() {
       <TableRow>
         <TableHead className={invTableHeadClass}>Product</TableHead>
         <TableHead className={invTableHeadClass}>Barcode</TableHead>
-        <TableHead className={invTableHeadClass}>Tag / Editor</TableHead>
+        <TableHead className={invTableHeadClass}>Tag</TableHead>
+        <TableHead className={invTableHeadClass}>Editor</TableHead>
         <TableHead className={invTableHeadClass}>Brand</TableHead>
         <TableHead className={invTableHeadClass}>Rack</TableHead>
         <TableHead className={invTableHeadClass}>MRP</TableHead>
@@ -368,7 +373,7 @@ export default function OpenDraftEntriesPage() {
           <p className="text-sm text-muted-foreground mt-1">
             {isStaffAccount
               ? "Your submitted edits waiting for admin approval."
-              : "Review Scan & Edit changes — grouped by account (editor tag)."}
+              : "Review Scan & Edit changes — grouped by editor. Tag is the product tag."}
           </p>
         </div>
         {!isStaffAccount && (
@@ -397,7 +402,7 @@ export default function OpenDraftEntriesPage() {
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="pl-9"
-              placeholder="Search name, barcode, tag, editor…"
+              placeholder="Search name, barcode, product tag, editor…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -490,7 +495,7 @@ export default function OpenDraftEntriesPage() {
             <DialogTitle>Edit pending entry</DialogTitle>
             <DialogDescription>
               Submitted by{" "}
-              <span className="font-mono font-semibold">{editRow?.editedBy || editRow?.tag || "unknown"}</span>.
+              <span className="font-mono font-semibold">{editRow?.editedBy || "unknown"}</span>.
               Changes are saved on this entry and applied to the live product when you approve it,
               including MRP, discount and sale rate.
             </DialogDescription>
@@ -509,7 +514,7 @@ export default function OpenDraftEntriesPage() {
               <EditField label="Rack">
                 <Input value={editForm.rack} onChange={(e) => setEditField("rack", e.target.value)} />
               </EditField>
-              <EditField label="Tag">
+              <EditField label="Product tag">
                 <Input value={editForm.tag} onChange={(e) => setEditField("tag", e.target.value)} />
               </EditField>
               <EditField label="Status">

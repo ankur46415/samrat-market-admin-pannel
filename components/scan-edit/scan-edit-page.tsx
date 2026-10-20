@@ -50,6 +50,7 @@ export function ScanEditPage() {
   const lookupProduct = useProductScanLookup()
   const isFieldStaff = user ? isRestrictedStaff(user) : false
   const { names: brandOptions } = useDropdownRegistryNames("product_brands")
+  const { names: tagOptions } = useDropdownRegistryNames("product_tags")
   const { names: categoryOptions } = useDropdownRegistryNames("product_categories")
   const { names: supplierNameOptions, contactForName } = useSupplierRegistrySnapshot()
 
@@ -63,6 +64,7 @@ export function ScanEditPage() {
   const [form, setForm] = useState({
     name: "",
     brand: "",
+    tag: "",
     rack: "",
     status: "active",
     category: "",
@@ -84,6 +86,7 @@ export function ScanEditPage() {
     setForm({
       name: "",
       brand: "",
+      tag: "",
       rack: "",
       status: "active",
       category: "",
@@ -109,6 +112,7 @@ export function ScanEditPage() {
       setForm({
         name: found.name || "",
         brand: found.brand || "",
+        tag: found.tag || "",
         rack: found.rack || "",
         status:
           found.status && STATUS_OPTIONS_SET.has(found.status as (typeof STATUS_OPTIONS)[number])
@@ -145,6 +149,10 @@ export function ScanEditPage() {
       toast.error("Select a brand from the list (or leave empty)")
       return
     }
+    if (!isRegisteredDropdownValue(form.tag, tagOptions)) {
+      toast.error("Select a tag from the list (or leave empty)")
+      return
+    }
     if (!isFieldStaff) {
       if (!isRegisteredSupplierName(form.supplierName, supplierNameOptions)) {
         toast.error("Select a supplier from Manage Dropdown (or leave empty)")
@@ -167,7 +175,7 @@ export function ScanEditPage() {
         name: form.name.trim(),
         category: form.category.trim(),
         rack: form.rack.trim(),
-        tag: accountTag,
+        tag: form.tag.trim(),
         status: form.status,
         brand: form.brand.trim() || undefined,
         supplierName: isFieldStaff
@@ -251,8 +259,8 @@ export function ScanEditPage() {
                 {product.name}
               </CardTitle>
               <CardDescription>
-                Tag on save: <span className="font-mono font-semibold text-foreground">{accountTag}</span>{" "}
-                (tracks who edited)
+                Editor on save:{" "}
+                <span className="font-mono font-semibold text-foreground">{accountTag}</span>
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -333,6 +341,16 @@ export function ScanEditPage() {
                       onChange={(brand) => setForm({ ...form, brand })}
                       options={brandOptions}
                       placeholder="Select brand"
+                      triggerClassName={inputClass}
+                    />
+                  </div>
+                  <div className={fieldGroup}>
+                    <Label className={labelClass}>Tag</Label>
+                    <InventoryFieldSelect
+                      value={form.tag}
+                      onChange={(tag) => setForm({ ...form, tag })}
+                      options={tagOptions}
+                      placeholder="Select tag"
                       triggerClassName={inputClass}
                     />
                   </div>
