@@ -46,6 +46,8 @@ export function usePosSession(sessionId: string | null) {
           .map((d) => {
             const data = d.data() as Record<string, unknown>
             const mrpRaw = firestoreNumber(data.mrp, 0)
+            const stamped = data.updatedAt as { toMillis?: () => number } | undefined
+            const updatedAtMs = stamped?.toMillis?.() ?? d.updateTime?.toMillis?.() ?? 0
             return {
               itemDocId: d.id,
               barcode: String(data.barcode ?? d.id),
@@ -53,10 +55,11 @@ export function usePosSession(sessionId: string | null) {
               price: firestoreNumber(data.price, 0),
               quantity: liveSessionItemQuantity(data),
               discountPercent: clampDiscountPercent(firestoreNumber(data.discountPercent, 0)),
+              updatedAtMs,
               ...(mrpRaw > 0 ? { mrp: mrpRaw } : {}),
             } satisfies EditableLiveItem
           })
-          .sort((a, b) => a.name.localeCompare(b.name))
+          .sort((a, b) => (b.updatedAtMs ?? 0) - (a.updatedAtMs ?? 0) || a.name.localeCompare(b.name))
         setItems(next)
         setLoading(false)
       },

@@ -42,6 +42,7 @@ import {
   limit,
   Timestamp,
   increment,
+  serverTimestamp,
 } from "firebase/firestore"
 
 import { applyGlobalDashboardStatsIncrement } from "@/lib/features/dashboard/services/dashboard_aggregate_service"
@@ -1233,6 +1234,7 @@ export async function scanItemIntoSession(
       {
         quantity: increment(1),
         qty: increment(1),
+        updatedAt: serverTimestamp(),
       },
       {
         merge: true,
@@ -1319,6 +1321,7 @@ export async function scanItemIntoSession(
 
     quantity: 1,
     qty: 1,
+    updatedAt: serverTimestamp(),
   })
 
   return {

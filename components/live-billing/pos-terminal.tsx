@@ -271,6 +271,24 @@ export function PosTerminal({
     scanItem: offlineMode ? (_id, barcode, cache) => localCart.scanProduct(barcode, cache) : undefined,
   })
 
+  const displayItems = useMemo(() => {
+    const lastBarcode = scanner.lastScan?.barcode
+    return [...items].sort((a, b) => {
+      if (lastBarcode) {
+        const aLast = a.barcode === lastBarcode
+        const bLast = b.barcode === lastBarcode
+        if (aLast !== bLast) return aLast ? -1 : 1
+      }
+      return (b.updatedAtMs ?? 0) - (a.updatedAtMs ?? 0)
+    })
+  }, [items, scanner.lastScan?.barcode])
+
+  const currentItem = displayItems[0] ?? null
+
+  useEffect(() => {
+    if (scanner.flashKey > 0) setSelectedIndex(0)
+  }, [scanner.flashKey])
+
   const scannerFocusPaused =
     manualDialogOpen ||
     cameraScanOpen ||
@@ -972,21 +990,21 @@ export function PosTerminal({
       }
 
       if (view === "billing" && !inCustomerField && !inFormField) {
-        if (e.key === "Delete" && items.length > 0) {
+        if (e.key === "Delete" && displayItems.length > 0) {
           e.preventDefault()
-          const idx = selectedIndex >= 0 ? selectedIndex : items.length - 1
-          const item = items[idx]
+          const idx = selectedIndex >= 0 ? selectedIndex : 0
+          const item = displayItems[idx]
           if (item) void handleRemove(item)
           return
         }
 
-        if (e.key === "ArrowDown" && items.length > 0) {
+        if (e.key === "ArrowDown" && displayItems.length > 0) {
           e.preventDefault()
-          setSelectedIndex((i) => Math.min(items.length - 1, i < 0 ? 0 : i + 1))
+          setSelectedIndex((i) => Math.min(displayItems.length - 1, i < 0 ? 0 : i + 1))
           return
         }
 
-        if (e.key === "ArrowUp" && items.length > 0) {
+        if (e.key === "ArrowUp" && displayItems.length > 0) {
           e.preventDefault()
           setSelectedIndex((i) => Math.max(0, i < 0 ? 0 : i - 1))
         }
@@ -995,7 +1013,7 @@ export function PosTerminal({
 
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [focusScanInput, goFinalize, handleCancel, handleComplete, handleRemove, handleResetScan, items, manualDialogOpen, selectedIndex, view])
+  }, [displayItems, focusScanInput, goFinalize, handleCancel, handleComplete, handleRemove, handleResetScan, manualDialogOpen, selectedIndex, view])
 
   if (booting || !sessionId) {
     return (
@@ -1353,6 +1371,40 @@ export function PosTerminal({
                 <p className="text-sm">Scan barcode or use Add Other for manual items</p>
               </div>
             ) : (
+              <>
+              {currentItem ? (
+                <div
+                  key={`${currentItem.itemDocId}-${scanner.flashKey}`}
+                  className="mb-4 rounded-2xl border-2 border-primary bg-primary/10 p-5 shadow-md ring-2 ring-primary/25"
+                >
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Current item</p>
+                  <p className="mt-1 text-2xl font-extrabold leading-tight text-foreground md:text-3xl">
+                    {currentItem.name}
+                    {currentItem.barcode.startsWith("OTHER-") ? (
+                      <span className="ml-2 align-middle rounded bg-background/80 px-2 py-0.5 text-xs font-semibold uppercase text-muted-foreground">
+                        Other
+                      </span>
+                    ) : null}
+                  </p>
+                  <p className="mt-1 font-mono text-sm text-muted-foreground">{currentItem.barcode}</p>
+                  <div className="mt-4 flex flex-wrap items-end gap-x-6 gap-y-2">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase text-muted-foreground">Qty</p>
+                      <p className="text-3xl font-extrabold tabular-nums text-primary">{currentItem.quantity}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase text-muted-foreground">Rate</p>
+                      <p className="text-xl font-bold tabular-nums">{formatCurrency(currentItem.price)}</p>
+                    </div>
+                    <div className="ml-auto text-right">
+                      <p className="text-[11px] font-semibold uppercase text-muted-foreground">Amount</p>
+                      <p className="text-3xl font-extrabold tabular-nums text-foreground">
+                        {formatCurrency(lineItemAmount(currentItem.quantity, currentItem.price, currentItem.discountPercent))}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
               <table className="w-full text-left">
                 <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur">
                   <tr className="border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
@@ -1366,8 +1418,8 @@ export function PosTerminal({
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item, idx) => {
-                    const isLast = scanner.lastScan?.barcode === item.barcode
+                  {displayItems.map((item, idx) => {
+                    const isLast = currentItem?.itemDocId === item.itemDocId || scanner.lastScan?.barcode === item.barcode
                     const isSelected = idx === selectedIndex
                     const isEditing = editingItemId === item.itemDocId
                     const isUpdating = updatingItemId === item.itemDocId
@@ -1378,14 +1430,14 @@ export function PosTerminal({
                           "border-b border-border/60 transition-colors",
                           isSelected && !isEditing && "bg-muted/60",
                           isEditing && "bg-primary/5 ring-1 ring-primary/20",
-                          isLast && !isEditing && "animate-pulse bg-primary/5 ring-1 ring-primary/20",
+                          isLast && !isEditing && "bg-primary/10 ring-2 ring-primary/40",
                           scanner.flashKey > 0 && isLast && !isEditing && "duration-500"
                         )}
                         onClick={() => !isEditing && setSelectedIndex(idx)}
                       >
                         <td className="py-3 pl-1 text-sm tabular-nums text-muted-foreground">{idx + 1}</td>
                         <td className="py-3 pr-2">
-                          <p className="font-medium leading-snug text-foreground">
+                          <p className={cn("leading-snug text-foreground", isLast ? "text-lg font-extrabold" : "font-medium")}>
                             {item.name}
                             {item.barcode.startsWith("OTHER-") ? (
                               <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
@@ -1536,6 +1588,7 @@ export function PosTerminal({
                   })}
                 </tbody>
               </table>
+              </>
             )}
           </div>
 
@@ -1657,16 +1710,16 @@ export function PosTerminal({
             </div>
           ) : (
             <div className="flex-1 p-5">
-              {scanner.lastScan ? (
+              {currentItem ? (
                 <div
-                  key={scanner.flashKey}
-                  className="animate-in fade-in rounded-xl border border-primary/20 bg-primary/5 p-4 duration-200"
+                  key={`${currentItem.itemDocId}-${scanner.flashKey}`}
+                  className="animate-in fade-in rounded-2xl border-2 border-primary/40 bg-primary/10 p-5 duration-200"
                 >
-                  <p className="text-xs uppercase tracking-wide text-primary/80">Last Scan</p>
-                  <p className="mt-1 font-semibold leading-snug text-foreground">{scanner.lastScan.name}</p>
-                  <p className="mt-1 font-mono text-sm text-muted-foreground">{scanner.lastScan.barcode}</p>
-                  <p className="mt-2 text-lg font-bold tabular-nums text-primary">
-                    Qty {scanner.lastScan.quantity} × {formatCurrency(scanner.lastScan.price)}
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary">Current item</p>
+                  <p className="mt-1 text-xl font-extrabold leading-snug text-foreground">{currentItem.name}</p>
+                  <p className="mt-1 font-mono text-sm text-muted-foreground">{currentItem.barcode}</p>
+                  <p className="mt-3 text-2xl font-extrabold tabular-nums text-primary">
+                    Qty {currentItem.quantity} × {formatCurrency(currentItem.price)}
                   </p>
                 </div>
               ) : (

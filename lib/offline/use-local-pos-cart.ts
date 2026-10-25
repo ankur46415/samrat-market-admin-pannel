@@ -84,12 +84,12 @@ export function useLocalPosCart(active: boolean, sessionId: string | null) {
 
     let nextQty = 1
     setItems((prev) => {
+      const now = Date.now()
       const existing = prev.find((row) => row.barcode === resolvedBarcode || row.itemDocId === resolvedBarcode)
       if (existing) {
         nextQty = existing.quantity + 1
-        return prev.map((row) =>
-          row.itemDocId === existing.itemDocId ? { ...row, quantity: nextQty } : row
-        )
+        const current = { ...existing, quantity: nextQty, updatedAtMs: now }
+        return [current, ...prev.filter((row) => row.itemDocId !== existing.itemDocId)]
       }
       const line: EditableLiveItem = {
         itemDocId: resolvedBarcode.replace(/[/\\]/g, "_"),
@@ -98,9 +98,10 @@ export function useLocalPosCart(active: boolean, sessionId: string | null) {
         price,
         quantity: 1,
         discountPercent,
+        updatedAtMs: now,
         ...(mrp ? { mrp } : {}),
       }
-      return [...prev, line]
+      return [line, ...prev]
     })
     return {
       barcode: resolvedBarcode,
@@ -126,8 +127,9 @@ export function useLocalPosCart(active: boolean, sessionId: string | null) {
       price,
       quantity,
       discountPercent,
+      updatedAtMs: Date.now(),
     }
-    setItems((prev) => [...prev, line])
+    setItems((prev) => [line, ...prev])
     return {
       barcode,
       name,

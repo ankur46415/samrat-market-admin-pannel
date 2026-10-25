@@ -29,6 +29,7 @@ export type EditableLiveItem = {
   quantity: number
   discountPercent: number
   mrp?: number
+  updatedAtMs?: number
 }
 
 function formatCurrency(amount: number) {
