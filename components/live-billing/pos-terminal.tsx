@@ -58,6 +58,7 @@ import { cn } from "@/lib/utils"
 import {
   cancelLiveBillingSession,
   clearAdminScanSessionStorage,
+  commitScannedItemToSession,
   completeLiveBillingSession,
   forceNewScannerBillingSession,
   getOrCreateScannerBillingSession,
@@ -77,6 +78,7 @@ import { generateOfflineBillNo, generateOnlineBillNo } from "@/lib/features/sale
 import type { EditableLiveItem } from "@/components/live-billing/live-bill-items-editor"
 import { PosLineDiscountCell } from "@/components/live-billing/pos-line-discount-cell"
 import { PosManualItemDialog } from "@/components/live-billing/pos-manual-item-dialog"
+import { PosNotFoundDialog } from "@/components/live-billing/pos-not-found-dialog"
 import { CameraBarcodeScannerDialog } from "@/components/inventory/camera-barcode-scanner-dialog"
 import {
   discountedUnitPrice,
@@ -87,6 +89,7 @@ import {
 import type { ReceiptData } from "@/lib/printing/receipt-data"
 import { attachCatalogMrp } from "@/lib/printing/receipt-data"
 import { printReceiptInBrowser } from "@/lib/printing/receipt-html"
+import { playScanLocked, unlockScanAudio } from "@/lib/pos-scan-sounds"
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -198,6 +201,19 @@ export function PosTerminal({
   const [removingId, setRemovingId] = useState<string | null>(null)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [editingPrice, setEditingPrice] = useState("")
+  const [pending, setPending] = useState<{
+    barcode: string
+    name: string
+    price: number
+    quantity: number
+    discountPercent: number
+    mrp?: number
+  } | null>(null)
+  const [pendingEditing, setPendingEditing] = useState(false)
+  const [addingPending, setAddingPending] = useState(false)
+  const [notFoundAlert, setNotFoundAlert] = useState<string | null>(null)
+  const [addingNotFound, setAddingNotFound] = useState(false)
+  const [lastAddedBarcode, setLastAddedBarcode] = useState<string | null>(null)
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null)
   const [clock, setClock] = useState(() => new Date())
   const [pendingCustomerName, setPendingCustomerName] = useState(initialCustomerName?.trim() || "")
@@ -257,6 +273,8 @@ export function PosTerminal({
   const totals = offlineMode ? localCart.totals : liveTotals
   const isActive = offlineMode || sessionStatus === "active"
 
+  const scanLocked = Boolean(pending) || Boolean(notFoundAlert)
+
   const scanner = usePosScanner({
     sessionId,
     productCache: offlineMode ? productCache : undefined,
@@ -267,27 +285,46 @@ export function PosTerminal({
       !cameraScanOpen &&
       !phoneDialogOpen &&
       !printDialogOpen &&
-      !editingItemId,
-    scanItem: offlineMode ? (_id, barcode, cache) => localCart.scanProduct(barcode, cache) : undefined,
+      !editingItemId &&
+      !pendingEditing &&
+      !scanLocked,
+    locked: scanLocked,
+    lookupItem: offlineMode ? (barcode, cache) => localCart.previewProduct(barcode, cache) : undefined,
   })
 
   const displayItems = useMemo(() => {
-    const lastBarcode = scanner.lastScan?.barcode
     return [...items].sort((a, b) => {
-      if (lastBarcode) {
-        const aLast = a.barcode === lastBarcode
-        const bLast = b.barcode === lastBarcode
+      if (lastAddedBarcode) {
+        const aLast = a.barcode === lastAddedBarcode
+        const bLast = b.barcode === lastAddedBarcode
         if (aLast !== bLast) return aLast ? -1 : 1
       }
       return (b.updatedAtMs ?? 0) - (a.updatedAtMs ?? 0)
     })
-  }, [items, scanner.lastScan?.barcode])
+  }, [items, lastAddedBarcode])
 
   const currentItem = displayItems[0] ?? null
 
   useEffect(() => {
-    if (scanner.flashKey > 0) setSelectedIndex(0)
-  }, [scanner.flashKey])
+    if (scanner.flashKey <= 0 || !scanner.lastScan) return
+    setPending({
+      barcode: scanner.lastScan.barcode,
+      name: scanner.lastScan.name,
+      price: scanner.lastScan.price,
+      quantity: scanner.lastScan.quantity || 1,
+      discountPercent: scanner.lastScan.discountPercent ?? 0,
+      ...(scanner.lastScan.mrp && scanner.lastScan.mrp > 0 ? { mrp: scanner.lastScan.mrp } : {}),
+    })
+    setPendingEditing(false)
+    setSelectedIndex(0)
+    scanner.inputRef.current?.blur()
+  }, [scanner.flashKey, scanner.lastScan, scanner.inputRef])
+
+  useEffect(() => {
+    if (scanner.notFoundKey <= 0 || !scanner.notFoundBarcode) return
+    setNotFoundAlert(scanner.notFoundBarcode)
+    scanner.inputRef.current?.blur()
+  }, [scanner.notFoundKey, scanner.notFoundBarcode, scanner.inputRef])
 
   const scannerFocusPaused =
     manualDialogOpen ||
@@ -295,6 +332,8 @@ export function PosTerminal({
     phoneDialogOpen ||
     printDialogOpen ||
     editingItemId != null ||
+    pendingEditing ||
+    scanLocked ||
     view !== "billing" ||
     itemsLoading ||
     booting
@@ -304,6 +343,78 @@ export function PosTerminal({
       scanner.focusInput()
     }
   }, [isActive, scanner, scannerFocusPaused])
+
+  const dismissPending = useCallback(() => {
+    setPending(null)
+    setPendingEditing(false)
+    scanner.clearLastScan()
+    scanner.focusInput()
+  }, [scanner])
+
+  const dismissNotFound = useCallback(() => {
+    setNotFoundAlert(null)
+    setAddingNotFound(false)
+    scanner.clearNotFound()
+    scanner.focusInput()
+  }, [scanner])
+
+  const addNotFoundToList = useCallback(
+    async (input: { name: string; quantity: number; price: number }) => {
+      if (!sessionId || !notFoundAlert || addingNotFound) return
+      setAddingNotFound(true)
+      try {
+        const line = {
+          barcode: notFoundAlert,
+          name: input.name,
+          quantity: input.quantity,
+          price: input.price,
+          discountPercent: 0,
+        }
+        if (offlineMode) await localCart.commitPending(line)
+        else await commitScannedItemToSession(sessionId, line)
+        setLastAddedBarcode(notFoundAlert)
+        setSelectedIndex(0)
+        toast.success(`Added ${input.name}`)
+        setNotFoundAlert(null)
+        scanner.clearNotFound()
+        scanner.focusInput()
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not add this item")
+      } finally {
+        setAddingNotFound(false)
+      }
+    },
+    [addingNotFound, localCart, notFoundAlert, offlineMode, scanner, sessionId]
+  )
+
+  const commitPending = useCallback(async () => {
+    if (!pending || !sessionId || addingPending) return
+    const name = pending.name.trim()
+    if (!name) {
+      toast.error("Enter a product name")
+      return
+    }
+    if (!Number.isFinite(pending.price) || pending.price < 0) {
+      toast.error("Enter a valid price")
+      return
+    }
+    setAddingPending(true)
+    try {
+      if (offlineMode) await localCart.commitPending(pending)
+      else await commitScannedItemToSession(sessionId, pending)
+      setLastAddedBarcode(pending.barcode)
+      setPending(null)
+      setPendingEditing(false)
+      scanner.clearLastScan()
+      setSelectedIndex(0)
+      toast.success(`Added ${name}`)
+      scanner.focusInput()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not add this item")
+    } finally {
+      setAddingPending(false)
+    }
+  }, [addingPending, localCart, offlineMode, pending, scanner, sessionId])
 
   const scannerFocusRef = useRef(scanner.focusInput)
   scannerFocusRef.current = scanner.focusInput
@@ -561,6 +672,66 @@ export function PosTerminal({
   }, [])
 
   useEffect(() => {
+    const unlock = () => unlockScanAudio()
+    window.addEventListener("pointerdown", unlock, { once: true })
+    window.addEventListener("keydown", unlock, { once: true })
+    return () => {
+      window.removeEventListener("pointerdown", unlock)
+      window.removeEventListener("keydown", unlock)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!scanLocked || view !== "billing") return
+    let burst = 0
+    let burstTimer: number | null = null
+    let warned = false
+
+    const warnLocked = () => {
+      if (warned) return
+      warned = true
+      playScanLocked()
+      toast.warning("Add or Remove this item before scanning the next")
+      window.setTimeout(() => {
+        warned = false
+      }, 1600)
+    }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement
+      if (target.closest('[role="dialog"]')) return
+      if (target.closest("[data-pending-card]")) return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+
+      const isChar = e.key.length === 1 && /[\dA-Za-z]/.test(e.key)
+      if (isChar) {
+        e.preventDefault()
+        e.stopPropagation()
+        burst += 1
+        if (burstTimer) window.clearTimeout(burstTimer)
+        burstTimer = window.setTimeout(() => {
+          burst = 0
+        }, 200)
+        if (burst >= 4) warnLocked()
+        return
+      }
+
+      if (e.key === "Enter" && burst >= 3) {
+        e.preventDefault()
+        e.stopPropagation()
+        burst = 0
+        warnLocked()
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown, true)
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true)
+      if (burstTimer) window.clearTimeout(burstTimer)
+    }
+  }, [scanLocked, view])
+
+  useEffect(() => {
     if (offlineMode) setOfflineBillNo(generateOfflineBillNo())
   }, [offlineMode, sessionId])
 
@@ -670,6 +841,11 @@ export function PosTerminal({
       scanner.recoverScanner()
       setEditingItemId(null)
       setSelectedIndex(-1)
+      setPending(null)
+      setPendingEditing(false)
+      setNotFoundAlert(null)
+      setAddingNotFound(false)
+      setLastAddedBarcode(null)
 
       if (!isActive) {
         if (offlineMode) {
@@ -989,6 +1165,16 @@ export function PosTerminal({
         return
       }
 
+      if (view === "billing" && pending && e.key === "Enter") {
+        const inPendingCard = Boolean(target.closest("[data-pending-card]"))
+        const scanEmpty = !(scanner.scanFieldValue ?? "").trim()
+        if (inPendingCard || (!inFormField && scanEmpty) || (inFormField && scanEmpty)) {
+          e.preventDefault()
+          void commitPending()
+          return
+        }
+      }
+
       if (view === "billing" && !inCustomerField && !inFormField) {
         if (e.key === "Delete" && displayItems.length > 0) {
           e.preventDefault()
@@ -1013,7 +1199,7 @@ export function PosTerminal({
 
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [displayItems, focusScanInput, goFinalize, handleCancel, handleComplete, handleRemove, handleResetScan, manualDialogOpen, selectedIndex, view])
+  }, [commitPending, displayItems, focusScanInput, goFinalize, handleCancel, handleComplete, handleRemove, handleResetScan, manualDialogOpen, pending, scanner.scanFieldValue, selectedIndex, view])
 
   if (booting || !sessionId) {
     return (
@@ -1271,7 +1457,12 @@ export function PosTerminal({
                 <form
                   onSubmit={(e) => {
                     e.preventDefault()
-                    scanner.submitScan()
+                    if (pending) {
+                      void commitPending()
+                      return
+                    }
+                    const value = scanner.scanFieldValue.trim()
+                    if (value) scanner.submitScan(value)
                   }}
                   className="relative min-w-0 flex-1"
                 >
@@ -1281,28 +1472,49 @@ export function PosTerminal({
                     value={scanner.scanFieldValue}
                     onChange={(e) => scanner.setScanFieldValue(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault()
-                        scanner.submitScan(e.currentTarget.value)
+                      if (e.key !== "Enter") return
+                      e.preventDefault()
+                      e.stopPropagation()
+                      if (pending) {
+                        void commitPending()
+                        return
                       }
+                      const value = e.currentTarget.value.trim()
+                      if (value) scanner.submitScan(value)
                     }}
-                    readOnly={scanner.isProcessing}
-                    disabled={!isActive}
+                    readOnly={scanner.isProcessing || scanLocked}
+                    disabled={!isActive || scanLocked}
                     autoComplete="off"
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck={false}
-                    placeholder="Scan gun, type barcode, or use Camera scan on mobile…"
-                    className="h-12 w-full rounded-lg border-2 border-primary/30 bg-background pl-12 pr-4 font-mono text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder={
+                      notFoundAlert
+                        ? "Dismiss the item-not-found alert to scan again"
+                        : scanLocked
+                          ? "Add or Remove this item first — scan is locked"
+                          : "Scan gun, type barcode, or use Camera scan on mobile…"
+                    }
+                    className={cn(
+                      "h-12 w-full rounded-lg border-2 bg-background pl-12 pr-4 font-mono text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2",
+                      scanner.statusTone === "error"
+                        ? "border-destructive focus:border-destructive focus:ring-destructive/25"
+                        : "border-primary/30 focus:border-primary focus:ring-primary/20",
+                      scanLocked && "cursor-not-allowed opacity-60"
+                    )}
                   />
                 </form>
                 <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <Button
                     type="button"
                     variant="default"
-                    disabled={!isActive || scanner.isProcessing}
+                    disabled={!isActive || scanner.isProcessing || scanLocked}
                     className="h-12 gap-2 px-4 sm:h-11"
-                    title="Use phone camera when barcode gun is unavailable"
+                    title={
+                      scanLocked
+                        ? "Add or Remove the current item before scanning another"
+                        : "Use phone camera when barcode gun is unavailable"
+                    }
                     onClick={() => setCameraScanOpen(true)}
                   >
                     <Camera className="h-5 w-5" />
@@ -1342,9 +1554,11 @@ export function PosTerminal({
                   {scanner.statusMessage}
                 </p>
                 <p className="w-full text-xs text-muted-foreground sm:w-auto">
-                  On mobile, open this page in the browser and tap{" "}
-                  <span className="font-medium text-foreground">Camera scan</span> — HTTPS required for
-                  camera access.
+                  {notFoundAlert
+                    ? "Scan is locked until you dismiss the item-not-found alert."
+                    : scanLocked
+                      ? "Scan gun and camera are locked until you Add or Remove this card."
+                      : "On mobile, open this page in the browser and tap Camera scan — HTTPS required for camera access."}
                 </p>
                 {scanner.statusTone === "error" && scanner.lastFailedBarcode ? (
                   <Link
@@ -1364,47 +1578,119 @@ export function PosTerminal({
               <div className="flex h-40 items-center justify-center text-muted-foreground">
                 <Loader2 className="mr-2 h-6 w-6 animate-spin" /> Loading cart…
               </div>
-            ) : items.length === 0 ? (
+            ) : items.length === 0 && !pending ? (
               <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-3 text-muted-foreground">
                 <ScanBarcode className="h-12 w-12 opacity-40" />
                 <p className="text-lg font-medium text-foreground">No items scanned</p>
-                <p className="text-sm">Scan barcode or use Add Other for manual items</p>
+                <p className="text-sm">Scan barcode, then press Enter to add — or use Add Other</p>
               </div>
             ) : (
               <>
-              {currentItem ? (
+              {pending ? (
                 <div
-                  key={`${currentItem.itemDocId}-${scanner.flashKey}`}
+                  data-pending-card
+                  key={`${pending.barcode}-${scanner.flashKey}`}
                   className="mb-4 rounded-2xl border-2 border-primary bg-primary/10 p-5 shadow-md ring-2 ring-primary/25"
                 >
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Current item</p>
-                  <p className="mt-1 text-2xl font-extrabold leading-tight text-foreground md:text-3xl">
-                    {currentItem.name}
-                    {currentItem.barcode.startsWith("OTHER-") ? (
-                      <span className="ml-2 align-middle rounded bg-background/80 px-2 py-0.5 text-xs font-semibold uppercase text-muted-foreground">
-                        Other
-                      </span>
-                    ) : null}
-                  </p>
-                  <p className="mt-1 font-mono text-sm text-muted-foreground">{currentItem.barcode}</p>
-                  <div className="mt-4 flex flex-wrap items-end gap-x-6 gap-y-2">
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase text-muted-foreground">Qty</p>
-                      <p className="text-3xl font-extrabold tabular-nums text-primary">{currentItem.quantity}</p>
+                  {pendingEditing ? (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                      <label className="sm:col-span-3">
+                        <span className="text-[11px] font-semibold uppercase text-muted-foreground">Name</span>
+                        <Input
+                          value={pending.name}
+                          autoFocus
+                          onChange={(e) => setPending({ ...pending, name: e.target.value })}
+                          onKeyDown={(e) => {
+                            if (e.key !== "Enter") return
+                            e.preventDefault()
+                            e.stopPropagation()
+                            void commitPending()
+                          }}
+                          className="mt-1 h-11 text-lg font-bold"
+                        />
+                      </label>
+                      <label>
+                        <span className="text-[11px] font-semibold uppercase text-muted-foreground">Qty</span>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={pending.quantity}
+                          onChange={(e) => setPending({ ...pending, quantity: Math.max(1, Math.floor(Number(e.target.value) || 1)) })}
+                          onKeyDown={(e) => {
+                            if (e.key !== "Enter") return
+                            e.preventDefault()
+                            e.stopPropagation()
+                            void commitPending()
+                          }}
+                          className="mt-1 h-11 font-bold tabular-nums"
+                        />
+                      </label>
+                      <label>
+                        <span className="text-[11px] font-semibold uppercase text-muted-foreground">Rate</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={pending.price}
+                          onChange={(e) => setPending({ ...pending, price: Number(e.target.value) })}
+                          onKeyDown={(e) => {
+                            if (e.key !== "Enter") return
+                            e.preventDefault()
+                            e.stopPropagation()
+                            void commitPending()
+                          }}
+                          className="mt-1 h-11 font-bold tabular-nums"
+                        />
+                      </label>
+                      <div>
+                        <span className="text-[11px] font-semibold uppercase text-muted-foreground">Amount</span>
+                        <p className="mt-2 text-2xl font-extrabold tabular-nums">
+                          {formatCurrency(lineItemAmount(pending.quantity, pending.price, pending.discountPercent))}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase text-muted-foreground">Rate</p>
-                      <p className="text-xl font-bold tabular-nums">{formatCurrency(currentItem.price)}</p>
-                    </div>
-                    <div className="ml-auto text-right">
-                      <p className="text-[11px] font-semibold uppercase text-muted-foreground">Amount</p>
-                      <p className="text-3xl font-extrabold tabular-nums text-foreground">
-                        {formatCurrency(lineItemAmount(currentItem.quantity, currentItem.price, currentItem.discountPercent))}
+                  ) : (
+                    <>
+                      <p className="mt-1 text-2xl font-extrabold leading-tight text-foreground md:text-3xl">
+                        {pending.name}
                       </p>
-                    </div>
+                      <p className="mt-1 font-mono text-sm text-muted-foreground">{pending.barcode}</p>
+                      <div className="mt-4 flex flex-wrap items-end gap-x-6 gap-y-2">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase text-muted-foreground">Qty</p>
+                          <p className="text-3xl font-extrabold tabular-nums text-primary">{pending.quantity}</p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase text-muted-foreground">Rate</p>
+                          <p className="text-xl font-bold tabular-nums">{formatCurrency(pending.price)}</p>
+                        </div>
+                        <div className="ml-auto text-right">
+                          <p className="text-[11px] font-semibold uppercase text-muted-foreground">Amount</p>
+                          <p className="text-3xl font-extrabold tabular-nums text-foreground">
+                            {formatCurrency(lineItemAmount(pending.quantity, pending.price, pending.discountPercent))}
+                          </p>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    Press Enter or Add. Scan stays locked until you add or remove this item.
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button type="button" className="h-11 min-w-[7rem] font-bold" disabled={addingPending} onClick={() => void commitPending()}>
+                      {addingPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      Add
+                    </Button>
+                    <Button type="button" variant="outline" className="h-11 min-w-[7rem] font-semibold" disabled={addingPending} onClick={() => setPendingEditing((on) => !on)}>
+                      {pendingEditing ? "Done" : "Edit"}
+                    </Button>
+                    <Button type="button" variant="destructive" className="h-11 min-w-[7rem] font-semibold" disabled={addingPending} onClick={dismissPending}>
+                      Remove
+                    </Button>
                   </div>
                 </div>
               ) : null}
+              {items.length === 0 ? null : (
               <table className="w-full text-left">
                 <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur">
                   <tr className="border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
@@ -1419,7 +1705,7 @@ export function PosTerminal({
                 </thead>
                 <tbody>
                   {displayItems.map((item, idx) => {
-                    const isLast = currentItem?.itemDocId === item.itemDocId || scanner.lastScan?.barcode === item.barcode
+                    const isLast = Boolean(lastAddedBarcode) && item.barcode === lastAddedBarcode
                     const isSelected = idx === selectedIndex
                     const isEditing = editingItemId === item.itemDocId
                     const isUpdating = updatingItemId === item.itemDocId
@@ -1588,6 +1874,7 @@ export function PosTerminal({
                   })}
                 </tbody>
               </table>
+              )}
               </>
             )}
           </div>
@@ -1620,7 +1907,7 @@ export function PosTerminal({
           </div>
         </div>
 
-        {/* Right totals panel */}
+        {view === "finalize" || items.length > 0 ? (
         <aside className="flex w-full shrink-0 flex-col border-t border-border/60 bg-muted/10 lg:w-[340px] lg:border-l lg:border-t-0 xl:w-[380px]">
           <div className="border-b border-border/60 p-5">
             <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Grand Total</p>
@@ -1710,22 +1997,16 @@ export function PosTerminal({
             </div>
           ) : (
             <div className="flex-1 p-5">
-              {currentItem ? (
-                <div
-                  key={`${currentItem.itemDocId}-${scanner.flashKey}`}
-                  className="animate-in fade-in rounded-2xl border-2 border-primary/40 bg-primary/10 p-5 duration-200"
-                >
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary">Current item</p>
-                  <p className="mt-1 text-xl font-extrabold leading-snug text-foreground">{currentItem.name}</p>
-                  <p className="mt-1 font-mono text-sm text-muted-foreground">{currentItem.barcode}</p>
-                  <p className="mt-3 text-2xl font-extrabold tabular-nums text-primary">
-                    Qty {currentItem.quantity} × {formatCurrency(currentItem.price)}
+              {currentItem && lastAddedBarcode ? (
+                <div className="rounded-xl border border-border/70 bg-background p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Last added</p>
+                  <p className="mt-1 font-semibold leading-snug text-foreground">{currentItem.name}</p>
+                  <p className="mt-1 text-sm tabular-nums text-muted-foreground">
+                    Qty {currentItem.quantity} · {formatCurrency(lineItemAmount(currentItem.quantity, currentItem.price, currentItem.discountPercent))}
                   </p>
                 </div>
               ) : (
-                <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-                  Last scanned product appears here
-                </div>
+                <p className="text-sm text-muted-foreground">Approved items and totals appear here.</p>
               )}
             </div>
           )}
@@ -1785,7 +2066,16 @@ export function PosTerminal({
             )}
           </div>
         </aside>
+        ) : null}
       </div>
+
+      <PosNotFoundDialog
+        open={Boolean(notFoundAlert)}
+        barcode={notFoundAlert}
+        adding={addingNotFound}
+        onDismiss={dismissNotFound}
+        onAddToList={addNotFoundToList}
+      />
 
       <CameraBarcodeScannerDialog
         open={cameraScanOpen}
@@ -1796,6 +2086,12 @@ export function PosTerminal({
         title="Scan products for bill"
         toastOnScan={false}
         onScan={(code) => {
+          if (scanLocked) {
+            playScanLocked()
+            toast.warning("Add or Remove this item before scanning the next")
+            setCameraScanOpen(false)
+            return
+          }
           scanner.submitScan(code)
           setCameraScanOpen(false)
           focusScanInput()

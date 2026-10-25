@@ -1341,6 +1341,86 @@ export async function scanItemIntoSession(
   }
 }
 
+export type PendingScanLine = {
+  barcode: string
+  name: string
+  price: number
+  quantity: number
+  discountPercent?: number
+  mrp?: number
+}
+
+/** Add a previewed scan to the bill. Edits apply to this bill line only, not inventory. */
+export async function commitScannedItemToSession(
+  sessionId: string,
+  input: PendingScanLine
+): Promise<LiveBillingLineItem> {
+  const barcode = normalizeScannedBarcode(input.barcode) || input.barcode.trim()
+  const name = input.name.trim()
+  if (!barcode) throw new Error("Barcode is required")
+  if (!name) throw new Error("Product name is required")
+
+  const addQty = Math.max(1, Math.floor(Number(input.quantity) || 1))
+  const price = Math.max(0, Number(input.price))
+  if (!Number.isFinite(price)) throw new Error("Enter a valid price")
+  const discountPercent = clampDiscountPercent(input.discountPercent ?? 0)
+  const mrp = input.mrp && input.mrp > 0 ? input.mrp : undefined
+
+  const existingRef = await findSessionItemRef(sessionId, barcode)
+  const payload = {
+    barcode,
+    name,
+    price,
+    discountPercent,
+    updatedAt: serverTimestamp(),
+    ...(mrp ? { mrp } : {}),
+  }
+
+  if (existingRef) {
+    await setDoc(
+      existingRef,
+      {
+        ...payload,
+        quantity: increment(addQty),
+        qty: increment(addQty),
+      },
+      { merge: true }
+    )
+    let updatedSnap
+    try {
+      updatedSnap = await getDocFromServer(existingRef)
+    } catch {
+      updatedSnap = await getDoc(existingRef)
+    }
+    const data = (updatedSnap.data() ?? {}) as Record<string, unknown>
+    const qty = liveSessionItemQuantity(data)
+    return {
+      barcode,
+      name,
+      price,
+      quantity: qty > 0 ? qty : addQty,
+      discountPercent,
+      ...(mrp ? { mrp } : {}),
+    }
+  }
+
+  const itemRef = doc(db, col("live_sessions"), sessionId, "items", toSessionItemDocId(barcode))
+  await setDoc(itemRef, {
+    ...payload,
+    quantity: addQty,
+    qty: addQty,
+  })
+
+  return {
+    barcode,
+    name,
+    price,
+    quantity: addQty,
+    discountPercent,
+    ...(mrp ? { mrp } : {}),
+  }
+}
+
 export function toSessionItemDocId(
   barcode: string
 ): string {

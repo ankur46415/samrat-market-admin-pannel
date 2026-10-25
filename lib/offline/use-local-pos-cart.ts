@@ -62,6 +62,85 @@ export function useLocalPosCart(active: boolean, sessionId: string | null) {
     }
   }, [active, items, loading, sessionId])
 
+  const previewProduct = useCallback(async (barcode: string, productCache: BarcodeProductRef[]) => {
+    const cleaned = normalizeScannedBarcode(barcode)
+    let product = findCachedProductByBarcode(productCache, cleaned)
+    if (!product) {
+      product = await lookupProductFromIdb(cleaned)
+    }
+    if (!product) {
+      throw new Error(`Product not found for barcode: ${cleaned || barcode.trim()}`)
+    }
+    const billed = billingLineFromCatalog({
+      price: product.price,
+      mrp: product.mrp,
+      discountPercent: product.discountPercent,
+    })
+    return {
+      barcode: normalizeScannedBarcode(product.barcode ?? "") || product.id,
+      name: product.name,
+      price: billed.price,
+      quantity: 1,
+      discountPercent: billed.discountPercent,
+      ...(billed.mrp ? { mrp: billed.mrp } : {}),
+    } satisfies LiveBillingLineItem
+  }, [])
+
+  const commitPending = useCallback(async (input: {
+    barcode: string
+    name: string
+    price: number
+    quantity: number
+    discountPercent?: number
+    mrp?: number
+  }) => {
+    const resolvedBarcode = normalizeScannedBarcode(input.barcode) || input.barcode.trim()
+    const name = input.name.trim()
+    if (!resolvedBarcode) throw new Error("Barcode is required")
+    if (!name) throw new Error("Product name is required")
+    const addQty = Math.max(1, Math.floor(Number(input.quantity) || 1))
+    const price = Math.max(0, Number(input.price))
+    const discountPercent = clampDiscountPercent(input.discountPercent ?? 0)
+    const mrp = input.mrp && input.mrp > 0 ? input.mrp : undefined
+    let nextQty = addQty
+    setItems((prev) => {
+      const now = Date.now()
+      const existing = prev.find((row) => row.barcode === resolvedBarcode || row.itemDocId === resolvedBarcode)
+      if (existing) {
+        nextQty = existing.quantity + addQty
+        const current = {
+          ...existing,
+          name,
+          price,
+          quantity: nextQty,
+          discountPercent,
+          updatedAtMs: now,
+          ...(mrp ? { mrp } : {}),
+        }
+        return [current, ...prev.filter((row) => row.itemDocId !== existing.itemDocId)]
+      }
+      const line: EditableLiveItem = {
+        itemDocId: resolvedBarcode.replace(/[/\\]/g, "_"),
+        barcode: resolvedBarcode,
+        name,
+        price,
+        quantity: addQty,
+        discountPercent,
+        updatedAtMs: now,
+        ...(mrp ? { mrp } : {}),
+      }
+      return [line, ...prev]
+    })
+    return {
+      barcode: resolvedBarcode,
+      name,
+      price,
+      quantity: nextQty,
+      discountPercent,
+      ...(mrp ? { mrp } : {}),
+    } satisfies LiveBillingLineItem
+  }, [])
+
   const scanProduct = useCallback(async (barcode: string, productCache: BarcodeProductRef[]) => {
     const cleaned = normalizeScannedBarcode(barcode)
     let product = findCachedProductByBarcode(productCache, cleaned)
@@ -193,6 +272,8 @@ export function useLocalPosCart(active: boolean, sessionId: string | null) {
     loading,
     totals,
     lineItems: toLineItems(items),
+    previewProduct,
+    commitPending,
     scanProduct,
     addManual,
     removeItem,
