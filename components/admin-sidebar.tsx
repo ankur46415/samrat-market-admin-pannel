@@ -20,6 +20,7 @@ import {
   ListTree,
   ScanBarcode,
   Inbox,
+  IndianRupee,
 } from "lucide-react"
 import Image from "next/image"
 import {
@@ -311,6 +312,21 @@ export function AdminSidebar() {
       <SidebarFooter className="border-t border-sidebar-border">
         {user?.role === "admin" && <AccountModeSwitcher />}
         <SidebarMenu>
+          {canAccessPath(session, "/inventory/missing-cost") ? (
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                size="sm"
+                isActive={pathname === "/inventory/missing-cost"}
+                className="text-amber-700 dark:text-amber-400"
+              >
+                <Link href="/inventory/missing-cost">
+                  <IndianRupee className="h-4 w-4" />
+                  <span>Missing cost price</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ) : null}
           <SidebarMenuItem>
             <SidebarMenuButton
               size="sm"

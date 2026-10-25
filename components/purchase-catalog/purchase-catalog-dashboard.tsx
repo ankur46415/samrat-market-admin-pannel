@@ -60,6 +60,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import type { CatalogSyncStatus } from "@/hooks/use-purchase-catalog"
+import { downloadCatalogGroupPdf } from "@/lib/features/purchase-catalog/pdf-export"
 
 function jsonPickString(rec: Record<string, unknown>, keys: string[]): string {
   for (const key of keys) {

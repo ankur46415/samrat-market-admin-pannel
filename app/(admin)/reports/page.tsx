@@ -27,6 +27,7 @@ import {
 import { generatePdfReport } from "@/lib/pdf-generator"
 import { saleMatchesPhoneFilter, salePhone } from "@/lib/sales-filter"
 import { isLowStockProduct } from "@/lib/stock"
+import { salesGrossProfit } from "@/lib/sales/sale-profit"
 import { chartFillAt } from "@/lib/chart-colors"
 
 import { DateRange } from "react-day-picker"
@@ -62,14 +63,7 @@ export default function ReportsPage() {
 
   const stats = useMemo(() => {
     const totalRevenue = filteredSales.reduce((sum, s) => sum + s.total, 0)
-    const totalProfit = filteredSales.reduce((sum, s) => {
-      const saleProfit = s.items.reduce((itemSum, item) => {
-        const product = products.find((p) => p.id === item.productId)
-        const cost = product ? product.costPrice * item.quantity : 0
-        return itemSum + (item.total - cost)
-      }, 0)
-      return sum + saleProfit
-    }, 0)
+    const totalProfit = salesGrossProfit(filteredSales, products)
 
     const paymentBreakdown = filteredSales.reduce((acc, sale) => {
       acc[sale.paymentMethod] = (acc[sale.paymentMethod] || 0) + sale.total

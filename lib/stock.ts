@@ -81,6 +81,12 @@ export function minStockThresholdFromFirestore(data: Record<string, unknown>): n
 }
 
 /** Same rule everywhere: low when stock is not above min threshold (stock <= minStock). */
+/** Cost not set or zero — profit uses default margin until filled. */
+export function isMissingProductCost(product: { costPrice?: number }): boolean {
+  const n = Number(product.costPrice)
+  return !Number.isFinite(n) || n <= 0
+}
+
 export function isLowStockProduct(product: { stock: number; minStock: number }): boolean {
   return product.stock <= product.minStock
 }
