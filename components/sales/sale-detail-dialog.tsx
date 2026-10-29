@@ -2,6 +2,7 @@
 
 import { format } from "date-fns"
 import { Pencil, Printer } from "lucide-react"
+import { ShareBillWhatsAppButton } from "@/components/sales/share-bill-whatsapp-button"
 import {
   Dialog,
   DialogContent,
@@ -224,6 +225,7 @@ export function SaleDetailDialog({ open, onOpenChange, sale, onEdit }: SaleDetai
                 Edit bill
               </Button>
             ) : null}
+            <ShareBillWhatsAppButton sale={sale} />
             <Button variant="outline" onClick={handlePrint}>
               <Printer className="mr-2 h-4 w-4" />
               Print

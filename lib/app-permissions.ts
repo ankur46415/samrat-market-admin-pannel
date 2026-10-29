@@ -8,6 +8,7 @@ export const APP_PERMISSIONS = [
   { id: "draft-catalog", label: "Inventory → Draft Catalog", pathPrefix: "/inventory/draft-catalog" },
   { id: "generate-bill", label: "Generate Bill", pathPrefix: "/generate-bill" },
   { id: "customers", label: "Customers", pathPrefix: "/customers" },
+  { id: "messaging", label: "Messaging", pathPrefix: "/messaging" },
   { id: "sales", label: "Sales", pathPrefix: "/sales" },
   { id: "reports", label: "Reports", pathPrefix: "/reports" },
 ] as const

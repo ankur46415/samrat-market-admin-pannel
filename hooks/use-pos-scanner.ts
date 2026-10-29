@@ -38,6 +38,7 @@ export function usePosScanner({
   const sessionIdRef = useRef(sessionId)
   const enabledRef = useRef(enabled)
   const lockedRef = useRef(locked)
+  const holdFocusRef = useRef(false)
 
   productCacheRef.current = productCache ?? []
   sessionIdRef.current = sessionId
@@ -66,9 +67,19 @@ export function usePosScanner({
     if (inputRef.current) inputRef.current.value = barcode
   }, [])
 
+  const holdFocus = useCallback(() => {
+    holdFocusRef.current = true
+  }, [])
+
+  const releaseFocus = useCallback(() => {
+    holdFocusRef.current = false
+  }, [])
+
   const focusInput = useCallback(() => {
-    if (!enabledRef.current) return
+    if (!enabledRef.current || holdFocusRef.current) return
     requestAnimationFrame(() => {
+      if (!enabledRef.current || holdFocusRef.current) return
+      if (document.querySelector('[data-slot="dialog-content"]')) return
       const input = inputRef.current
       if (!input || input.disabled) return
       input.focus()
@@ -206,8 +217,10 @@ export function usePosScanner({
     if (!enabled) return
 
     const refocusIfNeeded = () => {
+      if (holdFocusRef.current) return
       const active = document.activeElement
       if (active?.closest('[role="dialog"]')) return
+      if (document.querySelector('[data-slot="dialog-content"]')) return
       if (active === inputRef.current) return
       if (active?.tagName === "INPUT" || active?.tagName === "TEXTAREA" || active?.tagName === "SELECT") {
         return
@@ -233,6 +246,8 @@ export function usePosScanner({
     setScanFieldValue,
     submitScan,
     focusInput,
+    holdFocus,
+    releaseFocus,
     recoverScanner,
     isProcessing,
     statusMessage,

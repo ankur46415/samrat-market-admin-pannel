@@ -250,7 +250,7 @@ export default function TodaySalesPage() {
                     <TableHead>Items</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                     <TableHead>Payment</TableHead>
-                    <TableHead className="sticky right-0 z-10 min-w-[168px] bg-background text-right">
+                    <TableHead className="sticky right-0 z-10 min-w-[240px] bg-background text-right">
                       Actions
                     </TableHead>
                   </TableRow>
@@ -294,6 +294,7 @@ export default function TodaySalesPage() {
                         onClick={(e) => e.stopPropagation()}
                       >
                         <SaleBillActions
+                          sale={sale}
                           onView={() => handleViewSale(sale)}
                           onEdit={() => handleEditSale(sale)}
                         />

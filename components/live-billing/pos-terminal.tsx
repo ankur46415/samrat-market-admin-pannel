@@ -8,6 +8,7 @@ import {
   Camera,
   Check,
   CheckCircle2,
+  Calculator,
   Clock,
   CloudOff,
   Keyboard,
@@ -89,6 +90,7 @@ import {
 import type { ReceiptData } from "@/lib/printing/receipt-data"
 import { attachCatalogMrp } from "@/lib/printing/receipt-data"
 import { printReceiptInBrowser } from "@/lib/printing/receipt-html"
+import { billPhoneLinked, shareBillOnWhatsApp } from "@/lib/printing/bill-whatsapp"
 import { playScanLocked, unlockScanAudio } from "@/lib/pos-scan-sounds"
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -106,6 +108,23 @@ function formatCurrency(amount: number) {
     currency: "INR",
     maximumFractionDigits: 0,
   }).format(amount)
+}
+
+function formatChangeAmount(amount: number) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(amount)
+}
+
+function parseMoneyInput(value: string): number | null {
+  const trimmed = value.replace(/,/g, "").trim()
+  if (!trimmed) return null
+  const n = Number(trimmed)
+  if (!Number.isFinite(n) || n < 0) return null
+  return Math.round(n * 100) / 100
 }
 
 function formatClock(date: Date) {
@@ -222,6 +241,9 @@ export function PosTerminal({
   const [cameraScanOpen, setCameraScanOpen] = useState(false)
   const [phoneDialogOpen, setPhoneDialogOpen] = useState(false)
   const [printDialogOpen, setPrintDialogOpen] = useState(false)
+  const [calcDialogOpen, setCalcDialogOpen] = useState(false)
+  const [calcTotalDraft, setCalcTotalDraft] = useState("")
+  const [calcReceivedDraft, setCalcReceivedDraft] = useState("")
   const [printPhoneDraft, setPrintPhoneDraft] = useState("")
   const [printNameDraft, setPrintNameDraft] = useState("")
   const [printPaymentType, setPrintPaymentType] = useState<"cash" | "online">("cash")
@@ -285,6 +307,7 @@ export function PosTerminal({
       !cameraScanOpen &&
       !phoneDialogOpen &&
       !printDialogOpen &&
+      !calcDialogOpen &&
       !editingItemId &&
       !pendingEditing &&
       !scanLocked,
@@ -331,6 +354,7 @@ export function PosTerminal({
     cameraScanOpen ||
     phoneDialogOpen ||
     printDialogOpen ||
+    calcDialogOpen ||
     editingItemId != null ||
     pendingEditing ||
     scanLocked ||
@@ -567,11 +591,17 @@ export function PosTerminal({
   const printCanProceed =
     printPhoneOk && printNameDraft.trim().length > 0 && (printPaymentType === "cash" || printPaymentType === "online")
 
+  const pauseScanForDialog = (event?: { preventDefault: () => void }) => {
+    event?.preventDefault()
+    scanner.holdFocus()
+  }
+
   const openPrintDialog = () => {
     if (items.length === 0) {
       toast.error("Scan at least one product first")
       return
     }
+    scanner.holdFocus()
     const phone = isWalkInPhone ? "" : normalizedCustomerPhone
     setPrintPhoneDraft(phone)
     setPrintNameDraft(selectedCustomer?.name || pendingCustomerName || "")
@@ -583,6 +613,28 @@ export function PosTerminal({
     setPrintPaymentType("cash")
     setPrintDialogOpen(true)
   }
+
+  const openCalculateDialog = () => {
+    if (items.length === 0) {
+      toast.error("Scan at least one product first")
+      return
+    }
+    scanner.holdFocus()
+    setCalcTotalDraft(String(totals.total))
+    setCalcReceivedDraft("")
+    setCalcDialogOpen(true)
+  }
+
+  const calcTotalAmount = parseMoneyInput(calcTotalDraft)
+  const calcReceivedAmount = parseMoneyInput(calcReceivedDraft)
+  const calcPayToCustomer =
+    calcTotalAmount == null || calcReceivedAmount == null
+      ? null
+      : Math.max(0, Math.round((calcReceivedAmount - calcTotalAmount) * 100) / 100)
+  const calcBalanceDue =
+    calcTotalAmount == null || calcReceivedAmount == null
+      ? null
+      : Math.max(0, Math.round((calcTotalAmount - calcReceivedAmount) * 100) / 100)
 
   const confirmPrintBill = async () => {
     if (!printCanProceed) return
@@ -635,6 +687,68 @@ export function PosTerminal({
       toast.error(e instanceof Error ? e.message : "Print failed")
     } finally {
       setPrinting(false)
+    }
+  }
+
+  const shareCurrentBillOnWhatsApp = () => {
+    const receipt = buildCurrentReceipt()
+    if (!receipt) {
+      toast.error("Scan at least one product first")
+      return
+    }
+    if (!shareBillOnWhatsApp(receipt)) {
+      toast.error("Link a customer phone on this bill first")
+      return
+    }
+  }
+
+  const confirmShareWhatsApp = async () => {
+    if (!printCanProceed) return
+    const digits = normalizePosPhone(printPhoneDraft)
+    const name = printNameDraft.trim()
+    const found = await fetchCustomerByPhone(digits)
+    if (!found && !name) {
+      toast.error("Enter customer name")
+      return
+    }
+    try {
+      setSavingCustomer(true)
+      if (found) {
+        applyCustomerPhone(digits, found.name, found.id)
+      } else {
+        const newId = await createCustomer({
+          name,
+          phone: digits,
+          balance: 0,
+          totalPurchases: 0,
+        })
+        applyCustomerPhone(digits, name, newId)
+      }
+      setBillPaymentMethod(printPaymentType === "online" ? "upi" : "cash")
+      setPrintDialogOpen(false)
+    } catch (e) {
+      console.error(e)
+      toast.error("Failed to save customer")
+      return
+    } finally {
+      setSavingCustomer(false)
+    }
+
+    const receipt = buildCurrentReceipt()
+    if (!receipt) {
+      toast.error("Scan at least one product first")
+      return
+    }
+    const paymentLabel = printPaymentType === "online" ? "online" : "cash"
+    if (
+      !shareBillOnWhatsApp({
+        ...receipt,
+        paymentMethod: paymentLabel,
+        customerName: found?.name || name,
+        customerPhone: digits,
+      })
+    ) {
+      toast.error("Could not open WhatsApp for this phone")
     }
   }
 
@@ -1354,7 +1468,16 @@ export function PosTerminal({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={printDialogOpen} onOpenChange={setPrintDialogOpen}>
+      <Dialog
+        open={printDialogOpen}
+        onOpenChange={(open) => {
+          setPrintDialogOpen(open)
+          if (!open) {
+            scanner.releaseFocus()
+            focusScanInput()
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Print bill</DialogTitle>
@@ -1437,6 +1560,15 @@ export function PosTerminal({
               </Button>
               <Button
                 type="button"
+                variant="secondary"
+                disabled={!printCanProceed || savingCustomer || printing}
+                onClick={() => void confirmShareWhatsApp()}
+              >
+                {savingCustomer ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Share WhatsApp
+              </Button>
+              <Button
+                type="button"
                 disabled={!printCanProceed || savingCustomer || printing}
                 onClick={() => void confirmPrintBill()}
               >
@@ -1444,6 +1576,80 @@ export function PosTerminal({
                 Proceed
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={calcDialogOpen}
+        onOpenChange={(open) => {
+          setCalcDialogOpen(open)
+          if (!open) {
+            scanner.releaseFocus()
+            focusScanInput()
+          }
+        }}
+      >
+        <DialogContent
+          className="sm:max-w-md"
+          onOpenAutoFocus={(e) => {
+            e.preventDefault()
+            window.setTimeout(() => document.getElementById("calc-received-amount")?.focus(), 0)
+          }}
+          onCloseAutoFocus={(e) => e.preventDefault()}
+          onPointerDownOutside={(e) => {
+            if ((e.target as HTMLElement | null)?.closest("[data-pos-scan-input]")) {
+              e.preventDefault()
+            }
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Calculate</DialogTitle>
+            <DialogDescription>
+              Enter the cash received to see how much to return to the customer.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="calc-total-amount">Total Amount</Label>
+              <Input
+                id="calc-total-amount"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="1"
+                value={calcTotalDraft}
+                onChange={(e) => setCalcTotalDraft(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">Filled from this bill. You can change it if needed.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="calc-received-amount">Recieved Amount</Label>
+              <Input
+                id="calc-received-amount"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="1"
+                placeholder="1000"
+                value={calcReceivedDraft}
+                onChange={(e) => setCalcReceivedDraft(e.target.value)}
+              />
+            </div>
+            <div className="rounded-xl border border-border/70 bg-muted/30 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pay To Customer</p>
+              <p className="mt-1 text-3xl font-bold tabular-nums tracking-tight text-foreground">
+                {calcPayToCustomer == null ? "—" : formatChangeAmount(calcPayToCustomer)}
+              </p>
+              {calcBalanceDue != null && calcBalanceDue > 0 ? (
+                <p className="mt-1 text-sm text-amber-700">Balance due: {formatChangeAmount(calcBalanceDue)}</p>
+              ) : null}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" onClick={() => setCalcDialogOpen(false)}>
+              Done
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1469,6 +1675,7 @@ export function PosTerminal({
                   <ScanBarcode className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-primary" />
                   <input
                     ref={scanner.inputRef}
+                    data-pos-scan-input=""
                     value={scanner.scanFieldValue}
                     onChange={(e) => scanner.setScanFieldValue(e.target.value)}
                     onKeyDown={(e) => {
@@ -2013,9 +2220,28 @@ export function PosTerminal({
 
           <div className="shrink-0 space-y-2 border-t border-border/60 bg-muted/15 p-5">
             <Button
+              variant="outline"
+              className="h-12 w-full text-base font-semibold"
+              disabled={totals.lines === 0 || acting}
+              onPointerDown={(e) => {
+                if (e.button !== 0 || totals.lines === 0 || acting) return
+                pauseScanForDialog(e)
+                openCalculateDialog()
+              }}
+              onClick={openCalculateDialog}
+            >
+              <Calculator className="mr-2 h-5 w-5" />
+              Calculate
+            </Button>
+            <Button
               variant="secondary"
               className="h-12 w-full text-base font-semibold"
               disabled={totals.lines === 0 || printing || acting}
+              onPointerDown={(e) => {
+                if (e.button !== 0 || totals.lines === 0 || printing || acting) return
+                pauseScanForDialog(e)
+                openPrintDialog()
+              }}
               onClick={openPrintDialog}
             >
               {printing ? (
@@ -2024,6 +2250,19 @@ export function PosTerminal({
                 <Printer className="mr-2 h-5 w-5" />
               )}
               Print this bill
+            </Button>
+            <Button
+              variant="outline"
+              className="h-12 w-full text-base font-semibold"
+              disabled={
+                totals.lines === 0 ||
+                acting ||
+                isWalkInPhone ||
+                !billPhoneLinked(normalizedCustomerPhone)
+              }
+              onClick={shareCurrentBillOnWhatsApp}
+            >
+              Share bill on WhatsApp
             </Button>
 
             {view === "billing" ? (

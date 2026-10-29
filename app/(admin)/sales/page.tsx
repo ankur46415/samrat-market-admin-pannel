@@ -592,6 +592,7 @@ export default function SalesHistoryPage() {
                                 </TableCell>
                                 <TableCell className="text-right">
                                   <SaleBillActions
+                                    sale={sale}
                                     onView={() => handleViewSale(sale)}
                                     onEdit={() => handleEditSale(sale)}
                                   />

@@ -2,11 +2,15 @@
 
 import { Eye, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ShareBillWhatsAppButton } from "@/components/sales/share-bill-whatsapp-button"
+import type { Sale } from "@/lib/types"
 
 export function SaleBillActions({
+  sale,
   onView,
   onEdit,
 }: {
+  sale: Sale
   onView: () => void
   onEdit: () => void
 }) {
@@ -20,6 +24,7 @@ export function SaleBillActions({
         <Pencil className="h-4 w-4" />
         Edit
       </Button>
+      <ShareBillWhatsAppButton sale={sale} size="sm" />
     </div>
   )
 }

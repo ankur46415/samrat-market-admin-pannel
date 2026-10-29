@@ -21,6 +21,7 @@ import {
   ScanBarcode,
   Inbox,
   IndianRupee,
+  MessageSquare,
 } from "lucide-react"
 import Image from "next/image"
 import {
@@ -119,6 +120,11 @@ const mainNavItems = [
       { title: "Add Customer", url: "/customers/add" },
       { title: "Credit Accounts", url: "/customers/credit" },
     ],
+  },
+  {
+    title: "Messaging",
+    url: "/messaging",
+    icon: MessageSquare,
   },
   {
     title: "Sales",
